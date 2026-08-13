@@ -1,50 +1,46 @@
 # scripts/test_jira.py
-"""JIRA 연결 및 필드 구조 확인용 테스트 스크립트"""
 import sys
 from pathlib import Path
+from datetime import date, timedelta
 
-# 프로젝트 루트를 path에 추가
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.core.jira_client import jira
-from app.config import settings
+from app.services.completion import build_ticket_summary, calc_completion_rate
 
 
-def test_connection():
-    print("=" * 50)
-    print(f"JIRA URL: {settings.jira_url}")
-    print(f"Project : {settings.jira_project}")
-    print("=" * 50)
+def test_full_flow():
+    print("=" * 60)
+    print("1. JIRA에서 [예방N] 티켓 조회")
+    print("=" * 60)
 
-    # 1. [예방] 티켓 검색
-    jql = f'project = {settings.jira_project} AND summary ~ "예방2" ORDER BY created DESC'
-    print(f"\n[JQL] {jql}\n")
+    issues = jira.get_prevention_tickets()
+    tickets = build_ticket_summary(issues)
 
-    issues = jira.search(jql, max_results=5)
-    print(f"조회된 티켓 수: {len(issues)}건\n")
+    for t in tickets:
+        print(f"{t['key']} | {t['prevention_type']} | {t['status']} | "
+              f"완료예정일: {t['planned_end_date']} | {t['summary'][:40]}")
 
-    if not issues:
-        print("⚠️ 티켓이 없습니다. JQL/권한 확인 필요")
-        return
+    print(f"\n총 {len(tickets)}건 조회됨\n")
 
-    # 2. 첫 티켓의 전체 필드 출력 (커스텀 필드 id 파악용)
-    first_key = issues[0]["key"]
-    print(f"[{first_key}] 전체 필드 확인 (변경 계획 완료일 찾기)")
-    print("-" * 50)
+    # 2. 임시로 엑셀 대체 (실제론 excel_loader에서 로드)
+    print("=" * 60)
+    print("2. 완료율 계산 (임시 - 조회된 티켓을 계획목록으로 가정)")
+    print("=" * 60)
 
-    detail = jira.get_issue(first_key)
-    for field_id, value in detail["fields"].items():
-        if value is not None:  # 값 있는 필드만
-            print(f"{field_id}: {str(value)[:80]}")
+    ticket_map = {t["key"]: t for t in tickets}
+    fake_planned_items = [
+        {"service_name": "테스트", "prevention_type": t["prevention_type"],
+         "jira_ticket_key": t["key"]}
+        for t in tickets
+    ]
 
-    # 3. 티켓 요약
-    print("\n" + "=" * 50)
-    print("티켓 목록 요약")
-    print("=" * 50)
-    for issue in issues:
-        f = issue["fields"]
-        print(f"{issue['key']} | {f['status']['name']} | {f['summary'][:40]}")
+    today = date.today()
+    result = calc_completion_rate(fake_planned_items, ticket_map, today)
+
+    print(f"기준일: {result['as_of_date']}")
+    print(f"전체: {result['total']}건 / 완료: {result['done']}건 / 완료율: {result['rate']}%")
 
 
 if __name__ == "__main__":
-    test_connection()
+    test_full_flow()
