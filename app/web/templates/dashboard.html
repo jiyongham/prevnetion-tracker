@@ -1,0 +1,133 @@
+<!-- app/web/templates/dashboard.html -->
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DR 모의훈련 진척 관리</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <h1>🔄 DR 모의훈련 진척 현황</h1>
+    <div class="controls">
+      <form method="get" class="inline-form">
+        <select name="half" onchange="this.form.submit()">
+          <option value="H1" {% if half == 'H1' %}selected{% endif %}>상반기</option>
+          <option value="H2" {% if half == 'H2' %}selected{% endif %}>하반기</option>
+        </select>
+        <input type="date" name="as_of" value="{{ as_of }}" onchange="this.form.submit()">
+        {% if filter_team %}<input type="hidden" name="team" value="{{ filter_team }}">{% endif %}
+      </form>
+      <form method="post" action="/send-report" class="inline-form">
+        <input type="hidden" name="half" value="{{ half }}">
+        <button type="submit" class="btn-teams">📤 Teams 발송</button>
+      </form>
+    </div>
+  </header>
+
+  {% if jira_error %}
+  <div class="alert">⚠️ JIRA 연동 실패 (엑셀 기준 표시): {{ jira_error[:100] }}</div>
+  {% endif %}
+
+  <!-- 요약 카드 -->
+  <section class="cards">
+    <div class="card big">
+      <div class="label">전체 완료율 ({{ half_label }})</div>
+      <div class="rate">{{ result.rate }}%</div>
+      <div class="sub">{{ result.done }} / {{ result.total }}건</div>
+      <div class="progress"><div class="bar" style="width: {{ result.rate }}%"></div></div>
+    </div>
+    <div class="card">
+      <div class="label">기준일</div>
+      <div class="value">{{ as_of }}</div>
+      <div class="sub">{% if as_of == today %}오늘{% else %}조회 기준{% endif %}</div>
+    </div>
+    <div class="card">
+      <div class="label">미완료</div>
+      <div class="value warn">{{ result.total - result.done }}건</div>
+      <div class="sub">일정 미입력 {{ result.no_schedule }}건</div>
+    </div>
+  </section>
+
+  <!-- 운영팀별 -->
+  <section class="panel">
+    <h2>운영팀별 현황</h2>
+    <table>
+      <thead>
+        <tr><th>APP운영팀</th><th>완료</th><th>전체</th><th>완료율</th><th style="width:35%">진행</th></tr>
+      </thead>
+      <tbody>
+      {% for team, v in by_team.items() %}
+        <tr class="clickable" onclick="location.href='/?half={{ half }}&as_of={{ as_of }}&team={{ team }}'">
+          <td>{{ team }}</td>
+          <td>{{ v.done }}</td>
+          <td>{{ v.total }}</td>
+          <td class="{% if v.rate == 100 %}ok{% elif v.rate >= 50 %}mid{% else %}bad{% endif %}">
+            {{ v.rate }}%
+          </td>
+          <td><div class="progress sm"><div class="bar" style="width: {{ v.rate }}%"></div></div></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <!-- 상세 목록 -->
+  <section class="panel">
+    <div class="panel-head">
+      <h2>대상 목록 ({{ details|length }}건)</h2>
+      <div class="filters">
+        <a href="/?half={{ half }}&as_of={{ as_of }}"
+           class="chip {% if not filter_status and not filter_team %}active{% endif %}">전체</a>
+        <a href="/?half={{ half }}&as_of={{ as_of }}&status=pending"
+           class="chip {% if filter_status == 'pending' %}active{% endif %}">미완료</a>
+        <a href="/?half={{ half }}&as_of={{ as_of }}&status=done"
+           class="chip {% if filter_status == 'done' %}active{% endif %}">완료</a>
+      </div>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>NO</th><th>관계사</th><th>시스템명</th><th>호스트명</th>
+          <th>IP</th><th>운영팀</th><th>담당자</th>
+          <th>일정</th><th>방식</th><th>JIRA</th><th>상태</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for d in details %}
+        <tr class="{% if d.completed %}row-done{% endif %}">
+          <td>{{ d.no }}</td>
+          <td>{{ d.company }}</td>
+          <td class="strong">{{ d.system_name }}</td>
+          <td class="mono">{{ d.hostname }}</td>
+          <td class="mono small">{{ d.ip }}</td>
+          <td>{{ d.ops_team }}</td>
+          <td>{{ d.owner }}</td>
+          <td>{{ d.schedule_raw or '-' }}</td>
+          <td>{{ d.mode or '-' }}</td>
+          <td>
+            {% if d.jira_key %}
+              <a href="{{ jira_base }}/browse/{{ d.jira_key }}" target="_blank" class="link">{{ d.jira_key }}</a>
+            {% else %}<span class="muted">-</span>{% endif %}
+          </td>
+          <td>
+            {% if d.completed %}
+              <span class="badge ok" title="{{ d.reason }}">완료</span>
+            {% else %}
+              <span class="badge bad">미완료</span>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <footer>
+    <span>기준일 {{ as_of }} · 다음주 {{ next_week }}</span>
+    <a href="/api/summary?half={{ half }}" target="_blank">API</a>
+ 
