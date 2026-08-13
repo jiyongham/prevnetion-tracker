@@ -17,7 +17,7 @@ def test_connection():
     print("=" * 50)
 
     # 1. [예방] 티켓 검색
-    jql = f'project = {settings.jira_project} AND summary ~ "예방" ORDER BY created DESC'
+    jql = f'project = {settings.jira_project} AND summary ~ "예방2" ORDER BY created DESC'
     print(f"\n[JQL] {jql}\n")
 
     issues = jira.search(jql, max_results=5)

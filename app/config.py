@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     jira_password: str               # 비밀번호
     jira_project: str = "IMDC"
 
+    # 완료 판정 필드
+    planned_end_date_field: str = "customfield_11360"  # 변경 계획 완료일
+
     # Teams
     teams_webhook: str = ""
 
