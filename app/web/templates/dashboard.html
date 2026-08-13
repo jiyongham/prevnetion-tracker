@@ -1,4 +1,3 @@
-<!-- app/web/templates/dashboard.html -->
 <!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -19,7 +18,6 @@
           <option value="H2" {% if half == 'H2' %}selected{% endif %}>하반기</option>
         </select>
         <input type="date" name="as_of" value="{{ as_of }}" onchange="this.form.submit()">
-        {% if filter_team %}<input type="hidden" name="team" value="{{ filter_team }}">{% endif %}
       </form>
       <form method="post" action="/send-report" class="inline-form">
         <input type="hidden" name="half" value="{{ half }}">
@@ -65,9 +63,7 @@
           <td>{{ team }}</td>
           <td>{{ v.done }}</td>
           <td>{{ v.total }}</td>
-          <td class="{% if v.rate == 100 %}ok{% elif v.rate >= 50 %}mid{% else %}bad{% endif %}">
-            {{ v.rate }}%
-          </td>
+          <td class="{% if v.rate == 100 %}ok{% elif v.rate >= 50 %}mid{% else %}bad{% endif %}">{{ v.rate }}%</td>
           <td><div class="progress sm"><div class="bar" style="width: {{ v.rate }}%"></div></div></td>
         </tr>
       {% endfor %}
@@ -75,59 +71,142 @@
     </table>
   </section>
 
-  <!-- 상세 목록 -->
+  <!-- 상세 목록 (편집 가능) -->
   <section class="panel">
     <div class="panel-head">
       <h2>대상 목록 ({{ details|length }}건)</h2>
-      <div class="filters">
-        <a href="/?half={{ half }}&as_of={{ as_of }}"
-           class="chip {% if not filter_status and not filter_team %}active{% endif %}">전체</a>
-        <a href="/?half={{ half }}&as_of={{ as_of }}&status=pending"
-           class="chip {% if filter_status == 'pending' %}active{% endif %}">미완료</a>
-        <a href="/?half={{ half }}&as_of={{ as_of }}&status=done"
-           class="chip {% if filter_status == 'done' %}active{% endif %}">완료</a>
+      <div class="head-right">
+        <form method="get" class="inline-form">
+          <input type="hidden" name="half" value="{{ half }}">
+          <input type="text" name="q" value="{{ q }}" placeholder="시스템/호스트/IP 검색" class="search">
+          <button type="submit" class="btn-sm">검색</button>
+        </form>
+        <div class="filters">
+          <a href="/?half={{ half }}" class="chip {% if not filter_status and not filter_team %}active{% endif %}">전체</a>
+          <a href="/?half={{ half }}&status=pending" class="chip {% if filter_status == 'pending' %}active{% endif %}">미완료</a>
+          <a href="/?half={{ half }}&status=done" class="chip {% if filter_status == 'done' %}active{% endif %}">완료</a>
+        </div>
       </div>
     </div>
 
-    <table>
+    <div class="user-input">
+      <strong>입력자명:</strong>
+      <input type="text" id="updatedBy" placeholder="이름 입력">
+      <span class="hint">※ 수정 이력에 기록됩니다. 엑셀 원본은 변경되지 않습니다.</span>
+    </div>
+
+    <div class="table-scroll">
+    <table class="editable">
       <thead>
         <tr>
-          <th>NO</th><th>관계사</th><th>시스템명</th><th>호스트명</th>
-          <th>IP</th><th>운영팀</th><th>담당자</th>
-          <th>일정</th><th>방식</th><th>JIRA</th><th>상태</th>
+          <th>NO</th><th>시스템명</th><th>호스트명</th><th>운영팀</th><th>담당자</th>
+          <th style="width:90px">일정 ✏️</th>
+          <th style="width:110px">방식 ✏️</th>
+          <th style="width:50px">완료 ✏️</th>
+          <th style="width:130px">증적 ✏️</th>
+          <th style="width:130px">비고 ✏️</th>
+          <th>JIRA</th><th>상태</th><th style="width:60px">저장</th>
         </tr>
       </thead>
       <tbody>
       {% for d in details %}
-        <tr class="{% if d.completed %}row-done{% endif %}">
+        <tr data-no="{{ d.no }}" class="{% if d.completed %}row-done{% endif %}">
           <td>{{ d.no }}</td>
-          <td>{{ d.company }}</td>
           <td class="strong">{{ d.system_name }}</td>
-          <td class="mono">{{ d.hostname }}</td>
-          <td class="mono small">{{ d.ip }}</td>
-          <td>{{ d.ops_team }}</td>
-          <td>{{ d.owner }}</td>
-          <td>{{ d.schedule_raw or '-' }}</td>
-          <td>{{ d.mode or '-' }}</td>
+          <td class="mono small">{{ d.hostname }}</td>
+          <td class="small">{{ d.ops_team }}</td>
+          <td class="small">{{ d.owner }}</td>
+
+          <td><input type="text" class="cell sched" value="{{ d.schedule_raw }}" placeholder="6/15"></td>
+          <td>
+            <select class="cell mode">
+              <option value="" {% if not d.mode %}selected{% endif %}>-</option>
+              <option value="실 전환" {% if '실' in d.mode %}selected{% endif %}>실 전환</option>
+              <option value="무중단" {% if '무중단' in d.mode %}selected{% endif %}>무중단</option>
+            </select>
+          </td>
+          <td class="center"><input type="checkbox" class="cell done" {% if d.completed %}checked{% endif %}></td>
+          <td><input type="text" class="cell evidence" value="{{ d.evidence }}" placeholder="증적"></td>
+          <td><input type="text" class="cell note" value="{{ d.note }}" placeholder="비고"></td>
+
           <td>
             {% if d.jira_key %}
-              <a href="{{ jira_base }}/browse/{{ d.jira_key }}" target="_blank" class="link">{{ d.jira_key }}</a>
+            <a href="{{ jira_base }}/browse/{{ d.jira_key }}" target="_blank" class="link small">{{ d.jira_key }}</a>
             {% else %}<span class="muted">-</span>{% endif %}
           </td>
           <td>
-            {% if d.completed %}
-              <span class="badge ok" title="{{ d.reason }}">완료</span>
-            {% else %}
-              <span class="badge bad">미완료</span>
-            {% endif %}
+            {% if d.completed %}<span class="badge ok" title="{{ d.reason }}">완료</span>
+            {% else %}<span class="badge bad">미완료</span>{% endif %}
           </td>
+          <td><button class="btn-save" onclick="saveRow(this)">저장</button></td>
         </tr>
       {% endfor %}
       </tbody>
     </table>
+    </div>
   </section>
 
   <footer>
     <span>기준일 {{ as_of }} · 다음주 {{ next_week }}</span>
-    <a href="/api/summary?half={{ half }}" target="_blank">API</a>
- 
+    <span>
+      <a href="/export?half={{ half }}&as_of={{ as_of }}">📥 엑셀 다운로드</a> ·
+      <a href="/logs">변경이력</a> ·
+      <a href="/api/summary?half={{ half }}" target="_blank">API</a>
+    </span>
+  </footer>
+
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script>
+const HALF = "{{ half }}";
+
+function showToast(msg, ok = true) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.className = "toast show " + (ok ? "ok" : "err");
+  setTimeout(() => { t.className = "toast"; }, 2000);
+}
+
+async function saveRow(btn) {
+  const tr = btn.closest("tr");
+  const payload = {
+    item_no: tr.dataset.no,
+    half: HALF,
+    schedule: tr.querySelector(".sched").value,
+    mode: tr.querySelector(".mode").value,
+    is_done: tr.querySelector(".done").checked,
+    evidence: tr.querySelector(".evidence").value,
+    note: tr.querySelector(".note").value,
+    updated_by: document.getElementById("updatedBy").value,
+  };
+
+  btn.disabled = true; btn.textContent = "...";
+  try {
+    const res = await fetch("/api/save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (res.ok) {
+      showToast(`NO.${payload.item_no} 저장 완료`);
+      tr.classList.add("saved");
+      setTimeout(() => tr.classList.remove("saved"), 1200);
+    } else { showToast("저장 실패", false); }
+  } catch (e) { showToast("오류: " + e.message, false); }
+  finally { btn.disabled = false; btn.textContent = "저장"; }
+}
+
+document.querySelectorAll("input.cell").forEach(el => {
+  el.addEventListener("keydown", e => {
+    if (e.key === "Enter") saveRow(e.target.closest("tr").querySelector(".btn-save"));
+  });
+});
+
+const ub = document.getElementById("updatedBy");
+ub.value = localStorage.getItem("updatedBy") || "";
+ub.addEventListener("change", () => localStorage.setItem("updatedBy", ub.value));
+</script>
+</body>
+</html>

@@ -73,3 +73,39 @@ def load_dr_items(excel_path: str | None = None, half: str = "H2") -> list[dict]
 def get_targets(items: list[dict]) -> list[dict]:
     """대상 여부 O만 (완료율 분모)"""
     return [i for i in items if i["is_target"]]
+
+# app/core/excel_loader.py 맨 아래 추가
+from app.models.db import get_inputs
+
+
+def load_dr_items_merged(half: str = "H2", excel_path: str | None = None) -> list[dict]:
+    """엑셀 + DB 입력값 병합 (DB 값이 우선)"""
+    items = load_dr_items(excel_path=excel_path, half=half)
+    inputs = get_inputs(half)
+
+    for item in items:
+        db = inputs.get(item["no"])
+        item["input_source"] = "excel"
+
+        if db:
+            # DB에 값이 있으면 덮어쓰기
+            if db.get("schedule"):
+                item["schedule_raw"] = db["schedule"]
+                item["input_source"] = "web"
+            if db.get("mode"):
+                item["mode"] = db["mode"]
+            if db.get("is_done"):
+                item["excel_done"] = "O"
+                item["input_source"] = "web"
+            if db.get("evidence"):
+                item["evidence"] = db["evidence"]
+
+            item["note"] = db.get("note", "")
+            item["updated_by"] = db.get("updated_by", "")
+            item["updated_at"] = db.get("updated_at", "")
+        else:
+            item["note"] = ""
+            item["updated_by"] = ""
+            item["updated_at"] = ""
+
+    return items

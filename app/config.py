@@ -20,5 +20,7 @@ class Settings(BaseSettings):
     # 엑셀 경로
     excel_path: str = "data/targets.xlsx"
 
+    db_path: str = "data/tracker.db"
+
 
 settings = Settings()
