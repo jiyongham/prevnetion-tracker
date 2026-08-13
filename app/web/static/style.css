@@ -97,3 +97,114 @@ footer a { color: #5b5fc7; text-decoration: none; }
 @media (max-width: 900px) {
   .cards { grid-template-columns: 1fr; }
 }
+/* style.css 맨 아래 추가 */
+
+.head-right { display: flex; gap: 12px; align-items: center; }
+.search { padding: 6px 10px; border: 1px solid #d0d7de; border-radius: 6px; width: 180px; }
+.btn-sm {
+  padding: 6px 12px; background: #fff; border: 1px solid #d0d7de;
+  border-radius: 6px; cursor: pointer; font-size: 12px;
+  text-decoration: none; color: #444;
+}
+.btn-sm:hover { background: #f4f6f8; }
+
+.user-input {
+  background: #f8f9fb; padding: 10px 14px; border-radius: 6px;
+  margin-bottom: 12px; font-size: 13px;
+}
+.user-input input {
+  padding: 5px 10px; border: 1px solid #d0d7de; border-radius: 5px; width: 140px;
+}
+.hint { color: #999; font-size: 11px; margin-left: 8px; }
+
+table.editable td { padding: 5px 6px; }
+input.cell, select.cell {
+  width: 100%; padding: 5px 7px; border: 1px solid #dde1e6;
+  border-radius: 5px; font-size: 12px; background: #fff;
+}
+input.cell:focus, select.cell:focus {
+  outline: none; border-color: #5b5fc7; box-shadow: 0 0 0 2px rgba(91,95,199,.12);
+}
+.center { text-align: center; }
+input[type="checkbox"].cell { width: 16px; height: 16px; cursor: pointer; }
+
+.btn-save {
+  padding: 5px 12px; background: #5b5fc7; color: #fff;
+  border: none; border-radius: 5px; cursor: pointer; font-size: 12px;
+}
+.btn-save:hover { background: #4a4eb0; }
+.btn-save:disabled { background: #aaa; }
+
+tr.saved { animation: flash 1.2s; }
+@keyframes flash {
+  0% { background: #d4f4dd; }
+  100% { background: transparent; }
+}
+
+.toast {
+  position: fixed; bottom: 24px; right: 24px;
+  padding: 12px 20px; border-radius: 8px;
+  color: #fff; font-size: 13px; font-weight: 500;
+  opacity: 0; transform: translateY(10px);
+  transition: all .25s; pointer-events: none;
+  z-index: 999;
+}
+.toast.show { opacity: 1; transform: translateY(0); }
+.toast.ok { background: #2e7d32; }
+.toast.err { background: #c62828; }
+
+.head-right { display: flex; gap: 12px; align-items: center; }
+.search { padding: 6px 10px; border: 1px solid #d0d7de; border-radius: 6px; width: 180px; }
+.btn-sm {
+  padding: 6px 12px; background: #fff; border: 1px solid #d0d7de;
+  border-radius: 6px; cursor: pointer; font-size: 12px;
+  text-decoration: none; color: #444;
+}
+.btn-sm:hover { background: #f4f6f8; }
+
+.user-input {
+  background: #f0f4ff; padding: 10px 14px; border-radius: 6px;
+  margin-bottom: 12px; font-size: 13px; border: 1px solid #dbe4ff;
+}
+.user-input input {
+  padding: 5px 10px; border: 1px solid #d0d7de; border-radius: 5px; width: 140px;
+}
+.hint { color: #7a86a8; font-size: 11px; margin-left: 8px; }
+
+.table-scroll { overflow-x: auto; }
+table.editable td { padding: 5px 6px; }
+table.editable th { position: sticky; top: 0; }
+
+input.cell, select.cell {
+  width: 100%; padding: 5px 7px; border: 1px solid #dde1e6;
+  border-radius: 5px; font-size: 12px; background: #fff;
+}
+input.cell:focus, select.cell:focus {
+  outline: none; border-color: #5b5fc7; box-shadow: 0 0 0 2px rgba(91,95,199,.12);
+}
+.center { text-align: center; }
+input[type="checkbox"].cell { width: 16px; height: 16px; cursor: pointer; }
+
+.btn-save {
+  padding: 5px 12px; background: #5b5fc7; color: #fff;
+  border: none; border-radius: 5px; cursor: pointer; font-size: 12px;
+}
+.btn-save:hover { background: #4a4eb0; }
+.btn-save:disabled { background: #aaa; }
+
+tr.saved { animation: flash 1.2s; }
+@keyframes flash {
+  0% { background: #d4f4dd; }
+  100% { background: transparent; }
+}
+
+.toast {
+  position: fixed; bottom: 24px; right: 24px;
+  padding: 12px 20px; border-radius: 8px;
+  color: #fff; font-size: 13px; font-weight: 500;
+  opacity: 0; transform: translateY(10px);
+  transition: all .25s; pointer-events: none; z-index: 999;
+}
+.toast.show { opacity: 1; transform: translateY(0); }
+.toast.ok { background: #2e7d32; }
+.toast.err { background: #c62828; }
