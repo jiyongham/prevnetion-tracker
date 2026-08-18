@@ -74,6 +74,24 @@ def get_targets(items: list[dict]) -> list[dict]:
     """대상 여부 O만 (완료율 분모)"""
     return [i for i in items if i["is_target"]]
 
+
+def get_h1_nonstop_target_nos(excel_path: str | None = None) -> set[str]:
+    """
+    상반기 무중단으로 수행한 대상 NO 집합.
+    하반기 DR 모의훈련은 이 대상(174대)에 한해 수행하므로 완료율 분모로 사용.
+    """
+    h1 = load_dr_items(excel_path=excel_path, half="H1")
+    return {
+        i["no"] for i in h1
+        if i["is_target"] and "무중단" in (i.get("mode") or "")
+    }
+
+
+def scope_h2_targets(items: list[dict], excel_path: str | None = None) -> list[dict]:
+    """하반기(H2) 항목을 상반기 무중단 대상으로만 한정"""
+    nonstop_nos = get_h1_nonstop_target_nos(excel_path=excel_path)
+    return [i for i in items if i["no"] in nonstop_nos]
+
 # app/core/excel_loader.py 맨 아래 추가
 from app.models.db import get_inputs
 
