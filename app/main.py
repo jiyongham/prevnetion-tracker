@@ -6,7 +6,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 import pandas as pd
-from fastapi import FastAPI, Form, Request
+from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import (
     HTMLResponse,
     JSONResponse,
@@ -150,6 +150,14 @@ def dashboard(
 # ─────────────────────────────────────────────
 # 일정 입력 저장
 # ─────────────────────────────────────────────
+def _require_updated_by(updated_by: str) -> str:
+    """변경 저장은 입력자명 2글자 이상 필수 (누가 바꿨는지 추적 가능하도록)"""
+    name = (updated_by or "").strip()
+    if len(name) < 2:
+        raise HTTPException(status_code=400, detail="입력자명을 2글자 이상 입력해주세요")
+    return name
+
+
 def _resolve_is_done(item_no: str, half: str, requested: bool, updated_by: str) -> bool:
     """
     완료(체크) 처리는 관리자만 변경 가능.
@@ -165,7 +173,7 @@ def _resolve_is_done(item_no: str, half: str, requested: bool, updated_by: str) 
 async def api_save(request: Request):
     """AJAX 인라인 저장"""
     data = await request.json()
-    updated_by = data.get("updated_by", "").strip()
+    updated_by = _require_updated_by(data.get("updated_by", ""))
     is_done = _resolve_is_done(
         data["item_no"], data["half"], bool(data.get("is_done")), updated_by
     )
@@ -187,7 +195,7 @@ async def api_bulk_save(request: Request):
     """현재 목록의 여러 행을 한 번에 저장. 완료값은 관리자만 반영."""
     data = await request.json()
     half = data["half"]
-    updated_by = (data.get("updated_by") or "").strip()
+    updated_by = _require_updated_by(data.get("updated_by", ""))
     rows = data.get("rows", [])
 
     for r in rows:
@@ -221,16 +229,17 @@ def save_schedule(
     redirect_to: str = Form("/"),
 ):
     """폼 전송 저장"""
+    updated_by = _require_updated_by(updated_by)
     done_requested = is_done in ("on", "1", "true")
     upsert_input(
         item_no=item_no,
         half=half,
         schedule=schedule.strip(),
         mode=mode.strip(),
-        is_done=_resolve_is_done(item_no, half, done_requested, updated_by.strip()),
+        is_done=_resolve_is_done(item_no, half, done_requested, updated_by),
         evidence=evidence.strip(),
         note=note.strip(),
-        updated_by=updated_by.strip(),
+        updated_by=updated_by,
     )
     return RedirectResponse(url=redirect_to, status_code=303)
 
