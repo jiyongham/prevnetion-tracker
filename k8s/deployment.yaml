@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dr-tracker
+  namespace: dr-tracker
+spec:
+  replicas: 1   # sqlite 파일 하나를 여러 파드가 동시에 쓰면 깨질 수 있어 1로 고정
+  selector:
+    matchLabels:
+      app: dr-tracker
+  template:
+    metadata:
+      labels:
+        app: dr-tracker
+    spec:
+      containers:
+        - name: dr-tracker
+          image: dr-tracker:local
+          imagePullPolicy: IfNotPresent   # kind load로 넣은 로컬 이미지를 그대로 사용
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - secretRef:
+                name: dr-tracker-env
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 3
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: dr-tracker-data
