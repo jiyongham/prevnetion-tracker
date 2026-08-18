@@ -1,5 +1,6 @@
 # app/core/jira_client.py
 import requests
+from requests.adapters import HTTPAdapter
 from requests.auth import HTTPBasicAuth
 from app.config import settings
 
@@ -10,6 +11,10 @@ class JiraClient:
         self.session = requests.Session()
         self.session.auth = HTTPBasicAuth(settings.jira_user, settings.jira_password)
         self.session.headers.update({"Accept": "application/json"})
+        # CMDB(Insight) 병렬 조회(ThreadPoolExecutor)가 동시에 여러 연결을 쓰므로 풀을 넉넉히 잡는다
+        adapter = HTTPAdapter(pool_connections=20, pool_maxsize=20)
+        self.session.mount("https://", adapter)
+        self.session.mount("http://", adapter)
 
     def search(self, jql: str, fields: list[str] | None = None, max_results: int = 500):
         """JQL 검색 (페이징 처리)"""
@@ -51,6 +56,7 @@ class JiraClient:
             "description",
             "status",
             "created",
+            settings.jsm_requester_field,
             settings.planned_end_date_field,
             *settings.match_field_list,   # 변경작업 대상 등 (호스트명/IP 포함)
         ]

@@ -17,8 +17,14 @@
 
   <div class="alert" style="background:#eef4ff;color:#334">
     담당자별 <strong>미계획 {{ total_unplanned }}건</strong> · 아래는 <strong>발송 전 초안</strong>입니다.
-    (아직 실제 발송은 하지 않습니다. 내용·대상 확인용)
+    (아직 실제 발송은 하지 않습니다. 내용·대상 확인용) 받는 팀명은 CMDB(운영팀) 기준으로 자동 보정됩니다.
   </div>
+  {% if dm_enabled and not selected and groups %}
+  <div class="alert" style="background:#fff8e6;color:#664;display:flex;align-items:center;justify-content:space-between;gap:12px">
+    <span>담당자 <strong>{{ groups|length }}명</strong> 전체에게 순서대로 개인 DM을 보낼 수 있습니다.</span>
+    <button class="btn-sm" onclick="sendAllDM(this)">🚀 전체 일괄 DM 발송</button>
+  </div>
+  {% endif %}
   {% if jira_error %}
   <div class="alert">⚠️ JIRA 연동 실패 (엑셀 기준 표시): {{ jira_error[:100] }}</div>
   {% endif %}
@@ -47,9 +53,11 @@
     <section class="remind-main">
       {% set show = [selected] if selected else groups %}
       {% for g in show %}
-      <div class="panel draft">
+      <div class="panel draft" data-owner="{{ g.owner }}">
         <div class="panel-head">
-          <h2>{{ g.name }} <span class="muted">{{ g.team }} · {{ g.count }}건</span></h2>
+          <h2>{{ g.name }} <span class="muted">{{ g.team }} · {{ g.count }}건</span>
+            <span class="send-status"></span>
+          </h2>
           <div class="draft-tools">
             <label class="recipient-pick">받는 담당자:
               <select onchange="changeRecipient(this)">
@@ -62,7 +70,7 @@
               </select>
             </label>
             <button class="btn-sm" onclick="copyMsg(this)">📋 복사</button>
-            {% if flow_enabled %}
+            {% if dm_enabled %}
             <button class="btn-sm" onclick="sendDM(this)">📨 개인 DM 발송</button>
             {% endif %}
             {% if teams_enabled %}
@@ -114,16 +122,20 @@ function copyMsg(btn) {
   navigator.clipboard.writeText(pre.textContent).then(() => showToast("초안 복사됨"));
 }
 
-async function sendDM(btn) {
-  const draft = btn.closest(".draft");
+function setStatus(draft, ok, label) {
+  const el = draft.querySelector(".send-status");
+  if (!el) return;
+  el.textContent = ok ? "✅ " + label : "❌ " + label;
+  el.className = "send-status " + (ok ? "ok" : "err");
+}
+
+// 실제 DM 발송 호출 (확인창 없이) - 단건 버튼/일괄 발송 공용
+async function doSendDM(draft) {
   const sel = draft.querySelector(".recipient-pick select");
   const opt = sel.options[sel.selectedIndex];
   const name = opt.dataset.name;
   const team = opt.dataset.team || "";
   const message = draft.querySelector(".msg").textContent;
-  const who = name + (team ? " (" + team + ")" : "");
-  if (!confirm(`${who} 님에게 Teams 개인 DM을 보냅니다. 계속할까요?`)) return;
-  btn.disabled = true;
   try {
     const res = await fetch("/api/remind-dm", {
       method: "POST",
@@ -131,9 +143,38 @@ async function sendDM(btn) {
       body: JSON.stringify({ name, team, message }),
     });
     const data = await res.json();
-    showToast(data.ok ? `${name} 님에게 DM 발송 완료` : ("발송 실패: " + (data.error || "")), data.ok);
-  } catch (e) { showToast("오류: " + e.message, false); }
-  finally { btn.disabled = false; }
+    setStatus(draft, data.ok, data.ok ? "발송완료" : (data.error || "발송 실패"));
+    return { name, ok: data.ok, error: data.error };
+  } catch (e) {
+    setStatus(draft, false, e.message);
+    return { name, ok: false, error: e.message };
+  }
+}
+
+async function sendDM(btn) {
+  const draft = btn.closest(".draft");
+  const sel = draft.querySelector(".recipient-pick select");
+  const opt = sel.options[sel.selectedIndex];
+  const who = opt.dataset.name + (opt.dataset.team ? " (" + opt.dataset.team + ")" : "");
+  if (!confirm(`${who} 님에게 Teams 개인 DM을 보냅니다. 계속할까요?`)) return;
+  btn.disabled = true;
+  const r = await doSendDM(draft);
+  showToast(r.ok ? `${r.name} 님에게 DM 발송 완료` : ("발송 실패: " + (r.error || "")), r.ok);
+  btn.disabled = false;
+}
+
+async function sendAllDM(btn) {
+  const drafts = Array.from(document.querySelectorAll(".draft"));
+  if (!confirm(`담당자 ${drafts.length}명 전체에게 순서대로 개인 DM을 보냅니다. 계속할까요?`)) return;
+  btn.disabled = true;
+  let ok = 0, fail = 0;
+  for (const draft of drafts) {
+    const r = await doSendDM(draft);
+    if (r.ok) ok++; else fail++;
+    await new Promise(res => setTimeout(res, 400)); // Flow/웹훅 과부하 방지
+  }
+  btn.disabled = false;
+  showToast(`전체 발송 완료: 성공 ${ok}건 / 실패 ${fail}건`, fail === 0);
 }
 
 async function testSend(btn) {

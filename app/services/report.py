@@ -3,7 +3,7 @@ from datetime import date, timedelta
 
 from app.config import settings
 from app.core.jira_client import jira
-from app.core.excel_loader import get_targets, load_dr_items, scope_h2_targets
+from app.core.excel_loader import get_targets, load_dr_items_merged, scope_h2_targets
 from app.core.teams_client import send_teams_message
 from app.services.completion import (
     build_ticket_summary,
@@ -19,7 +19,7 @@ def get_current_half() -> str:
 
 
 def collect(half: str, use_jira: bool = True):
-    items = load_dr_items(half=half)
+    items = load_dr_items_merged(half=half)
     ticket_map = {}
 
     if use_jira:

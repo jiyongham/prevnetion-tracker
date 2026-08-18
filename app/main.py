@@ -24,6 +24,11 @@ from app.core.teams_client import send_teams_dm, send_teams_message
 from app.models.db import get_input, get_logs, init_db, upsert_input
 from app.services.completion import build_ticket_summary, calc_completion, group_by
 from app.services.matcher import match_items_by_ip
+from app.services.owner_check import (
+    collect_targets_with_tickets,
+    find_owner_mismatches,
+    lookup_cmdb_assets,
+)
 from app.services.reminder import group_unplanned_by_owner
 from app.services.report import get_current_half, send_report
 
@@ -254,7 +259,9 @@ def remind_preview(
 ):
     half = half or get_current_half()
     result, jira_error = get_dashboard_data(half, date.today())
-    groups = group_unplanned_by_owner(result["details"])
+    unplanned = [d for d in result["details"] if not d["planned"]]
+    cmdb_map = lookup_cmdb_assets(unplanned)
+    groups = group_unplanned_by_owner(result["details"], cmdb_map)
 
     selected = None
     if owner:
@@ -270,7 +277,7 @@ def remind_preview(
         "sender_team": settings.sender_team,
         "sender_name": settings.sender_name,
         "teams_enabled": bool(settings.teams_webhook),
-        "flow_enabled": bool(settings.teams_flow_url),
+        "dm_enabled": bool(settings.teams_dm_trigger_webhook),
         "jira_error": jira_error,
     })
 
@@ -303,6 +310,25 @@ async def api_remind_dm(request: Request):
         )
     ok, err = send_teams_dm(name, team, message)
     return JSONResponse({"ok": ok, "error": err})
+
+
+# ─────────────────────────────────────────────
+# 담당자 불일치 후보 (조직변경으로 팀명 등이 바뀌었을 가능성)
+# ─────────────────────────────────────────────
+@app.get("/owner-check", response_class=HTMLResponse)
+def owner_check(request: Request, half: str | None = None):
+    half = half or get_current_half()
+    targets, ticket_map, jira_error = collect_targets_with_tickets(half)
+    candidates = find_owner_mismatches(targets, ticket_map)
+
+    return templates.TemplateResponse("owner_check.html", {
+        "request": request,
+        "half": half,
+        "half_label": "상반기" if half == "H1" else "하반기",
+        "candidates": candidates,
+        "jira_error": jira_error,
+        "jira_base": settings.jira_url.rstrip("/"),
+    })
 
 
 # ─────────────────────────────────────────────

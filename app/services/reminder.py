@@ -68,26 +68,47 @@ def build_message(given: str, items: list[dict]) -> str:
     return f"안녕하세요, {given}{greeting_suffix(items)}"
 
 
-def candidates_of(items: list[dict]) -> list[dict]:
+def team_via_cmdb(name: str, items: list[dict], cmdb_map: dict | None, fallback: str) -> str:
+    """
+    CMDB(Insight) 조회 결과에서 동명이인을 이름으로 찾아 소속 팀을 보정한다.
+    (엑셀 담당자 팀명이 조직변경으로 오래됐을 수 있어, DM 수신자 조회 정확도를 위해 사용)
+    못 찾으면 엑셀 팀명을 그대로 둔다.
+    """
+    if not cmdb_map:
+        return fallback
+    target = clean_name(name)
+    for d in items:
+        asset = cmdb_map.get(d.get("no"))
+        if not asset:
+            continue
+        for o in asset.get("owners", []):
+            if clean_name(o["name"]) == target and o["team"]:
+                return o["team"]
+    return fallback
+
+
+def candidates_of(items: list[dict], cmdb_map: dict | None = None) -> list[dict]:
     """대상들에 등장하는 담당자 후보 (중복 제거, 등장 순)"""
     seen: dict[str, dict] = {}
     for d in items:
         for p in parse_owners(d.get("owner", "")):
             if p["raw"] not in seen:
+                team = team_via_cmdb(p["name"], items, cmdb_map, p["team"])
                 seen[p["raw"]] = {
                     "raw": p["raw"],
                     "name": p["name"],
-                    "team": p["team"],
+                    "team": team,
                     "given": strip_surname(p["name"]) or p["name"],
                 }
     return list(seen.values())
 
 
-def group_unplanned_by_owner(details: list[dict]) -> list[dict]:
+def group_unplanned_by_owner(details: list[dict], cmdb_map: dict | None = None) -> list[dict]:
     """
     미계획(일정 미등록) 대상을 담당자별로 그룹핑하고 초안까지 생성.
     한 대상에 담당자가 여러 명이면 '대표 담당자(목록의 첫 번째)'에게만 배정한다.
     → 같은 시스템이 여러 담당자에게 중복 노출되지 않음.
+    cmdb_map(item_no -> CMDB 자산)이 주어지면, DM 발송 대상 팀명을 CMDB 기준으로 보정한다.
     반환: [{owner, name, team, given, count, items, message}, ...] (대상 많은 순)
     """
     groups: dict[str, dict] = {}
@@ -107,15 +128,16 @@ def group_unplanned_by_owner(details: list[dict]) -> list[dict]:
     result = []
     for g in groups.values():
         given = strip_surname(g["name"]) or g["name"] or "담당자"
+        team = team_via_cmdb(g["name"], g["items"], cmdb_map, g["team"])
         result.append({
-            "owner": g["owner"],      # 이름-팀 (선택 키)
+            "owner": g["owner"],      # 이름-팀 (선택 키, 엑셀 원본 기준)
             "name": g["name"],
-            "team": g["team"],
+            "team": team,              # DM 발송용 (CMDB 보정)
             "given": given,
             "count": len(g["items"]),
             "targets": g["items"],    # 'items'는 Jinja에서 dict.items()와 충돌 → targets
             "greeting_suffix": greeting_suffix(g["items"]),  # 이름 뒤 고정 문구+대상
-            "candidates": candidates_of(g["items"]),         # 받는 담당자 후보
+            "candidates": candidates_of(g["items"], cmdb_map),  # 받는 담당자 후보
             "message": build_message(given, g["items"]),
         })
 
