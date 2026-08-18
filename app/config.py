@@ -14,13 +14,40 @@ class Settings(BaseSettings):
     # 완료 판정 필드
     planned_end_date_field: str = "customfield_11360"  # 변경 계획 완료일
 
+    # 매칭용 추가 필드 (변경작업 대상/완료보고 - 호스트명·IP 포함)
+    match_fields: str = "customfield_11302,customfield_10848"
+
+    @property
+    def match_field_list(self) -> list[str]:
+        return [f.strip() for f in self.match_fields.split(",") if f.strip()]
+
     # Teams
-    teams_webhook: str = ""
+    teams_webhook: str = ""           # 채널 발송(주간 리포트)용 Incoming Webhook
+    teams_flow_url: str = ""          # 개인 DM용 Power Automate HTTP 트리거 URL
 
     # 엑셀 경로
     excel_path: str = "data/targets.xlsx"
 
     db_path: str = "data/tracker.db"
+
+    # app/config.py 에 필드 추가
+    # 스케줄러
+    scheduler_enabled: bool = True
+    report_cron_day: str = "mon"      # 요일 (mon,tue,wed,thu,fri,sat,sun)
+    report_cron_hour: int = 9         # 시
+    report_cron_minute: int = 0       # 분
+    timezone: str = "Asia/Seoul"
+
+    # 미계획 리마인드 발신자 (초안 서명)
+    sender_team: str = "데이터센터팀"
+    sender_name: str = "함지용"
+
+    # 완료(체크) 처리 가능한 관리자 (입력자명 기준, 쉼표 구분)
+    admin_users: str = "함지용"
+
+    @property
+    def admin_set(self) -> set[str]:
+        return {a.strip() for a in self.admin_users.split(",") if a.strip()}
 
 
 settings = Settings()
