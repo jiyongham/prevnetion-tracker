@@ -1,0 +1,156 @@
+<!-- app/web/templates/remind_preview.html -->
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>미계획 리마인드 미리보기</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <h1>📣 미계획 리마인드 미리보기 ({{ half_label }})</h1>
+    <a href="/?half={{ half }}" class="btn-sm">← 대시보드</a>
+  </header>
+
+  <div class="alert" style="background:#eef4ff;color:#334">
+    담당자별 <strong>미계획 {{ total_unplanned }}건</strong> · 아래는 <strong>발송 전 초안</strong>입니다.
+    (아직 실제 발송은 하지 않습니다. 내용·대상 확인용)
+  </div>
+  {% if jira_error %}
+  <div class="alert">⚠️ JIRA 연동 실패 (엑셀 기준 표시): {{ jira_error[:100] }}</div>
+  {% endif %}
+
+  <div class="remind-layout">
+    <!-- 담당자 선택 -->
+    <aside class="panel remind-side">
+      <h2>담당자 선택</h2>
+      <a href="/remind-preview?half={{ half }}"
+         class="owner-item {% if not selected %}active{% endif %}">
+        <span>전체 보기</span><span class="cnt">{{ total_unplanned }}</span>
+      </a>
+      {% for g in groups %}
+      <a href="/remind-preview?half={{ half }}&owner={{ g.owner | urlencode }}"
+         class="owner-item {% if selected and selected.owner == g.owner %}active{% endif %}">
+        <span>{{ g.name }} <span class="muted">{{ g.team }}</span></span>
+        <span class="cnt">{{ g.count }}</span>
+      </a>
+      {% endfor %}
+      {% if not groups %}
+      <p class="muted" style="padding:12px">미계획 대상이 없습니다. 🎉</p>
+      {% endif %}
+    </aside>
+
+    <!-- 초안 -->
+    <section class="remind-main">
+      {% set show = [selected] if selected else groups %}
+      {% for g in show %}
+      <div class="panel draft">
+        <div class="panel-head">
+          <h2>{{ g.name }} <span class="muted">{{ g.team }} · {{ g.count }}건</span></h2>
+          <div class="draft-tools">
+            <label class="recipient-pick">받는 담당자:
+              <select onchange="changeRecipient(this)">
+                {% for c in g.candidates %}
+                <option value="{{ c.given }}" data-name="{{ c.name }}" data-team="{{ c.team }}"
+                        {% if c.raw == g.owner %}selected{% endif %}>
+                  {{ c.name }}{% if c.team %} ({{ c.team }}){% endif %}
+                </option>
+                {% endfor %}
+              </select>
+            </label>
+            <button class="btn-sm" onclick="copyMsg(this)">📋 복사</button>
+            {% if flow_enabled %}
+            <button class="btn-sm" onclick="sendDM(this)">📨 개인 DM 발송</button>
+            {% endif %}
+            {% if teams_enabled %}
+            <button class="btn-sm" onclick="testSend(this)">📤 채널 테스트</button>
+            {% endif %}
+          </div>
+        </div>
+        <pre class="msg">안녕하세요, <span class="greet-name">{{ g.given }}</span>{{ g.greeting_suffix }}</pre>
+        <table class="editable">
+          <thead>
+            <tr><th>NO</th><th>시스템명</th><th>호스트명</th><th>IP</th><th>운영팀</th></tr>
+          </thead>
+          <tbody>
+          {% for d in g.targets %}
+            <tr>
+              <td>{{ d.no }}</td>
+              <td class="strong">{{ d.system_name }}</td>
+              <td class="mono small">{{ d.hostname }}</td>
+              <td class="mono small">{{ d.ip }}</td>
+              <td class="small">{{ d.ops_team }}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endfor %}
+    </section>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script>
+function showToast(msg, ok = true) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.className = "toast show " + (ok ? "ok" : "err");
+  setTimeout(() => { t.className = "toast"; }, 1800);
+}
+
+// 받는 담당자 변경 -> 초안 인사말 이름 교체
+function changeRecipient(sel) {
+  const draft = sel.closest(".draft");
+  draft.querySelector(".greet-name").textContent = sel.value;
+}
+
+function copyMsg(btn) {
+  const pre = btn.closest(".draft").querySelector(".msg");
+  navigator.clipboard.writeText(pre.textContent).then(() => showToast("초안 복사됨"));
+}
+
+async function sendDM(btn) {
+  const draft = btn.closest(".draft");
+  const sel = draft.querySelector(".recipient-pick select");
+  const opt = sel.options[sel.selectedIndex];
+  const name = opt.dataset.name;
+  const team = opt.dataset.team || "";
+  const message = draft.querySelector(".msg").textContent;
+  const who = name + (team ? " (" + team + ")" : "");
+  if (!confirm(`${who} 님에게 Teams 개인 DM을 보냅니다. 계속할까요?`)) return;
+  btn.disabled = true;
+  try {
+    const res = await fetch("/api/remind-dm", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, team, message }),
+    });
+    const data = await res.json();
+    showToast(data.ok ? `${name} 님에게 DM 발송 완료` : ("발송 실패: " + (data.error || "")), data.ok);
+  } catch (e) { showToast("오류: " + e.message, false); }
+  finally { btn.disabled = false; }
+}
+
+async function testSend(btn) {
+  const pre = btn.closest(".draft").querySelector(".msg");
+  if (!confirm("설정된 Teams 웹훅 채널로 이 초안을 테스트 발송합니다.\n(개인 DM이 아니라 채널로 전송됩니다) 계속할까요?")) return;
+  btn.disabled = true;
+  try {
+    const res = await fetch("/api/remind-test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: pre.textContent }),
+    });
+    const data = await res.json();
+    showToast(data.ok ? "테스트 발송 완료" : ("발송 실패: " + (data.error || "")), data.ok);
+  } catch (e) { showToast("오류: " + e.message, false); }
+  finally { btn.disabled = false; }
+}
+</script>
+</body>
+</html>

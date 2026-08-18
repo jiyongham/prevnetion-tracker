@@ -36,17 +36,23 @@ class JiraClient:
         return all_issues
 
     def get_dr_tickets(self):
-        """[예방3] DR 티켓 조회 (IP 매칭용 - 본문 포함)"""
+        """
+        DR 티켓 조회 (IP 매칭용 - 본문 포함)
+        - 실전환: 제목에 "예방3"
+        - 무중단: 제목에 "무중단" (예방3 없음)
+        """
         jql = (
             f'project = {settings.jira_project} '
-            f'AND summary ~ "예방3" '
+            f'AND (summary ~ "예방3" OR summary ~ "무중단") '
             f'ORDER BY created DESC'
         )
         fields = [
             "summary",
             "description",
             "status",
+            "created",
             settings.planned_end_date_field,
+            *settings.match_field_list,   # 변경작업 대상 등 (호스트명/IP 포함)
         ]
         return self.search(jql, fields=fields)
 

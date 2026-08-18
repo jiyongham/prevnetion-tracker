@@ -23,6 +23,7 @@
         <input type="hidden" name="half" value="{{ half }}">
         <button type="submit" class="btn-teams">📤 Teams 발송</button>
       </form>
+      <a href="/remind-preview?half={{ half }}" class="btn-remind">📣 미계획 리마인드</a>
     </div>
   </header>
 
@@ -46,7 +47,7 @@
     <div class="card">
       <div class="label">미완료</div>
       <div class="value warn">{{ result.total - result.done }}건</div>
-      <div class="sub">일정 미입력 {{ result.no_schedule }}건</div>
+      <div class="sub">미계획 {{ result.no_schedule }}건</div>
     </div>
   </section>
 
@@ -78,12 +79,13 @@
       <div class="head-right">
         <form method="get" class="inline-form">
           <input type="hidden" name="half" value="{{ half }}">
-          <input type="text" name="q" value="{{ q }}" placeholder="시스템/호스트/IP 검색" class="search">
+          <input type="text" name="q" value="{{ q }}" placeholder="팀/시스템/호스트/IP 검색" class="search">
           <button type="submit" class="btn-sm">검색</button>
         </form>
         <div class="filters">
           <a href="/?half={{ half }}" class="chip {% if not filter_status and not filter_team %}active{% endif %}">전체</a>
           <a href="/?half={{ half }}&status=pending" class="chip {% if filter_status == 'pending' %}active{% endif %}">미완료</a>
+          <a href="/?half={{ half }}&status=unplanned" class="chip {% if filter_status == 'unplanned' %}active{% endif %}">미계획</a>
           <a href="/?half={{ half }}&status=done" class="chip {% if filter_status == 'done' %}active{% endif %}">완료</a>
         </div>
       </div>
@@ -93,6 +95,10 @@
       <strong>입력자명:</strong>
       <input type="text" id="updatedBy" placeholder="이름 입력">
       <span class="hint">※ 수정 이력에 기록됩니다. 엑셀 원본은 변경되지 않습니다.</span>
+      <span id="adminHint" class="hint"></span>
+      <button id="bulkSaveBtn" class="btn-sm" onclick="bulkSave()">
+        💾 현재 목록 일괄 저장
+      </button>
     </div>
 
     <div class="table-scroll">
@@ -100,6 +106,7 @@
       <thead>
         <tr>
           <th>NO</th><th>시스템명</th><th>호스트명</th><th>운영팀</th><th>담당자</th>
+          <th style="width:80px">입력자명</th>
           <th style="width:90px">일정 ✏️</th>
           <th style="width:110px">방식 ✏️</th>
           <th style="width:50px">완료 ✏️</th>
@@ -110,14 +117,17 @@
       </thead>
       <tbody>
       {% for d in details %}
-        <tr data-no="{{ d.no }}" class="{% if d.completed %}row-done{% endif %}">
+        <tr data-no="{{ d.no }}"
+            class="{% if d.completed %}row-done{% endif %} src-{{ d.input_source }}"
+            title="{% if d.input_source == 'web' %}웹 입력 ({{ d.updated_by }}, {{ d.updated_at }}){% else %}엑셀 원본{% endif %}">
           <td>{{ d.no }}</td>
           <td class="strong">{{ d.system_name }}</td>
           <td class="mono small">{{ d.hostname }}</td>
           <td class="small">{{ d.ops_team }}</td>
           <td class="small">{{ d.owner }}</td>
+          <td class="small updated-by">{{ d.updated_by }}</td>
 
-          <td><input type="text" class="cell sched" value="{{ d.schedule_raw }}" placeholder="6/15"></td>
+          <td><input type="text" class="cell sched {{ 'edited' if d.input_source == 'web' else '' }}" value="{{ d.schedule_disp }}" placeholder="O/O"></td>
           <td>
             <select class="cell mode">
               <option value="" {% if not d.mode %}selected{% endif %}>-</option>
@@ -131,11 +141,14 @@
 
           <td>
             {% if d.jira_key %}
-            <a href="{{ jira_base }}/browse/{{ d.jira_key }}" target="_blank" class="link small">{{ d.jira_key }}</a>
+            <a href="{{ jira_base }}/browse/{{ d.jira_key }}" target="_blank"
+               class="link small" title="{{ d.jira_keys | join(', ') }}">{{ d.jira_key }}</a>
+            {% if d.jira_keys | length > 1 %}<span class="muted small">+{{ d.jira_keys | length - 1 }}</span>{% endif %}
             {% else %}<span class="muted">-</span>{% endif %}
           </td>
           <td>
             {% if d.completed %}<span class="badge ok" title="{{ d.reason }}">완료</span>
+            {% elif not d.planned %}<span class="badge warn">미계획</span>
             {% else %}<span class="badge bad">미완료</span>{% endif %}
           </td>
           <td><button class="btn-save" onclick="saveRow(this)">저장</button></td>
@@ -153,6 +166,19 @@
       <a href="/logs">변경이력</a> ·
       <a href="/api/summary?half={{ half }}" target="_blank">API</a>
     </span>
+  {% if jobs %}
+  <section class="panel schedule-info">
+    <h2>⏰ 자동 발송 스케줄</h2>
+    <table>
+      <thead><tr><th>작업</th><th>다음 실행</th></tr></thead>
+      <tbody>
+      {% for j in jobs %}
+        <tr><td>{{ j.name }}</td><td class="mono">{{ j.next_run }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% endif %}
   </footer>
 
 </div>
@@ -161,6 +187,24 @@
 
 <script>
 const HALF = "{{ half }}";
+const ADMINS = {{ admins | tojson }};
+
+function isAdmin() {
+  const name = (document.getElementById("updatedBy").value || "").trim();
+  return name !== "" && ADMINS.includes(name);
+}
+
+// 완료 체크박스: 관리자만 조작 가능 (비관리자는 비활성화)
+function applyAdminState() {
+  const admin = isAdmin();
+  document.querySelectorAll("input.cell.done").forEach(cb => {
+    cb.disabled = !admin;
+    cb.title = admin ? "" : "완료 처리는 관리자만 가능합니다";
+  });
+  const hint = document.getElementById("adminHint");
+  hint.textContent = admin ? "🔓 관리자: 완료 체크 가능" : "🔒 완료 체크는 관리자만 가능";
+  hint.style.color = admin ? "#2e7d32" : "#b26a00";
+}
 
 function showToast(msg, ok = true) {
   const t = document.getElementById("toast");
@@ -191,11 +235,49 @@ async function saveRow(btn) {
     });
     if (res.ok) {
       showToast(`NO.${payload.item_no} 저장 완료`);
+      const ubCell = tr.querySelector(".updated-by");
+      if (ubCell) ubCell.textContent = payload.updated_by;
       tr.classList.add("saved");
       setTimeout(() => tr.classList.remove("saved"), 1200);
     } else { showToast("저장 실패", false); }
   } catch (e) { showToast("오류: " + e.message, false); }
   finally { btn.disabled = false; btn.textContent = "저장"; }
+}
+
+// 현재 화면(필터 적용)에 보이는 행 전체를 한 번에 저장
+async function bulkSave() {
+  const rows = Array.from(document.querySelectorAll("tr[data-no]")).map(tr => ({
+    item_no: tr.dataset.no,
+    schedule: tr.querySelector(".sched").value,
+    mode: tr.querySelector(".mode").value,
+    is_done: tr.querySelector(".done").checked,
+    evidence: tr.querySelector(".evidence").value,
+    note: tr.querySelector(".note").value,
+  }));
+  if (!rows.length) { showToast("저장할 대상이 없습니다", false); return; }
+  if (!confirm(`현재 목록 ${rows.length}건을 일괄 저장합니다. 계속할까요?`)) return;
+
+  const btn = document.getElementById("bulkSaveBtn");
+  btn.disabled = true; btn.textContent = "저장 중...";
+  try {
+    const res = await fetch("/api/bulk-save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        half: HALF,
+        rows,
+        updated_by: document.getElementById("updatedBy").value,
+      }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      showToast(`${data.count}건 일괄 저장 완료`);
+      setTimeout(() => location.reload(), 700);
+    } else {
+      showToast("실패: " + (data.error || ""), false);
+    }
+  } catch (e) { showToast("오류: " + e.message, false); }
+  finally { btn.disabled = false; btn.textContent = "💾 현재 목록 일괄 저장"; }
 }
 
 document.querySelectorAll("input.cell").forEach(el => {
@@ -206,7 +288,12 @@ document.querySelectorAll("input.cell").forEach(el => {
 
 const ub = document.getElementById("updatedBy");
 ub.value = localStorage.getItem("updatedBy") || "";
-ub.addEventListener("change", () => localStorage.setItem("updatedBy", ub.value));
+ub.addEventListener("input", applyAdminState);
+ub.addEventListener("change", () => {
+  localStorage.setItem("updatedBy", ub.value);
+  applyAdminState();
+});
+applyAdminState();
 </script>
 </body>
 </html>

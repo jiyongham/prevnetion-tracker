@@ -1,10 +1,24 @@
 # app/services/completion.py
 from datetime import date
 
-from app.core.date_utils import parse_schedule, parse_jira_date
+from app.config import settings
+from app.core.date_utils import half_window, parse_schedule, parse_jira_date
 from app.core.excel_loader import get_targets
 
 DONE_MARKS = {"O", "0", "완료", "Y", "YES", "DONE"}
+
+
+def ticket_kind(summary: str) -> str:
+    """
+    티켓 종류 판별.
+    - 실전환 티켓 제목에만 "예방3" 포함
+    - 무중단 티켓 제목엔 "무중단" 포함 (예방3 없음)
+    """
+    if "예방3" in summary:
+        return "실전환"
+    if "무중단" in summary:
+        return "무중단"
+    return "기타"
 
 
 def build_ticket_summary(issues: list[dict], field_id: str) -> list[dict]:
@@ -12,35 +26,86 @@ def build_ticket_summary(issues: list[dict], field_id: str) -> list[dict]:
     result = []
     for issue in issues:
         f = issue["fields"]
+        summary = f.get("summary", "")
+        # 매칭용 통합 텍스트: 제목 + 본문 + 변경작업 대상 등 (호스트명/IP 포함)
+        extra = "\n".join(str(f.get(k) or "") for k in settings.match_field_list)
+        match_text = f"{summary}\n{f.get('description') or ''}\n{extra}"
         result.append({
             "key": issue["key"],
-            "summary": f.get("summary", ""),
+            "summary": summary,
+            "kind": ticket_kind(summary),
             "description": f.get("description") or "",
+            "match_text": match_text,
             "status": f["status"]["name"],
             "planned_end_date": parse_jira_date(f.get(field_id)),
+            "created": f.get("created", ""),                 # 원본(정렬용, ISO)
+            "created_date": parse_jira_date(f.get("created")),  # 날짜(반기 창 판정용)
         })
     return result
 
 
-def judge(item: dict, ticket: dict | None, as_of: date, base_year: int) -> tuple[bool, str]:
+def pick_display_ticket(tickets: list[dict]) -> dict | None:
+    """표시용 대표 티켓: 실전환(최신) > 무중단(최신 생성) > 아무거나(최신 생성)"""
+    if not tickets:
+        return None
+    real = [t for t in tickets if t.get("kind") == "실전환" and t.get("planned_end_date")]
+    if real:
+        return max(real, key=lambda x: x["planned_end_date"])
+    nonstop = [t for t in tickets if t.get("kind") == "무중단"]
+    if nonstop:
+        return max(nonstop, key=lambda x: x.get("created") or "")
+    return max(tickets, key=lambda x: x.get("created") or "")
+
+
+def ticket_done_date(t: dict) -> date | None:
     """
-    완료 판정 (우선순위)
-    1) 엑셀 완료 표기 O
-    2) JIRA 변경계획완료일 <= 기준일
-    3) 엑셀 일정 <= 기준일 (JIRA 미매칭 시 fallback)
+    티켓의 '완료로 볼 날짜'.
+    - 실전환: 변경계획완료일 (planned_end_date)
+    - 무중단: 생성일 (created_date) — 무중단 티켓엔 완료일이 없음
+    """
+    if t.get("kind") == "실전환":
+        return t.get("planned_end_date")
+    if t.get("kind") == "무중단":
+        return t.get("created_date")
+    return None
+
+
+def judge(
+    item: dict, tickets: list[dict] | None, as_of: date, base_year: int
+) -> tuple[bool, str, dict | None]:
+    """
+    완료 판정 (JIRA 티켓 기준). 반환: (완료여부, 사유, 선택된 티켓)
+    1) 엑셀/웹 완료 표기 O (수동 완료)
+    2) JIRA 티켓 (해당 반기 창 안 + 기준일 이전)
+       - 실전환(예방3) 우선: 실전환 되면 무중단 불필요
+       - 무중단(제목 "무중단"): 실전환 없을 때만
+       - 같은 종류 여러 건이면 가장 최신(변경계획완료일) 티켓 선택
+    ※ 예정일 경과 fallback 없음 (일정만 지나면 완료되던 로직 제거)
     """
     if item.get("excel_done", "").upper() in DONE_MARKS:
-        return True, "엑셀 완료표기"
+        return True, "완료표기", None
 
-    if ticket and ticket.get("planned_end_date"):
-        if ticket["planned_end_date"] <= as_of:
-            return True, f"JIRA {ticket['key']} ({ticket['planned_end_date']})"
+    start, end = half_window(base_year, item.get("half", "H2"))
 
-    sched = parse_schedule(item.get("schedule_raw", ""), base_year)
-    if sched and sched <= as_of:
-        return True, f"엑셀 일정 경과 ({sched})"
+    def in_window(t):
+        d = ticket_done_date(t)
+        return d and start <= d <= end and d <= as_of
 
-    return False, ""
+    tks = tickets or []
+
+    # 실전환(예방3) 우선: 변경계획완료일 최신
+    real = [t for t in tks if t.get("kind") == "실전환" and in_window(t)]
+    if real:
+        t = max(real, key=lambda x: x["planned_end_date"])
+        return True, f"JIRA {t['key']} 실전환 ({t['planned_end_date']})", t
+
+    # 무중단: 생성일이 최신인 티켓
+    nonstop = [t for t in tks if t.get("kind") == "무중단" and in_window(t)]
+    if nonstop:
+        t = max(nonstop, key=lambda x: x.get("created") or "")
+        return True, f"JIRA {t['key']} 무중단 (생성 {t['created_date']})", t
+
+    return False, "", None
 
 
 def calc_completion(
@@ -57,10 +122,19 @@ def calc_completion(
     details = []
 
     for item in targets:
-        ticket = ticket_map.get(item["no"])
-        completed, reason = judge(item, ticket, as_of, year)
+        matched = ticket_map.get(item["no"]) or []
+        completed, reason, sel = judge(item, matched, as_of, year)
         if completed:
             done += 1
+
+        # 표시용 티켓도 완료판정과 동일하게 '올해(base_year) 해당 반기' 것만
+        w_start, w_end = half_window(year, item.get("half", "H2"))
+        in_window = [
+            t for t in matched
+            if (dd := ticket_done_date(t)) and w_start <= dd <= w_end
+        ]
+        # 완료근거 티켓 우선, 없으면 창 안 매칭 티켓 중 대표
+        display_ticket = sel or pick_display_ticket(in_window)
 
         sched = parse_schedule(item.get("schedule_raw", ""), year)
 
@@ -74,10 +148,20 @@ def calc_completion(
             "owner": item["owner"],
             "schedule_raw": item["schedule_raw"],
             "schedule": sched,
+            # 표시용 일정: M/D로 통일 (엑셀 날짜형/텍스트형 혼재 정규화)
+            "schedule_disp": f"{sched.month}/{sched.day}" if sched else (item["schedule_raw"] or ""),
+            "planned": bool(sched),  # 일정 없으면 미계획
             "mode": item["mode"],
-            "jira_key": ticket["key"] if ticket else "",
+            "jira_key": display_ticket["key"] if display_ticket else "",
+            "jira_keys": [t["key"] for t in in_window],
+            "jira_matched": bool(in_window),
             "completed": completed,
             "reason": reason,
+            "input_source": item.get("input_source", "excel"),
+            "updated_by": item.get("updated_by", ""),
+            "updated_at": item.get("updated_at", ""),
+            "evidence": item.get("evidence", ""),
+            "note": item.get("note", ""),
         })
 
     total = len(targets)

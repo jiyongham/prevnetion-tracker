@@ -43,6 +43,17 @@ def parse_schedule(value: str, base_year: int | None = None) -> date | None:
         return None
 
 
+def half_window(year: int, half: str) -> tuple[date, date]:
+    """
+    반기 완료 인정 구간.
+    - 연 1회 실전환 필수 → 해당 연도의 반기 안에 완료된 것만 인정
+    - H1: 1/1~6/30, H2: 7/1~12/31
+    """
+    if half == "H1":
+        return date(year, 1, 1), date(year, 6, 30)
+    return date(year, 7, 1), date(year, 12, 31)
+
+
 def parse_jira_date(value) -> date | None:
     """JIRA 날짜 필드 -> date"""
     if not value:
