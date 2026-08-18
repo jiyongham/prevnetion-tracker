@@ -190,6 +190,17 @@
 const HALF = "{{ half }}";
 const ADMINS = {{ admins | tojson }};
 
+// 변경 저장 시 입력자명 2글자 이상 필수
+function requireName() {
+  const name = (document.getElementById("updatedBy").value || "").trim();
+  if (name.length < 2) {
+    showToast("입력자명을 2글자 이상 입력해주세요", false);
+    document.getElementById("updatedBy").focus();
+    return null;
+  }
+  return name;
+}
+
 function isAdmin() {
   const name = (document.getElementById("updatedBy").value || "").trim();
   return name !== "" && ADMINS.includes(name);
@@ -215,6 +226,9 @@ function showToast(msg, ok = true) {
 }
 
 async function saveRow(btn) {
+  const name = requireName();
+  if (!name) return;
+
   const tr = btn.closest("tr");
   const payload = {
     item_no: tr.dataset.no,
@@ -224,7 +238,7 @@ async function saveRow(btn) {
     is_done: tr.querySelector(".done").checked,
     evidence: tr.querySelector(".evidence").value,
     note: tr.querySelector(".note").value,
-    updated_by: document.getElementById("updatedBy").value,
+    updated_by: name,
   };
 
   btn.disabled = true; btn.textContent = "...";
@@ -247,6 +261,9 @@ async function saveRow(btn) {
 
 // 현재 화면(필터 적용)에 보이는 행 전체를 한 번에 저장
 async function bulkSave() {
+  const name = requireName();
+  if (!name) return;
+
   const rows = Array.from(document.querySelectorAll("tr[data-no]")).map(tr => ({
     item_no: tr.dataset.no,
     schedule: tr.querySelector(".sched").value,
@@ -267,7 +284,7 @@ async function bulkSave() {
       body: JSON.stringify({
         half: HALF,
         rows,
-        updated_by: document.getElementById("updatedBy").value,
+        updated_by: name,
       }),
     });
     const data = await res.json();
