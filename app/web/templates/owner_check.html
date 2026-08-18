@@ -1,0 +1,71 @@
+<!-- app/web/templates/owner_check.html -->
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>담당자 불일치 후보</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <h1>🔍 담당자 불일치 후보 ({{ half_label }})</h1>
+    <a href="/?half={{ half }}" class="btn-sm">← 대시보드</a>
+  </header>
+
+  <div class="alert" style="background:#eef4ff;color:#334">
+    <strong>CMDB(Insight) 시스템운영팀</strong> 또는 <strong>최근 매칭 JIRA 티켓의 JSM요청자
+    소속 팀</strong>이 엑셀상 <strong>담당자 팀</strong> 어디에도 없는 대상
+    <strong>{{ candidates|length }}건</strong>입니다. CMDB는 호스트명이 구/신으로 중복
+    등록된 경우 상태가 "운영"인 자산을 우선 사용합니다. 조직변경 등으로 담당(팀)이
+    바뀌었을 가능성이 있어 검토용으로만 보여줍니다 — <strong>자동으로 수정되지 않으며</strong>,
+    맞다고 판단되면 엑셀에서 직접 담당자를 수정해주세요.
+  </div>
+  {% if jira_error %}
+  <div class="alert">⚠️ JIRA 연동 실패: {{ jira_error[:100] }}</div>
+  {% endif %}
+
+  <div class="panel" style="overflow-x:auto">
+    <table class="editable">
+      <thead>
+        <tr>
+          <th>NO</th><th>시스템명</th><th>호스트명</th><th>운영팀</th>
+          <th>현재 담당자(엑셀)</th>
+          <th>CMDB 시스템운영팀</th><th>CMDB 시스템담당자</th>
+          <th>JSM요청자(최근 티켓)</th><th>근거 티켓</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for c in candidates %}
+        <tr>
+          <td>{{ c.no }}</td>
+          <td class="strong">{{ c.system_name }}</td>
+          <td class="mono small">{{ c.hostname }}</td>
+          <td class="small">{{ c.ops_team }}</td>
+          <td>{{ c.current_owner }}</td>
+          <td class="{% if c.cmdb_mismatch %}strong{% endif %}">
+            {% if c.cmdb_ops_team %}
+              {{ c.cmdb_ops_team }}
+              {% if c.cmdb_dup > 1 %}<span class="muted small">(중복 {{ c.cmdb_dup }}건 中 운영)</span>{% endif %}
+            {% else %}<span class="muted">-</span>{% endif %}
+          </td>
+          <td class="small">{{ c.cmdb_owners or "" }}</td>
+          <td class="{% if c.jira_mismatch %}strong{% endif %}">
+            {% if c.jsm_requester_team %}
+              {{ c.jsm_requester_name }} <span class="muted">({{ c.jsm_requester_team }})</span>
+            {% else %}<span class="muted">-</span>{% endif %}
+          </td>
+          <td>{% if c.jira_key %}<a href="{{ jira_base }}/browse/{{ c.jira_key }}" target="_blank">{{ c.jira_key }}</a>{% endif %}</td>
+        </tr>
+      {% endfor %}
+      {% if not candidates %}
+        <tr><td colspan="9" class="muted" style="text-align:center;padding:24px">불일치 후보가 없습니다. 🎉</td></tr>
+      {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+</body>
+</html>

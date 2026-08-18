@@ -17,13 +17,17 @@ class Settings(BaseSettings):
     # 매칭용 추가 필드 (변경작업 대상/완료보고 - 호스트명·IP 포함)
     match_fields: str = "customfield_11302,customfield_10848"
 
+    # JSM요청자 (담당자 불일치 후보 판별용 - '이름(비고) - 팀명' 형식)
+    jsm_requester_field: str = "customfield_11500"
+
     @property
     def match_field_list(self) -> list[str]:
         return [f.strip() for f in self.match_fields.split(",") if f.strip()]
 
     # Teams
-    teams_webhook: str = ""           # 채널 발송(주간 리포트)용 Incoming Webhook
-    teams_flow_url: str = ""          # 개인 DM용 Power Automate HTTP 트리거 URL
+    teams_webhook: str = ""              # 채널 발송(주간 리포트)용 Incoming Webhook
+    teams_dm_trigger_webhook: str = ""   # 개인 DM 트리거 전용(비공개) 채널 Incoming Webhook
+    dm_marker: str = "##DRDM##"          # DM 트리거 메시지 식별 마커 (Flow 조건에서 사용)
 
     # 엑셀 경로
     excel_path: str = "data/targets.xlsx"
@@ -33,7 +37,7 @@ class Settings(BaseSettings):
     # app/config.py 에 필드 추가
     # 스케줄러
     scheduler_enabled: bool = True
-    report_cron_day: str = "mon"      # 요일 (mon,tue,wed,thu,fri,sat,sun)
+    report_cron_day: str = "thu"      # 요일 (mon,tue,wed,thu,fri,sat,sun)
     report_cron_hour: int = 9         # 시
     report_cron_minute: int = 0       # 분
     timezone: str = "Asia/Seoul"

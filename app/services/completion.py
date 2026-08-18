@@ -40,17 +40,18 @@ def build_ticket_summary(issues: list[dict], field_id: str) -> list[dict]:
             "planned_end_date": parse_jira_date(f.get(field_id)),
             "created": f.get("created", ""),                 # 원본(정렬용, ISO)
             "created_date": parse_jira_date(f.get("created")),  # 날짜(반기 창 판정용)
+            "jsm_requester": (f.get(settings.jsm_requester_field) or {}).get("displayName", ""),
         })
     return result
 
 
 def pick_display_ticket(tickets: list[dict]) -> dict | None:
-    """표시용 대표 티켓: 실전환(최신) > 무중단(최신 생성) > 아무거나(최신 생성)"""
+    """표시용 대표 티켓: 실전환(최신 생성) > 무중단(최신 생성) > 아무거나(최신 생성)"""
     if not tickets:
         return None
     real = [t for t in tickets if t.get("kind") == "실전환" and t.get("planned_end_date")]
     if real:
-        return max(real, key=lambda x: x["planned_end_date"])
+        return max(real, key=lambda x: x.get("created") or "")
     nonstop = [t for t in tickets if t.get("kind") == "무중단"]
     if nonstop:
         return max(nonstop, key=lambda x: x.get("created") or "")
@@ -79,7 +80,7 @@ def judge(
     2) JIRA 티켓 (해당 반기 창 안 + 기준일 이전)
        - 실전환(예방3) 우선: 실전환 되면 무중단 불필요
        - 무중단(제목 "무중단"): 실전환 없을 때만
-       - 같은 종류 여러 건이면 가장 최신(변경계획완료일) 티켓 선택
+       - 같은 종류 여러 건이면 가장 최근 "생성된" 티켓 선택 (완료일 아님)
     ※ 예정일 경과 fallback 없음 (일정만 지나면 완료되던 로직 제거)
     """
     if item.get("excel_done", "").upper() in DONE_MARKS:
@@ -93,10 +94,10 @@ def judge(
 
     tks = tickets or []
 
-    # 실전환(예방3) 우선: 변경계획완료일 최신
+    # 실전환(예방3) 우선: 여러 건이면 가장 최근 생성된 티켓
     real = [t for t in tks if t.get("kind") == "실전환" and in_window(t)]
     if real:
-        t = max(real, key=lambda x: x["planned_end_date"])
+        t = max(real, key=lambda x: x.get("created") or "")
         return True, f"JIRA {t['key']} 실전환 ({t['planned_end_date']})", t
 
     # 무중단: 생성일이 최신인 티켓
@@ -137,6 +138,10 @@ def calc_completion(
         display_ticket = sel or pick_display_ticket(in_window)
 
         sched = parse_schedule(item.get("schedule_raw", ""), year)
+        # 계획일은 잡혔지만 그 날짜가 지나도록 완료(JIRA 티켓)가 안 됐으면
+        # 계획이 무산된 것으로 보고 재계획이 필요한 '미계획'으로 재분류
+        overdue_unfulfilled = bool(sched) and sched < as_of and not completed
+        planned = bool(sched) and not overdue_unfulfilled
 
         details.append({
             "no": item["no"],
@@ -150,7 +155,7 @@ def calc_completion(
             "schedule": sched,
             # 표시용 일정: M/D로 통일 (엑셀 날짜형/텍스트형 혼재 정규화)
             "schedule_disp": f"{sched.month}/{sched.day}" if sched else (item["schedule_raw"] or ""),
-            "planned": bool(sched),  # 일정 없으면 미계획
+            "planned": planned,  # 일정 없거나, 계획일 경과 후 미완료면 미계획
             "mode": item["mode"],
             "jira_key": display_ticket["key"] if display_ticket else "",
             "jira_keys": [t["key"] for t in in_window],
@@ -171,7 +176,7 @@ def calc_completion(
         "total": total,
         "done": done,
         "rate": round(done / total * 100, 1) if total else 0.0,
-        "no_schedule": len([d for d in details if not d["schedule"]]),
+        "no_schedule": len([d for d in details if not d["planned"]]),
         "details": details,
     }
 
