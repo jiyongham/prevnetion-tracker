@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>DR 모의훈련 진척 관리</title>
-  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/style.css?v=2">
 </head>
 <body>
 <div class="container">
@@ -17,7 +17,6 @@
           <option value="H1" {% if half == 'H1' %}selected{% endif %}>상반기</option>
           <option value="H2" {% if half == 'H2' %}selected{% endif %}>하반기</option>
         </select>
-        <input type="date" name="as_of" value="{{ as_of }}" onchange="this.form.submit()">
       </form>
       <form method="post" action="/send-report" class="inline-form">
         <input type="hidden" name="half" value="{{ half }}">
@@ -43,7 +42,7 @@
     <div class="card">
       <div class="label">기준일</div>
       <div class="value">{{ as_of }}</div>
-      <div class="sub">{% if as_of == today %}오늘{% else %}조회 기준{% endif %}</div>
+      <div class="sub">오늘</div>
     </div>
     <div class="card">
       <div class="label">미완료</div>
@@ -61,7 +60,7 @@
       </thead>
       <tbody>
       {% for team, v in by_team.items() %}
-        <tr class="clickable" onclick="location.href='/?half={{ half }}&as_of={{ as_of }}&team={{ team }}'">
+        <tr class="clickable" onclick="location.href='/?half={{ half }}&team={{ team }}'">
           <td>{{ team }}</td>
           <td>{{ v.done }}</td>
           <td>{{ v.total }}</td>
@@ -145,7 +144,10 @@
             <a href="{{ jira_base }}/browse/{{ d.jira_key }}" target="_blank"
                class="link small" title="{{ d.jira_keys | join(', ') }}">{{ d.jira_key }}</a>
             {% if d.jira_keys | length > 1 %}<span class="muted small">+{{ d.jira_keys | length - 1 }}</span>{% endif %}
-            {% else %}<span class="muted">-</span>{% endif %}
+            {% else %}<span class="muted">-</span>
+            <button class="btn-ai" title="왜 매칭이 안 됐는지 AI로 진단"
+                    onclick="diagnoseUnmatched(this, '{{ d.no }}')">🤖</button>
+            {% endif %}
           </td>
           <td>
             {% if d.completed %}<span class="badge ok" title="{{ d.reason }}">완료</span>
@@ -163,7 +165,7 @@
   <footer>
     <span>기준일 {{ as_of }} · 다음주 {{ next_week }}</span>
     <span>
-      <a href="/export?half={{ half }}&as_of={{ as_of }}">📥 엑셀 다운로드</a> ·
+      <a href="/export?half={{ half }}">📥 엑셀 다운로드</a> ·
       <a href="/logs">변경이력</a> ·
       <a href="/api/summary?half={{ half }}" target="_blank">API</a>
     </span>
@@ -200,6 +202,17 @@
     <input type="text" id="chatInput" placeholder="질문을 입력하세요" autocomplete="off">
     <button type="submit">전송</button>
   </form>
+</div>
+
+<!-- AI 진단 결과 모달 (매칭 미확인 원인 / 담당자 불일치 판단 공용) -->
+<div id="aiModal" class="ai-modal hidden" onclick="if(event.target===this) closeAiModal()">
+  <div class="ai-modal-box">
+    <div class="ai-modal-head">
+      <span>🤖 AI 진단</span>
+      <button class="chat-close" onclick="closeAiModal()">✕</button>
+    </div>
+    <div id="aiModalBody" class="ai-modal-body">...</div>
+  </div>
 </div>
 
 <script>
@@ -331,10 +344,12 @@ applyAdminState();
 
 // ── 조회 챗봇 ──
 function toggleChat() {
-  document.getElementById("chatPanel").classList.toggle("hidden");
-  if (!document.getElementById("chatPanel").classList.contains("hidden")) {
-    document.getElementById("chatInput").focus();
-  }
+  const panel = document.getElementById("chatPanel");
+  const toggle = document.getElementById("chatToggle");
+  const opening = panel.classList.contains("hidden");
+  panel.classList.toggle("hidden", !opening);
+  toggle.classList.toggle("hidden", opening);
+  if (opening) document.getElementById("chatInput").focus();
 }
 
 function addChatMsg(text, who) {
@@ -375,6 +390,31 @@ async function sendChat(e) {
     pending.textContent = "오류: " + err.message;
   }
   return false;
+}
+
+// ── AI 진단 (매칭 미확인 사유) ──
+function showAiModal(text) {
+  document.getElementById("aiModalBody").textContent = text;
+  document.getElementById("aiModal").classList.remove("hidden");
+}
+function closeAiModal() {
+  document.getElementById("aiModal").classList.add("hidden");
+}
+
+async function diagnoseUnmatched(btn, itemNo) {
+  btn.disabled = true;
+  showAiModal("진단 중...");
+  try {
+    const res = await fetch("/api/diagnose-unmatched", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ item_no: itemNo, half: HALF }),
+    });
+    const data = await res.json();
+    document.getElementById("aiModalBody").textContent = data.ok ? data.reply : ("오류: " + (data.error || ""));
+  } catch (e) {
+    document.getElementById("aiModalBody").textContent = "오류: " + e.message;
+  } finally { btn.disabled = false; }
 }
 </script>
 </body>

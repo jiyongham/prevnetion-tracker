@@ -57,9 +57,9 @@ def greeting_suffix(items: list[dict]) -> str:
     """인사말에서 '이름' 뒤에 붙는 고정 문구 + 대상 목록 (이름만 바꿔치기 가능하도록 분리)"""
     return (
         f"님. {settings.sender_team} {settings.sender_name}입니다.\n\n"
-        f"다름아니라 공지드린 하반기 DR 훈련 하기 미계획 대상에 대해 "
-        f"계획된 일정 알 수 있을까요?\n"
-        f"{build_body(items)}"
+        f"다름아니라 공지드린 하반기 DR 훈련 하기 계획된 일정 알 수 있을까요?\n\n"
+        f"{build_body(items)}\n\n"
+        f"DR 모의훈련 진척 현황({settings.dashboard_url})에 기입 요청드립니다."
     )
 
 
@@ -103,13 +103,18 @@ def candidates_of(items: list[dict], cmdb_map: dict | None = None) -> list[dict]
     return list(seen.values())
 
 
-def group_unplanned_by_owner(details: list[dict], cmdb_map: dict | None = None) -> list[dict]:
+def group_unplanned_by_service(details: list[dict], cmdb_map: dict | None = None) -> list[dict]:
     """
-    미계획(일정 미등록) 대상을 담당자별로 그룹핑하고 초안까지 생성.
-    한 대상에 담당자가 여러 명이면 '대표 담당자(목록의 첫 번째)'에게만 배정한다.
-    → 같은 시스템이 여러 담당자에게 중복 노출되지 않음.
+    미계획(일정 미등록) 대상을 '서비스'(주업무명) 단위로 묶고 초안까지 생성.
+
+    같은 서비스 소속 시스템들도 엑셀 행마다 담당자 나열 순서가 제각각이라(예: 블라섬
+    서비스의 시스템들이 안원호/박영순/배효은을 행마다 다른 순서로 등록), 예전처럼
+    '행별 1순위 담당자'로만 나누면 같은 서비스가 여러 명에게 조각조각 흩어져 보내진다.
+    그래서 서비스로 먼저 묶고, 그 서비스 안에서 1순위로 가장 많이 등장한 사람을
+    대표 담당자로 뽑아 그 한 명에게만 보낸다 (받는 담당자는 미리보기에서 수동 변경 가능).
+
     cmdb_map(item_no -> CMDB 자산)이 주어지면, DM 발송 대상 팀명을 CMDB 기준으로 보정한다.
-    반환: [{owner, name, team, given, count, items, message}, ...] (대상 많은 순)
+    반환: [{owner, service, name, team, given, count, targets, message}, ...] (대상 많은 순)
     """
     groups: dict[str, dict] = {}
     for d in details:
@@ -118,27 +123,30 @@ def group_unplanned_by_owner(details: list[dict], cmdb_map: dict | None = None) 
         owners = parse_owners(d.get("owner", ""))
         if not owners:
             continue
-        p = owners[0]  # 대표 담당자 (첫 번째)
-        key = p["raw"] or "미지정"
-        g = groups.setdefault(key, {
-            "owner": key, "name": p["name"], "team": p["team"], "items": [],
-        })
+
+        service = d.get("business_name") or d.get("system_name") or "미지정"
+        g = groups.setdefault(service, {"service": service, "items": [], "votes": {}})
         g["items"].append(d)
+        raw = owners[0]["raw"]  # 이 대상의 1순위 담당자에게 표 하나
+        g["votes"][raw] = g["votes"].get(raw, 0) + 1
 
     result = []
     for g in groups.values():
-        given = strip_surname(g["name"]) or g["name"] or "담당자"
-        team = team_via_cmdb(g["name"], g["items"], cmdb_map, g["team"])
+        top_raw = max(g["votes"], key=g["votes"].get)  # 서비스 내 최다 1순위 = 대표 담당자
+        p = parse_owners(top_raw)[0]
+        given = strip_surname(p["name"]) or p["name"] or "담당자"
+        team = team_via_cmdb(p["name"], g["items"], cmdb_map, p["team"])
         result.append({
-            "owner": g["owner"],      # 이름-팀 (선택 키, 엑셀 원본 기준)
-            "name": g["name"],
-            "team": team,              # DM 발송용 (CMDB 보정)
+            "owner": top_raw,          # 이름-팀 (선택 키, 엑셀 원본 기준)
+            "service": g["service"],
+            "name": p["name"],
+            "team": team,               # DM 발송용 (CMDB 보정)
             "given": given,
             "count": len(g["items"]),
-            "targets": g["items"],    # 'items'는 Jinja에서 dict.items()와 충돌 → targets
+            "targets": g["items"],     # 'items'는 Jinja에서 dict.items()와 충돌 → targets
             "greeting_suffix": greeting_suffix(g["items"]),  # 이름 뒤 고정 문구+대상
             "candidates": candidates_of(g["items"], cmdb_map),  # 받는 담당자 후보
             "message": build_message(given, g["items"]),
         })
 
-    return sorted(result, key=lambda x: (-x["count"], x["owner"]))
+    return sorted(result, key=lambda x: (-x["count"], x["service"]))

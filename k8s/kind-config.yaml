@@ -1,0 +1,10 @@
+# 최종 컷오버: 호스트 8000번을 쿠버네티스 NodePort(30080)로 매핑.
+# uvicorn을 종료한 뒤 이 설정으로 클러스터를 만들어야 한다.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      - containerPort: 30080
+        hostPort: 8000
+        protocol: TCP

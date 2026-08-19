@@ -234,20 +234,35 @@ footer a:hover { text-decoration: underline; }
   .cards { grid-template-columns: 1fr; }
 }
 
-/* 조회 챗봇 위젯 */
+/* 조회 챗봇 위젯 — 뷰포트 고정(스크롤 추종), 열림/닫힘은 애니메이션으로 전환 */
 .chat-toggle {
   position: fixed; bottom: 24px; right: 24px; z-index: 1000;
-  width: 52px; height: 52px; border-radius: 50%; border: none;
-  background: #5b5fc7; color: #fff; font-size: 22px; cursor: pointer;
+  width: 48px; height: 48px; border-radius: 50%;
+  background: #fff; color: #5b5fc7; font-size: 20px; cursor: pointer;
+  border: 1.5px solid #5b5fc7;
+  box-shadow: 0 2px 8px rgba(0,0,0,.12);
+  transition: transform .15s, box-shadow .15s, opacity .2s, visibility .2s;
+}
+.chat-toggle:hover {
+  background: #5b5fc7; color: #fff;
   box-shadow: 0 4px 14px rgba(0,0,0,.2);
+  transform: scale(1.06);
 }
+.chat-toggle.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
 .chat-panel {
-  position: fixed; bottom: 88px; right: 24px; z-index: 1000;
+  position: fixed; bottom: 24px; right: 24px; z-index: 1000;
   width: 340px; max-width: calc(100vw - 32px); height: 440px;
-  background: #fff; border-radius: 12px; box-shadow: 0 8px 28px rgba(0,0,0,.22);
+  background: #fff; border-radius: 12px;
+  border: 1px solid #dfe1ea;
+  box-shadow: 0 8px 28px rgba(0,0,0,.22);
   display: flex; flex-direction: column; overflow: hidden;
+  transform-origin: bottom right;
+  transition: opacity .18s ease, transform .18s ease, visibility .18s;
 }
-.chat-panel.hidden { display: none; }
+.chat-panel.hidden {
+  opacity: 0; visibility: hidden; pointer-events: none;
+  transform: scale(.92) translateY(8px);
+}
 .chat-head {
   background: #5b5fc7; color: #fff; padding: 10px 14px;
   display: flex; align-items: center; justify-content: space-between;
@@ -268,3 +283,40 @@ footer a:hover { text-decoration: underline; }
 .chat-form button {
   border: none; background: #5b5fc7; color: #fff; padding: 0 16px; cursor: pointer; font-size: 13px;
 }
+
+/* AI 진단 버튼/모달 (매칭 미확인 사유, 담당자 불일치 판단 공용) */
+.btn-ai {
+  border: 1px solid #dfe1ea; background: #fff; border-radius: 6px;
+  font-size: 12px; padding: 1px 6px; margin-left: 4px; cursor: pointer;
+}
+.btn-ai:hover { background: #f0f1f8; }
+.btn-ai:disabled { opacity: .5; cursor: default; }
+.ai-modal {
+  position: fixed; inset: 0; z-index: 1100;
+  background: rgba(0,0,0,.35);
+  display: flex; align-items: center; justify-content: center;
+}
+.ai-modal.hidden { display: none; }
+.ai-modal-box {
+  width: 420px; max-width: calc(100vw - 32px); max-height: 70vh;
+  background: #fff; border-radius: 12px; box-shadow: 0 12px 32px rgba(0,0,0,.3);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.ai-modal-head {
+  background: #5b5fc7; color: #fff; padding: 10px 14px;
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 14px; font-weight: 600;
+}
+.ai-modal-body {
+  padding: 16px; font-size: 13px; line-height: 1.6; white-space: pre-wrap;
+  overflow-y: auto;
+}
+
+/* 담당자 불일치 우선순위 태그 (클릭하면 전체 판단 근거가 모달로 열림) */
+.ai-tag {
+  display: inline-block; padding: 2px 8px; border-radius: 999px;
+  font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap;
+}
+.ai-tag-org { background: #fdecea; color: #c0392b; }
+.ai-tag-typo { background: #fff8e1; color: #a06a00; }
+.ai-tag-unknown { background: #f0f1f3; color: #666; }
