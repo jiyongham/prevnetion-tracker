@@ -9,4 +9,5 @@ spec:
   ports:
     - port: 8000
       targetPort: 8000
-  type: ClusterIP
+      nodePort: 30080   # kind-config.yaml의 extraPortMappings와 짝
+  type: NodePort

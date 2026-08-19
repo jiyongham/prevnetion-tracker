@@ -5,7 +5,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>미계획 리마인드 미리보기</title>
-  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/style.css?v=2">
 </head>
 <body>
 <div class="container">
@@ -30,17 +30,17 @@
   {% endif %}
 
   <div class="remind-layout">
-    <!-- 담당자 선택 -->
+    <!-- 서비스 선택 -->
     <aside class="panel remind-side">
-      <h2>담당자 선택</h2>
+      <h2>서비스 선택</h2>
       <a href="/remind-preview?half={{ half }}"
          class="owner-item {% if not selected %}active{% endif %}">
         <span>전체 보기</span><span class="cnt">{{ total_unplanned }}</span>
       </a>
       {% for g in groups %}
-      <a href="/remind-preview?half={{ half }}&owner={{ g.owner | urlencode }}"
-         class="owner-item {% if selected and selected.owner == g.owner %}active{% endif %}">
-        <span>{{ g.name }} <span class="muted">{{ g.team }}</span></span>
+      <a href="/remind-preview?half={{ half }}&service={{ g.service | urlencode }}"
+         class="owner-item {% if selected and selected.service == g.service %}active{% endif %}">
+        <span>{{ g.service }} <span class="muted">{{ g.name }}·{{ g.team }}</span></span>
         <span class="cnt">{{ g.count }}</span>
       </a>
       {% endfor %}
@@ -55,7 +55,7 @@
       {% for g in show %}
       <div class="panel draft" data-owner="{{ g.owner }}">
         <div class="panel-head">
-          <h2>{{ g.name }} <span class="muted">{{ g.team }} · {{ g.count }}건</span>
+          <h2>{{ g.service }} <span class="muted">{{ g.name }}·{{ g.team }} · {{ g.count }}건</span>
             <span class="send-status"></span>
           </h2>
           <div class="draft-tools">

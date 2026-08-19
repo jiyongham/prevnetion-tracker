@@ -4,7 +4,7 @@
 Python에서 먼저 관련 데이터를 찾아 컨텍스트로 넣어주고 에이전트는 자연어 답변만
 만들게 하는 방식으로 구성한다 (플랫폼 종류와 무관하게 동작).
 """
-from app.core.agent_client import agent_chat
+from app.core.agent_client import agent_chat, extract_answer
 from app.services.reminder import clean_name, parse_owners
 
 MAX_ITEMS_IN_CONTEXT = 30
@@ -55,26 +55,8 @@ def build_context(name: str, query: str, details: list[dict]) -> str:
     return f"[{name}님 관련 DR훈련 대상 데이터]\n" + "\n".join(rows)
 
 
-def _extract_answer(result: dict) -> str:
-    """에이전트 응답 스키마가 아직 불확실해서, 흔한 키 후보를 순서대로 시도"""
-    if isinstance(result, str):
-        return result
-    for path in (
-        ("answer",), ("data", "answer"),
-        ("result",), ("message",), ("output",), ("data", "output"),
-    ):
-        node = result
-        for key in path:
-            node = node.get(key) if isinstance(node, dict) else None
-            if node is None:
-                break
-        if isinstance(node, str) and node:
-            return node
-    return str(result)
-
-
 def answer(name: str, query: str, details: list[dict]) -> str:
     context = build_context(name, query, details)
     full_query = f"{context}\n\n[사용자 질문]\n{query}"
     result = agent_chat(user_id=name, query=full_query)
-    return _extract_answer(result)
+    return extract_answer(result)

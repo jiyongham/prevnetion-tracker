@@ -58,6 +58,7 @@ class JiraClient:
             "created",
             settings.jsm_requester_field,
             settings.planned_end_date_field,
+            settings.planned_start_date_field,
             *settings.match_field_list,   # 변경작업 대상 등 (호스트명/IP 포함)
         ]
         return self.search(jql, fields=fields)
