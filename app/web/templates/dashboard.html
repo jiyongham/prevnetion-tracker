@@ -186,6 +186,22 @@
 
 <div id="toast" class="toast"></div>
 
+<!-- 조회 챗봇 위젯 -->
+<button id="chatToggle" class="chat-toggle" onclick="toggleChat()">💬</button>
+<div id="chatPanel" class="chat-panel hidden">
+  <div class="chat-head">
+    <span>💬 DR훈련 조회 챗봇</span>
+    <button class="chat-close" onclick="toggleChat()">✕</button>
+  </div>
+  <div id="chatMsgs" class="chat-msgs">
+    <div class="chat-msg bot">안녕하세요! 입력자명(위 상단)을 채운 뒤, "내 대상 뭐 있어?", "OO시스템 완료됐어?" 처럼 물어보세요.</div>
+  </div>
+  <form id="chatForm" class="chat-form" onsubmit="return sendChat(event)">
+    <input type="text" id="chatInput" placeholder="질문을 입력하세요" autocomplete="off">
+    <button type="submit">전송</button>
+  </form>
+</div>
+
 <script>
 const HALF = "{{ half }}";
 const ADMINS = {{ admins | tojson }};
@@ -312,6 +328,54 @@ ub.addEventListener("change", () => {
   applyAdminState();
 });
 applyAdminState();
+
+// ── 조회 챗봇 ──
+function toggleChat() {
+  document.getElementById("chatPanel").classList.toggle("hidden");
+  if (!document.getElementById("chatPanel").classList.contains("hidden")) {
+    document.getElementById("chatInput").focus();
+  }
+}
+
+function addChatMsg(text, who) {
+  const box = document.getElementById("chatMsgs");
+  const el = document.createElement("div");
+  el.className = "chat-msg " + who;
+  el.textContent = text;
+  box.appendChild(el);
+  box.scrollTop = box.scrollHeight;
+  return el;
+}
+
+async function sendChat(e) {
+  e.preventDefault();
+  const input = document.getElementById("chatInput");
+  const query = input.value.trim();
+  if (!query) return false;
+
+  const name = (document.getElementById("updatedBy").value || "").trim();
+  if (name.length < 2) {
+    addChatMsg("먼저 상단 '입력자명'을 2글자 이상 입력해주세요.", "bot");
+    return false;
+  }
+
+  addChatMsg(query, "me");
+  input.value = "";
+  const pending = addChatMsg("...", "bot");
+
+  try {
+    const res = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, query, half: HALF }),
+    });
+    const data = await res.json();
+    pending.textContent = data.ok ? data.reply : ("오류: " + (data.error || "응답 실패"));
+  } catch (err) {
+    pending.textContent = "오류: " + err.message;
+  }
+  return false;
+}
 </script>
 </body>
 </html>
