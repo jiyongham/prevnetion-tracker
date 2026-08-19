@@ -38,6 +38,7 @@ def build_ticket_summary(issues: list[dict], field_id: str) -> list[dict]:
             "match_text": match_text,
             "status": f["status"]["name"],
             "planned_end_date": parse_jira_date(f.get(field_id)),
+            "planned_start_date": parse_jira_date(f.get(settings.planned_start_date_field)),
             "created": f.get("created", ""),                 # 원본(정렬용, ISO)
             "created_date": parse_jira_date(f.get("created")),  # 날짜(반기 창 판정용)
             "jsm_requester": (f.get(settings.jsm_requester_field) or {}).get("displayName", ""),
@@ -146,6 +147,7 @@ def calc_completion(
         details.append({
             "no": item["no"],
             "company": item["company"],
+            "business_name": item.get("business_name", ""),
             "system_name": item["system_name"],
             "hostname": item["hostname"],
             "ip": item["ip"],

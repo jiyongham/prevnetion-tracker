@@ -2,12 +2,14 @@
 from datetime import date, timedelta
 
 from app.config import settings
+from app.core.agent_client import agent_chat, extract_answer
 from app.core.jira_client import jira
 from app.core.excel_loader import get_targets, load_dr_items_merged, scope_h2_targets
 from app.core.teams_client import send_teams_message
 from app.services.completion import (
     build_ticket_summary,
     calc_completion,
+    group_by,
     ticket_done_date,
 )
 from app.services.matcher import match_items_by_ip
@@ -56,6 +58,41 @@ def _week_ranges(today: date):
 
 # 제외 대상 사유 (고정) — 이후 폐기분은 제외가 아니라 완료로 처리
 EXCLUDED_REASON = "미사용 VM 폐기 예정"
+
+
+def generate_weekly_summary(result: dict, by_team: dict) -> str | None:
+    """
+    현재 스냅샷(팀별 완료율)만 근거로 '이번 주 특이사항' 한 줄 생성.
+    에이전트 미설정/실패 시 None (리포트 발송 자체는 막지 않음).
+    """
+    if not settings.summary_agent_id:
+        return None
+
+    team_lines = "\n".join(
+        f"- {team}: {v['done']}/{v['total']}건 ({v['rate']}%)"
+        for team, v in sorted(by_team.items(), key=lambda x: x[1]["rate"])
+    )
+    query = (
+        "아래는 DR 모의훈련 하반기 진척 현황 스냅샷입니다. 이 데이터만 근거로, "
+        "이번 리포트에서 눈에 띄는 특이사항을 한 문장으로 짚어주세요 "
+        "(예: 진척이 유독 느린 팀, 미계획 비중이 큰 점 등). "
+        "과거 데이터가 없으니 추세(예: '몇 주째')는 절대 언급하지 말고, "
+        "지금 데이터에 있는 사실만 쓰세요.\n\n"
+        f"전체: {result['done']}/{result['total']}건 ({result['rate']}%), "
+        f"미계획 {result['no_schedule']}건\n"
+        f"팀별 현황(낮은 순):\n{team_lines}"
+    )
+    try:
+        r = agent_chat(
+            user_id="system-report",
+            query=query,
+            agent_id=settings.summary_agent_id,
+            agent_code=settings.summary_agent_code,
+        )
+        return extract_answer(r)
+    except Exception as e:
+        print(f"⚠️ 주간 특이사항 생성 실패 (리포트는 정상 발송): {e}")
+        return None
 
 
 def build_report(half: str | None = None, use_jira: bool = True) -> str:
@@ -111,6 +148,12 @@ def build_report(half: str | None = None, use_jira: bool = True) -> str:
         f"      - 차주 계획 ({plan_start:%m/%d} ~ {plan_end:%m/%d}) : {plan_cnt}대",
         "",
     ]
+
+    # ── 3. 이번 주 특이사항 (AI 요약, 설정 안 했거나 실패하면 조용히 생략) ──
+    by_team = group_by(h2_result, "ops_team")
+    summary = generate_weekly_summary(h2_result, by_team)
+    if summary:
+        lines += ["3. 이번 주 특이사항", f"   {summary}", ""]
 
     return "\n".join(lines)
 

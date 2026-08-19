@@ -35,16 +35,19 @@ def get_access_token() -> str:
     return _token_cache["access_token"]
 
 
-def agent_chat(user_id: str, query: str) -> dict:
+def agent_chat(
+    user_id: str, query: str, agent_id: str | None = None, agent_code: str | None = None
+) -> dict:
     """
     Agent Chat 호출. 401(토큰 만료)이면 한 번 재발급 후 재시도한다.
+    agent_id/agent_code를 안 주면 조회 챗봇용 기본 에이전트를 사용한다.
     """
     payload = {
         "user": user_id,
         "query": query,
         "response_mode": "blocking",
-        "agent_id": settings.agent_id,
-        "agent_code": settings.agent_code,
+        "agent_id": agent_id or settings.agent_id,
+        "agent_code": agent_code or settings.agent_code,
     }
 
     def _call(token: str):
@@ -65,3 +68,21 @@ def agent_chat(user_id: str, query: str) -> dict:
         resp = _call(get_access_token())
     resp.raise_for_status()
     return resp.json()
+
+
+def extract_answer(result: dict) -> str:
+    """에이전트 응답에서 실제 답변 텍스트만 추출. (확인된 스키마: 최상위 'answer')"""
+    if isinstance(result, str):
+        return result
+    for path in (
+        ("answer",), ("data", "answer"),
+        ("result",), ("message",), ("output",), ("data", "output"),
+    ):
+        node = result
+        for key in path:
+            node = node.get(key) if isinstance(node, dict) else None
+            if node is None:
+                break
+        if isinstance(node, str) and node:
+            return node
+    return str(result)

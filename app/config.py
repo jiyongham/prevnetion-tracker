@@ -12,7 +12,8 @@ class Settings(BaseSettings):
     jira_project: str = "IMDC"
 
     # 완료 판정 필드
-    planned_end_date_field: str = "customfield_11360"  # 변경 계획 완료일
+    planned_end_date_field: str = "customfield_11360"    # 변경 계획 완료일
+    planned_start_date_field: str = "customfield_11359"  # 변경 계획 시작일 (AI 매칭 진단용)
 
     # 매칭용 추가 필드 (변경작업 대상/완료보고 - 호스트명·IP 포함)
     match_fields: str = "customfield_11302,customfield_10848"
@@ -46,6 +47,9 @@ class Settings(BaseSettings):
     sender_team: str = "OO팀"
     sender_name: str = "홍길동"
 
+    # 대시보드 접속 주소 (리마인드 메시지 하단 안내용, 동적 IP라 바뀌면 .env만 수정)
+    dashboard_url: str = "http://0.0.0.0:8000"
+
     # 완료(체크) 처리 가능한 관리자 (입력자명 기준, 쉼표 구분)
     admin_users: str = "홍길동"
 
@@ -56,6 +60,14 @@ class Settings(BaseSettings):
     agent_client_secret: str = ""
     agent_id: str = ""
     agent_code: str = ""
+
+    # 진단 전용 에이전트 (매칭 미확인 사유 / 담당자 불일치 판단) - 조회 챗봇과 시스템 프롬프트가 달라 별도 에이전트 필요
+    diagnose_agent_id: str = ""
+    diagnose_agent_code: str = ""
+
+    # 주간 리포트 "이번 주 특이사항" 한 줄 요약 전용 에이전트
+    summary_agent_id: str = ""
+    summary_agent_code: str = ""
 
     @property
     def admin_set(self) -> set[str]:

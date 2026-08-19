@@ -5,7 +5,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>담당자 불일치 후보</title>
-  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/style.css?v=2">
 </head>
 <body>
 <div class="container">
@@ -26,6 +26,12 @@
   {% if jira_error %}
   <div class="alert">⚠️ JIRA 연동 실패: {{ jira_error[:100] }}</div>
   {% endif %}
+  {% if candidates %}
+  <div class="alert" style="background:#fff8e6;color:#664;display:flex;align-items:center;justify-content:space-between;gap:12px">
+    <span>AI로 각 행이 오탈자/표기누락인지, 실제 조직변경인지 판단해서 우선순위 태그를 달 수 있습니다.</span>
+    <button class="btn-sm" onclick="diagnoseAll(this)">🤖 전체 판단 실행</button>
+  </div>
+  {% endif %}
 
   <div class="panel" style="overflow-x:auto">
     <table class="editable">
@@ -34,12 +40,18 @@
           <th>NO</th><th>시스템명</th><th>호스트명</th><th>운영팀</th>
           <th>현재 담당자(엑셀)</th>
           <th>CMDB 시스템운영팀</th><th>CMDB 시스템담당자</th>
-          <th>JSM요청자(최근 티켓)</th><th>근거 티켓</th>
+          <th>JSM요청자(최근 티켓)</th><th>근거 티켓</th><th>AI 판단</th>
         </tr>
       </thead>
       <tbody>
       {% for c in candidates %}
-        <tr>
+        <tr class="mismatch-row"
+            data-system_name="{{ c.system_name }}"
+            data-current_owner="{{ c.current_owner }}"
+            data-cmdb_ops_team="{{ c.cmdb_ops_team }}"
+            data-cmdb_owners="{{ c.cmdb_owners }}"
+            data-jsm_requester_name="{{ c.jsm_requester_name }}"
+            data-jsm_requester_team="{{ c.jsm_requester_team }}">
           <td>{{ c.no }}</td>
           <td class="strong">{{ c.system_name }}</td>
           <td class="mono small">{{ c.hostname }}</td>
@@ -58,14 +70,114 @@
             {% else %}<span class="muted">-</span>{% endif %}
           </td>
           <td>{% if c.jira_key %}<a href="{{ jira_base }}/browse/{{ c.jira_key }}" target="_blank">{{ c.jira_key }}</a>{% endif %}</td>
+          <td class="ai-tag-cell">
+            <button class="btn-ai" title="AI로 오탈자/조직변경 여부 판단" onclick="diagnoseMismatch(this)">🤖</button>
+          </td>
         </tr>
       {% endfor %}
       {% if not candidates %}
-        <tr><td colspan="9" class="muted" style="text-align:center;padding:24px">불일치 후보가 없습니다. 🎉</td></tr>
+        <tr><td colspan="10" class="muted" style="text-align:center;padding:24px">불일치 후보가 없습니다. 🎉</td></tr>
       {% endif %}
       </tbody>
     </table>
   </div>
 </div>
+
+<!-- AI 진단 결과 모달 -->
+<div id="aiModal" class="ai-modal hidden" onclick="if(event.target===this) closeAiModal()">
+  <div class="ai-modal-box">
+    <div class="ai-modal-head">
+      <span>🤖 AI 진단</span>
+      <button class="chat-close" onclick="closeAiModal()">✕</button>
+    </div>
+    <div id="aiModalBody" class="ai-modal-body">...</div>
+  </div>
+</div>
+
+<script>
+function showAiModal(text) {
+  document.getElementById("aiModalBody").textContent = text;
+  document.getElementById("aiModal").classList.remove("hidden");
+}
+function closeAiModal() {
+  document.getElementById("aiModal").classList.add("hidden");
+}
+
+// 판단 텍스트 -> 태그(오탈자/조직변경/불명) + 확신도
+// 1순위: 응답이 요청한 형식대로 왔으면 "[오탈자]"/"[조직변경]"/"[불명확]" 태그를 그대로 사용
+// 2순위(형식이 어긋난 경우 대비): 느슨한 키워드로 추정
+function classifyReply(text) {
+  const t = text || "";
+  let type = "unknown", label = "판단불가";
+  if (/\[조직변경\]/.test(t)) { type = "org"; label = "조직변경 추정"; }
+  else if (/\[오탈자\]/.test(t)) { type = "typo"; label = "오탈자 추정"; }
+  else if (/\[불명확\]/.test(t)) { type = "unknown"; label = "판단불가"; }
+  else if (t.includes("조직개편") || t.includes("조직변경") || t.includes("바뀐")) { type = "org"; label = "조직변경 추정"; }
+  else if (t.includes("오탈자") || t.includes("표기") || t.includes("등록 오류") || t.includes("미업데이트")) { type = "typo"; label = "오탈자 추정"; }
+  const m = t.match(/확신\s*(정도)?\s*[:：\(]?\s*(높음|보통|낮음)/) || t.match(/(높음|보통|낮음)/);
+  const confidence = m ? m[m.length - 1] : "";
+  return { type, label, confidence };
+}
+
+function renderTag(cell, text) {
+  const { type, label, confidence } = classifyReply(text);
+  const icon = type === "org" ? "🔴" : type === "typo" ? "🟡" : "⚪";
+  cell.innerHTML = "";
+  const tag = document.createElement("span");
+  tag.className = "ai-tag ai-tag-" + type;
+  tag.title = text;
+  tag.textContent = `${icon} ${label}${confidence ? " (" + confidence + ")" : ""}`;
+  tag.onclick = () => showAiModal(text);
+  cell.appendChild(tag);
+}
+
+async function runDiagnoseMismatch(tr) {
+  const cell = tr.querySelector(".ai-tag-cell");
+  const payload = {
+    system_name: tr.dataset.system_name,
+    current_owner: tr.dataset.current_owner,
+    cmdb_ops_team: tr.dataset.cmdb_ops_team,
+    cmdb_owners: tr.dataset.cmdb_owners,
+    jsm_requester_name: tr.dataset.jsm_requester_name,
+    jsm_requester_team: tr.dataset.jsm_requester_team,
+  };
+  try {
+    const res = await fetch("/api/diagnose-mismatch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (data.ok) { renderTag(cell, data.reply); return true; }
+    cell.textContent = "오류: " + (data.error || "");
+    return false;
+  } catch (e) {
+    cell.textContent = "오류: " + e.message;
+    return false;
+  }
+}
+
+async function diagnoseMismatch(btn) {
+  btn.disabled = true;
+  await runDiagnoseMismatch(btn.closest("tr"));
+}
+
+async function diagnoseAll(btn) {
+  const rows = Array.from(document.querySelectorAll("tr.mismatch-row"))
+    .filter(tr => tr.querySelector(".btn-ai"));
+  if (!rows.length) return;
+  if (!confirm(`${rows.length}건 전체를 AI로 판단합니다 (건별로 순차 호출). 계속할까요?`)) return;
+  btn.disabled = true;
+  let done = 0;
+  for (const tr of rows) {
+    btn.textContent = `🤖 판단 중... (${done}/${rows.length})`;
+    await runDiagnoseMismatch(tr);
+    done++;
+    await new Promise(res => setTimeout(res, 300));
+  }
+  btn.textContent = "🤖 전체 판단 실행";
+  btn.disabled = false;
+}
+</script>
 </body>
 </html>

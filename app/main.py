@@ -4,6 +4,7 @@ import logging
 from contextlib import asynccontextmanager
 from datetime import date, timedelta
 from pathlib import Path
+from urllib.parse import quote
 
 import pandas as pd
 from fastapi import FastAPI, Form, HTTPException, Request
@@ -24,13 +25,13 @@ from app.core.teams_client import send_teams_dm, send_teams_message
 from app.models.db import get_input, get_logs, init_db, upsert_input
 from app.services.completion import build_ticket_summary, calc_completion, group_by
 from app.services.matcher import match_items_by_ip
-from app.services import chatbot
+from app.services import ai_diagnose, chatbot
 from app.services.owner_check import (
     collect_targets_with_tickets,
     find_owner_mismatches,
     lookup_cmdb_assets,
 )
-from app.services.reminder import group_unplanned_by_owner
+from app.services.reminder import group_unplanned_by_service
 from app.services.report import get_current_half, send_report
 
 logging.basicConfig(
@@ -96,15 +97,14 @@ def get_dashboard_data(half: str, as_of: date, use_jira: bool = True):
 def dashboard(
     request: Request,
     half: str | None = None,
-    as_of: str | None = None,
     team: str | None = None,
     status: str | None = None,
     q: str | None = None,
 ):
     half = half or get_current_half()
-    as_of_date = date.fromisoformat(as_of) if as_of else date.today()
+    today = date.today()
 
-    result, jira_error = get_dashboard_data(half, as_of_date)
+    result, jira_error = get_dashboard_data(half, today)
     by_team = group_by(result, "ops_team")
 
     details = result["details"]
@@ -134,9 +134,9 @@ def dashboard(
         "by_team": dict(sorted(by_team.items(), key=lambda x: x[1]["rate"])),
         "half": half,
         "half_label": "상반기" if half == "H1" else "하반기",
-        "as_of": as_of_date,
-        "next_week": as_of_date + timedelta(days=7),
-        "today": date.today(),
+        "as_of": today,
+        "next_week": today + timedelta(days=7),
+        "today": today,
         "filter_team": team or "",
         "filter_status": status or "",
         "q": q or "",
@@ -265,17 +265,17 @@ def view_logs(request: Request, item_no: str | None = None):
 def remind_preview(
     request: Request,
     half: str | None = None,
-    owner: str | None = None,
+    service: str | None = None,
 ):
     half = half or get_current_half()
     result, jira_error = get_dashboard_data(half, date.today())
     unplanned = [d for d in result["details"] if not d["planned"]]
     cmdb_map = lookup_cmdb_assets(unplanned)
-    groups = group_unplanned_by_owner(result["details"], cmdb_map)
+    groups = group_unplanned_by_service(result["details"], cmdb_map)
 
     selected = None
-    if owner:
-        selected = next((g for g in groups if g["owner"] == owner), None)
+    if service:
+        selected = next((g for g in groups if g["service"] == service), None)
 
     return templates.TemplateResponse("remind_preview.html", {
         "request": request,
@@ -364,6 +364,39 @@ async def api_chat(request: Request):
     return JSONResponse({"ok": True, "reply": reply})
 
 
+@app.post("/api/diagnose-unmatched")
+async def api_diagnose_unmatched(request: Request):
+    """JIRA 매칭이 안 된 대상 하나에 대해, 버튼 클릭 시에만 AI 진단 (자동/일괄 실행 없음)"""
+    data = await request.json()
+    item_no = (data.get("item_no") or "").strip()
+    half = data.get("half") or get_current_half()
+
+    result, _ = get_dashboard_data(half, date.today())
+    item = next((d for d in result["details"] if d["no"] == item_no), None)
+    if not item:
+        return JSONResponse({"ok": False, "error": "대상을 찾을 수 없습니다"}, status_code=404)
+
+    try:
+        issues = jira.get_dr_tickets()
+        tickets = build_ticket_summary(issues, settings.planned_end_date_field)
+        candidates = ai_diagnose.find_candidate_tickets(item, tickets)
+        reply = ai_diagnose.diagnose_unmatched(item, candidates)
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=502)
+    return JSONResponse({"ok": True, "reply": reply})
+
+
+@app.post("/api/diagnose-mismatch")
+async def api_diagnose_mismatch(request: Request):
+    """담당자 불일치 후보 한 건에 대해, 버튼 클릭 시에만 AI 판단 (자동/일괄 실행 없음)"""
+    data = await request.json()
+    try:
+        reply = ai_diagnose.diagnose_mismatch(data)
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=502)
+    return JSONResponse({"ok": True, "reply": reply})
+
+
 # ─────────────────────────────────────────────
 # Teams 발송
 # ─────────────────────────────────────────────
@@ -377,9 +410,9 @@ def trigger_report(half: str = Form(...)):
 # 엑셀 다운로드
 # ─────────────────────────────────────────────
 @app.get("/export")
-def export_excel(half: str | None = None, as_of: str | None = None):
+def export_excel(half: str | None = None):
     half = half or get_current_half()
-    as_of_date = date.fromisoformat(as_of) if as_of else date.today()
+    as_of_date = date.today()
     result, _ = get_dashboard_data(half, as_of_date)
 
     rows = []
@@ -406,10 +439,14 @@ def export_excel(half: str | None = None, as_of: str | None = None):
     buf.seek(0)
 
     fname = f"DR_진척_{half}_{as_of_date}.xlsx"
+    fname_encoded = quote(fname)
     return StreamingResponse(
         buf,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+        headers={
+            "Content-Disposition": f"attachment; filename=\"DR_export_{half}_{as_of_date}.xlsx\"; "
+            f"filename*=UTF-8''{fname_encoded}"
+        },
     )
 
 
@@ -417,10 +454,9 @@ def export_excel(half: str | None = None, as_of: str | None = None):
 # API
 # ─────────────────────────────────────────────
 @app.get("/api/summary")
-def api_summary(half: str | None = None, as_of: str | None = None):
+def api_summary(half: str | None = None):
     half = half or get_current_half()
-    as_of_date = date.fromisoformat(as_of) if as_of else date.today()
-    result, _ = get_dashboard_data(half, as_of_date)
+    result, _ = get_dashboard_data(half, date.today())
     return {
         "half": half,
         "as_of": str(result["as_of"]),
