@@ -49,6 +49,14 @@ class Settings(BaseSettings):
     # 완료(체크) 처리 가능한 관리자 (입력자명 기준, 쉼표 구분)
     admin_users: str = "함지용"
 
+    # 사내 LLM Agent 게이트웨이 (조회 챗봇용)
+    agent_token_url: str = ""
+    agent_gateway_url: str = ""
+    agent_client_id: str = ""
+    agent_client_secret: str = ""
+    agent_id: str = ""
+    agent_code: str = ""
+
     @property
     def admin_set(self) -> set[str]:
         return {a.strip() for a in self.admin_users.split(",") if a.strip()}

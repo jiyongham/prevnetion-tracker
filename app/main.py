@@ -24,6 +24,7 @@ from app.core.teams_client import send_teams_dm, send_teams_message
 from app.models.db import get_input, get_logs, init_db, upsert_input
 from app.services.completion import build_ticket_summary, calc_completion, group_by
 from app.services.matcher import match_items_by_ip
+from app.services import chatbot
 from app.services.owner_check import (
     collect_targets_with_tickets,
     find_owner_mismatches,
@@ -338,6 +339,29 @@ def owner_check(request: Request, half: str | None = None):
         "jira_error": jira_error,
         "jira_base": settings.jira_url.rstrip("/"),
     })
+
+
+# ─────────────────────────────────────────────
+# 조회 챗봇 (사내 LLM Agent)
+# ─────────────────────────────────────────────
+@app.post("/api/chat")
+async def api_chat(request: Request):
+    data = await request.json()
+    name = (data.get("name") or "").strip()
+    query = (data.get("query") or "").strip()
+    half = data.get("half") or get_current_half()
+
+    if len(name) < 2 or not query:
+        return JSONResponse(
+            {"ok": False, "error": "이름(2글자 이상)과 질문이 필요합니다"}, status_code=400
+        )
+
+    result, _ = get_dashboard_data(half, date.today())
+    try:
+        reply = chatbot.answer(name, query, result["details"])
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=502)
+    return JSONResponse({"ok": True, "reply": reply})
 
 
 # ─────────────────────────────────────────────
