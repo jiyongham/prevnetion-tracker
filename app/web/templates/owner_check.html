@@ -5,7 +5,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>담당자 불일치 후보</title>
-  <link rel="stylesheet" href="/static/style.css?v=2">
+  <link rel="stylesheet" href="/static/style.css?v=4">
 </head>
 <body>
 <div class="container">
@@ -14,6 +14,13 @@
     <h1>🔍 담당자 불일치 후보 ({{ half_label }})</h1>
     <a href="/?half={{ half }}" class="btn-sm">← 대시보드</a>
   </header>
+
+  <div class="user-input">
+    <strong>입력자명:</strong>
+    <input type="text" id="updatedBy" placeholder="이름 입력">
+    <span class="hint">※ 담당자 수정은 관리자만 가능합니다. 엑셀 원본은 변경되지 않습니다.</span>
+    <span id="adminHint" class="hint"></span>
+  </div>
 
   <div class="alert" style="background:#eef4ff;color:#334">
     <strong>CMDB(Insight) 시스템운영팀</strong> 또는 <strong>최근 매칭 JIRA 티켓의 JSM요청자
@@ -41,11 +48,12 @@
           <th>현재 담당자(엑셀)</th>
           <th>CMDB 시스템운영팀</th><th>CMDB 시스템담당자</th>
           <th>JSM요청자(최근 티켓)</th><th>근거 티켓</th><th>AI 판단</th>
+          <th style="width:200px">담당자 수정 ✏️</th>
         </tr>
       </thead>
       <tbody>
       {% for c in candidates %}
-        <tr class="mismatch-row"
+        <tr class="mismatch-row" data-no="{{ c.no }}"
             data-system_name="{{ c.system_name }}"
             data-current_owner="{{ c.current_owner }}"
             data-cmdb_ops_team="{{ c.cmdb_ops_team }}"
@@ -73,6 +81,11 @@
           <td class="ai-tag-cell">
             <button class="btn-ai" title="AI로 오탈자/조직변경 여부 판단" onclick="diagnoseMismatch(this)">🤖</button>
           </td>
+          <td>
+            <input type="text" class="cell owner-edit" placeholder="예: 홍길동-OO팀"
+                   value="{{ c.cmdb_owners or (c.jsm_requester_name ~ '-' ~ c.jsm_requester_team if c.jsm_requester_team else '') }}">
+            <button class="btn-sm" onclick="saveOwner(this)">저장</button>
+          </td>
         </tr>
       {% endfor %}
       {% if not candidates %}
@@ -95,6 +108,62 @@
 </div>
 
 <script>
+const ADMINS = {{ admins | tojson }};
+
+function isAdmin() {
+  const name = (document.getElementById("updatedBy").value || "").trim();
+  return name !== "" && ADMINS.includes(name);
+}
+
+function applyAdminState() {
+  const admin = isAdmin();
+  document.querySelectorAll(".owner-edit").forEach(el => { el.disabled = !admin; });
+  document.querySelectorAll(".owner-edit + .btn-sm").forEach(btn => { btn.disabled = !admin; });
+  const hint = document.getElementById("adminHint");
+  hint.textContent = admin ? "🔓 관리자: 담당자 수정 가능" : "🔒 담당자 수정은 관리자만 가능";
+  hint.style.color = admin ? "#2e7d32" : "#b26a00";
+}
+
+async function saveOwner(btn) {
+  const tr = btn.closest("tr");
+  const input = tr.querySelector(".owner-edit");
+  const owner = input.value.trim();
+  const updatedBy = (document.getElementById("updatedBy").value || "").trim();
+  if (updatedBy.length < 2) {
+    showAiModal("입력자명을 2글자 이상 입력해주세요.");
+    return;
+  }
+  if (!owner) return;
+  btn.disabled = true;
+  try {
+    const res = await fetch("/api/save-owner", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ item_no: tr.dataset.no, half: "{{ half }}", owner, updated_by: updatedBy }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      tr.querySelector("td:nth-child(5)").textContent = owner; // 현재 담당자(엑셀) 칸도 갱신
+      input.style.background = "#e8f5e9";
+    } else {
+      showAiModal("저장 실패: " + (data.error || ""));
+    }
+  } catch (e) {
+    showAiModal("오류: " + e.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+const ub = document.getElementById("updatedBy");
+ub.value = localStorage.getItem("updatedBy") || "";
+ub.addEventListener("input", applyAdminState);
+ub.addEventListener("change", () => {
+  localStorage.setItem("updatedBy", ub.value);
+  applyAdminState();
+});
+applyAdminState();
+
 function showAiModal(text) {
   document.getElementById("aiModalBody").textContent = text;
   document.getElementById("aiModal").classList.remove("hidden");

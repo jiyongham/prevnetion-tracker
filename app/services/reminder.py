@@ -44,28 +44,42 @@ def strip_surname(name: str) -> str:
     return name[1:]
 
 
-def build_body(items: list[dict]) -> str:
-    """대상 목록 본문 (시스템명 / 호스트명 / IP)"""
-    lines = [
-        f"{d.get('system_name', '')} / {d.get('hostname', '')} / {d.get('ip', '')}"
-        for d in items
-    ]
-    return "\n".join(lines) if lines else "(대상 없음)"
+def has_schedule_hint(item: dict) -> bool:
+    """일정칸이 완전히 비어있지 않고 '11월 예정'처럼 텍스트라도 적혀있는지"""
+    return bool((item.get("schedule_raw") or "").strip())
 
 
-def greeting_suffix(items: list[dict]) -> str:
-    """인사말에서 '이름' 뒤에 붙는 고정 문구 + 대상 목록 (이름만 바꿔치기 가능하도록 분리)"""
+def build_body(items: list[dict], show_raw: bool = False) -> str:
+    """대상 목록 본문 (시스템명 / 호스트명 / IP). show_raw면 현재 등록된 텍스트도 같이 표기"""
+    lines = []
+    for d in items:
+        line = f"{d.get('system_name', '')} / {d.get('hostname', '')} / {d.get('ip', '')}"
+        if show_raw and d.get("schedule_raw"):
+            line += f" (현재 등록: {d['schedule_raw']})"
+        lines.append(line)
+    return "\n\n".join(lines) if lines else "(대상 없음)"
+
+
+def greeting_suffix(items: list[dict], hinted: bool = False) -> str:
+    """
+    인사말에서 '이름' 뒤에 붙는 고정 문구 + 대상 목록 (이름만 바꿔치기 가능하도록 분리).
+    hinted=True면 '11월 예정'처럼 대략적인 일정만 등록된 경우 - 정확한 날짜를 재요청하는 문구.
+    """
+    if hinted:
+        ask = "다름아니라 공지드린 하반기 DR 훈련 하기 대략적인 일정만 등록되어 있어, 정확한 날짜로 확정해서 알려주실 수 있을까요?"
+    else:
+        ask = "다름아니라 공지드린 하반기 DR 훈련 하기 계획된 일정 알 수 있을까요?"
     return (
-        f"님. {settings.sender_team} {settings.sender_name}입니다.\n\n"
-        f"다름아니라 공지드린 하반기 DR 훈련 하기 계획된 일정 알 수 있을까요?\n\n"
-        f"{build_body(items)}\n\n"
+        f"님. {settings.sender_team} {settings.sender_name}입니다.\n\n\n"
+        f"{ask}\n\n"
+        f"{build_body(items, show_raw=hinted)}\n\n\n"
         f"DR 모의훈련 진척 현황({settings.dashboard_url})에 기입 요청드립니다."
     )
 
 
-def build_message(given: str, items: list[dict]) -> str:
+def build_message(given: str, items: list[dict], hinted: bool = False) -> str:
     """담당자 1인에게 보낼 미계획 리마인드 초안 (전체 문자열)"""
-    return f"안녕하세요, {given}{greeting_suffix(items)}"
+    return f"안녕하세요, {given}{greeting_suffix(items, hinted)}"
 
 
 def team_via_cmdb(name: str, items: list[dict], cmdb_map: dict | None, fallback: str) -> str:
@@ -103,7 +117,9 @@ def candidates_of(items: list[dict], cmdb_map: dict | None = None) -> list[dict]
     return list(seen.values())
 
 
-def group_unplanned_by_service(details: list[dict], cmdb_map: dict | None = None) -> list[dict]:
+def group_unplanned_by_service(
+    details: list[dict], cmdb_map: dict | None = None, hinted: bool | None = None
+) -> list[dict]:
     """
     미계획(일정 미등록) 대상을 '서비스'(주업무명) 단위로 묶고 초안까지 생성.
 
@@ -113,12 +129,19 @@ def group_unplanned_by_service(details: list[dict], cmdb_map: dict | None = None
     그래서 서비스로 먼저 묶고, 그 서비스 안에서 1순위로 가장 많이 등장한 사람을
     대표 담당자로 뽑아 그 한 명에게만 보낸다 (받는 담당자는 미리보기에서 수동 변경 가능).
 
+    hinted 필터 (같은 '미계획' 안에서도 성격이 다른 두 경우를 분리):
+    - None: 전체 미계획
+    - False: 일정칸이 완전히 빈 대상만 ("아예 미기입")
+    - True : '11월 예정'처럼 텍스트는 있지만 날짜로 파싱 안 된 대상만 ("대략적 일정만 기입")
+
     cmdb_map(item_no -> CMDB 자산)이 주어지면, DM 발송 대상 팀명을 CMDB 기준으로 보정한다.
     반환: [{owner, service, name, team, given, count, targets, message}, ...] (대상 많은 순)
     """
     groups: dict[str, dict] = {}
     for d in details:
         if d.get("planned"):
+            continue
+        if hinted is not None and has_schedule_hint(d) != hinted:
             continue
         owners = parse_owners(d.get("owner", ""))
         if not owners:
@@ -130,6 +153,7 @@ def group_unplanned_by_service(details: list[dict], cmdb_map: dict | None = None
         raw = owners[0]["raw"]  # 이 대상의 1순위 담당자에게 표 하나
         g["votes"][raw] = g["votes"].get(raw, 0) + 1
 
+    is_hinted = bool(hinted)
     result = []
     for g in groups.values():
         top_raw = max(g["votes"], key=g["votes"].get)  # 서비스 내 최다 1순위 = 대표 담당자
@@ -144,9 +168,9 @@ def group_unplanned_by_service(details: list[dict], cmdb_map: dict | None = None
             "given": given,
             "count": len(g["items"]),
             "targets": g["items"],     # 'items'는 Jinja에서 dict.items()와 충돌 → targets
-            "greeting_suffix": greeting_suffix(g["items"]),  # 이름 뒤 고정 문구+대상
+            "greeting_suffix": greeting_suffix(g["items"], is_hinted),  # 이름 뒤 고정 문구+대상
             "candidates": candidates_of(g["items"], cmdb_map),  # 받는 담당자 후보
-            "message": build_message(given, g["items"]),
+            "message": build_message(given, g["items"], is_hinted),
         })
 
     return sorted(result, key=lambda x: (-x["count"], x["service"]))

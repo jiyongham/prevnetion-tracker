@@ -7,6 +7,7 @@ from apscheduler.triggers.cron import CronTrigger
 from pytz import timezone as tz
 
 from app.config import settings
+from app.services.capacity_report import send_capacity_report
 from app.services.report import send_report
 
 logger = logging.getLogger(__name__)
@@ -15,13 +16,23 @@ scheduler: BackgroundScheduler | None = None
 
 
 def job_weekly_report():
-    """주간 진척 리포트"""
+    """주간 진척 리포트 (DR훈련)"""
     logger.info("[스케줄] 주간 리포트 실행")
     try:
         send_report()
         logger.info("[스케줄] 주간 리포트 완료")
     except Exception as e:
         logger.exception(f"[스케줄] 주간 리포트 실패: {e}")
+
+
+def job_weekly_capacity_report():
+    """주간 용량관리 현황 리포트"""
+    logger.info("[스케줄] 용량관리 리포트 실행")
+    try:
+        send_capacity_report()
+        logger.info("[스케줄] 용량관리 리포트 완료")
+    except Exception as e:
+        logger.exception(f"[스케줄] 용량관리 리포트 실패: {e}")
 
 
 def start_scheduler():
@@ -50,6 +61,21 @@ def start_scheduler():
         ),
         id="weekly_report",
         name="주간 진척 리포트",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+
+    # 용량관리 주간 리포트 (DR훈련과 같은 요일/시간)
+    scheduler.add_job(
+        job_weekly_capacity_report,
+        CronTrigger(
+            day_of_week=settings.report_cron_day,
+            hour=settings.report_cron_hour,
+            minute=settings.report_cron_minute,
+            timezone=seoul,
+        ),
+        id="weekly_capacity_report",
+        name="주간 용량관리 리포트",
         replace_existing=True,
         misfire_grace_time=3600,
     )

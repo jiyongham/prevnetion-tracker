@@ -63,5 +63,24 @@ class JiraClient:
         ]
         return self.search(jql, fields=fields)
 
+    def get_capacity_tickets(self):
+        """용량관리(ASM/파일시스템 증설) 티켓 조회 - 제목에 "예방4" """
+        jql = (
+            f'project = {settings.jira_project} '
+            f'AND summary ~ "예방4" '
+            f'ORDER BY created DESC'
+        )
+        fields = [
+            "summary",
+            "description",
+            "status",
+            "created",
+            settings.jsm_requester_field,
+            settings.planned_end_date_field,
+            settings.planned_start_date_field,
+            *settings.match_field_list,
+        ]
+        return self.search(jql, fields=fields)
+
 
 jira = JiraClient()

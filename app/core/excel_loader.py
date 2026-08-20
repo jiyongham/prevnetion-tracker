@@ -117,6 +117,9 @@ def load_dr_items_merged(half: str = "H2", excel_path: str | None = None) -> lis
                 item["input_source"] = "web"
             if db.get("evidence"):
                 item["evidence"] = db["evidence"]
+            if db.get("owner"):
+                item["owner"] = db["owner"]
+                item["input_source"] = "web"
 
             item["note"] = db.get("note", "")
             item["updated_by"] = db.get("updated_by", "")
