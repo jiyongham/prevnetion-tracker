@@ -21,8 +21,8 @@ def ticket_kind(summary: str) -> str:
     return "기타"
 
 
-def build_ticket_summary(issues: list[dict], field_id: str) -> list[dict]:
-    """JIRA 원본 -> 필요 필드만"""
+def build_ticket_summary(issues: list[dict], field_id: str, kind_fn=ticket_kind) -> list[dict]:
+    """JIRA 원본 -> 필요 필드만 (kind_fn: 티켓 종류 판별 함수, 기본은 DR훈련용)"""
     result = []
     for issue in issues:
         f = issue["fields"]
@@ -33,7 +33,7 @@ def build_ticket_summary(issues: list[dict], field_id: str) -> list[dict]:
         result.append({
             "key": issue["key"],
             "summary": summary,
-            "kind": ticket_kind(summary),
+            "kind": kind_fn(summary),
             "description": f.get("description") or "",
             "match_text": match_text,
             "status": f["status"]["name"],

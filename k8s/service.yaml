@@ -3,11 +3,14 @@ kind: Service
 metadata:
   name: dr-tracker
   namespace: dr-tracker
+  labels:
+    app: dr-tracker
 spec:
   selector:
     app: dr-tracker
   ports:
-    - port: 8000
+    - name: http
+      port: 8000
       targetPort: 8000
       nodePort: 30080   # kind-config.yaml의 extraPortMappings와 짝
   type: NodePort

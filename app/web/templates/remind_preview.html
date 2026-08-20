@@ -5,7 +5,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>미계획 리마인드 미리보기</title>
-  <link rel="stylesheet" href="/static/style.css?v=2">
+  <link rel="stylesheet" href="/static/style.css?v=4">
 </head>
 <body>
 <div class="container">
@@ -16,8 +16,17 @@
   </header>
 
   <div class="alert" style="background:#eef4ff;color:#334">
-    담당자별 <strong>미계획 {{ total_unplanned }}건</strong> · 아래는 <strong>발송 전 초안</strong>입니다.
+    서비스별 <strong>{{ total_unplanned }}건</strong> · 아래는 <strong>발송 전 초안</strong>입니다.
     (아직 실제 발송은 하지 않습니다. 내용·대상 확인용) 받는 팀명은 CMDB(운영팀) 기준으로 자동 보정됩니다.
+  </div>
+
+  <div class="tabs">
+    <a href="/remind-preview?half={{ half }}&kind=blank" class="tab {% if kind != 'hinted' %}active{% endif %}">
+      🈳 완전 미기입 <span class="cnt">{{ blank_total }}</span>
+    </a>
+    <a href="/remind-preview?half={{ half }}&kind=hinted" class="tab {% if kind == 'hinted' %}active{% endif %}">
+      🕓 대략적 일정만 있음 <span class="cnt">{{ hinted_total }}</span>
+    </a>
   </div>
   {% if dm_enabled and not selected and groups %}
   <div class="alert" style="background:#fff8e6;color:#664;display:flex;align-items:center;justify-content:space-between;gap:12px">
@@ -33,14 +42,14 @@
     <!-- 서비스 선택 -->
     <aside class="panel remind-side">
       <h2>서비스 선택</h2>
-      <a href="/remind-preview?half={{ half }}"
+      <a href="/remind-preview?half={{ half }}&kind={{ kind }}"
          class="owner-item {% if not selected %}active{% endif %}">
         <span>전체 보기</span><span class="cnt">{{ total_unplanned }}</span>
       </a>
       {% for g in groups %}
-      <a href="/remind-preview?half={{ half }}&service={{ g.service | urlencode }}"
+      <a href="/remind-preview?half={{ half }}&kind={{ kind }}&service={{ g.service | urlencode }}"
          class="owner-item {% if selected and selected.service == g.service %}active{% endif %}">
-        <span>{{ g.service }} <span class="muted">{{ g.name }}·{{ g.team }}</span></span>
+        <span>{% if g.sent %}✅ {% endif %}{{ g.service }} <span class="muted">{{ g.name }}·{{ g.team }}</span></span>
         <span class="cnt">{{ g.count }}</span>
       </a>
       {% endfor %}
@@ -53,10 +62,12 @@
     <section class="remind-main">
       {% set show = [selected] if selected else groups %}
       {% for g in show %}
-      <div class="panel draft" data-owner="{{ g.owner }}">
+      <div class="panel draft" data-owner="{{ g.owner }}" data-half="{{ half }}" data-service="{{ g.service }}">
         <div class="panel-head">
           <h2>{{ g.service }} <span class="muted">{{ g.name }}·{{ g.team }} · {{ g.count }}건</span>
-            <span class="send-status"></span>
+            <span class="send-status">
+              {% if g.sent %}✅ 발송 이력 있음 ({{ g.sent.sent_at }}, {{ g.sent.recipient_name }}){% endif %}
+            </span>
           </h2>
           <div class="draft-tools">
             <label class="recipient-pick">받는 담당자:
@@ -136,14 +147,16 @@ async function doSendDM(draft) {
   const name = opt.dataset.name;
   const team = opt.dataset.team || "";
   const message = draft.querySelector(".msg").textContent;
+  const half = draft.dataset.half;
+  const service = draft.dataset.service;
   try {
     const res = await fetch("/api/remind-dm", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, team, message }),
+      body: JSON.stringify({ name, team, message, half, service }),
     });
     const data = await res.json();
-    setStatus(draft, data.ok, data.ok ? "발송완료" : (data.error || "발송 실패"));
+    setStatus(draft, data.ok, data.ok ? "발송완료 (새로고침하면 이력 표시)" : (data.error || "발송 실패"));
     return { name, ok: data.ok, error: data.error };
   } catch (e) {
     setStatus(draft, false, e.message);
