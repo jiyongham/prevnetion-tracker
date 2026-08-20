@@ -10,6 +10,15 @@ body {
 
 .container { max-width: 1600px; margin: 0 auto; padding: 20px; }
 
+/* 상단 도메인 탭 */
+.top-nav { display: flex; gap: 4px; margin-bottom: 16px; }
+.top-nav-item {
+  padding: 8px 16px; border-radius: 8px 8px 0 0; font-size: 13px; font-weight: 600;
+  color: #667; text-decoration: none; background: transparent;
+}
+.top-nav-item:hover { background: #e9ecf2; }
+.top-nav-item.active { background: #fff; color: #5b5fc7; box-shadow: 0 -2px 0 #5b5fc7 inset; }
+
 /* 헤더 */
 header {
   display: flex; justify-content: space-between; align-items: center;
@@ -92,6 +101,19 @@ select, input[type="date"], input[type="text"] {
 }
 .chip.active { background: #5b5fc7; color: #fff; border-color: #5b5fc7; }
 
+/* 리마인드: 완전 미기입 / 대략적 일정만 있음 탭 */
+.tabs { display: flex; gap: 8px; margin: 12px 0; }
+.tab {
+  padding: 8px 16px; border: 1px solid #d0d7de; border-radius: 8px;
+  font-size: 13px; font-weight: 600; text-decoration: none; color: #555; background: #fff;
+}
+.tab .cnt {
+  display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 10px;
+  background: #f0f1f3; font-size: 11px; font-weight: 700;
+}
+.tab.active { background: #5b5fc7; color: #fff; border-color: #5b5fc7; }
+.tab.active .cnt { background: rgba(255,255,255,.25); color: #fff; }
+
 /* 입력자명 박스 */
 .user-input {
   background: #f0f4ff; padding: 10px 14px; border-radius: 6px;
@@ -139,6 +161,8 @@ input[type="checkbox"].cell {
   color: #1a1a1a; font-weight: 600; background: #fff;
 }
 input.cell.edited { border-left: 3px solid #5b5fc7; }
+
+.owner-cell input.cell { width: 100px; }
 
 .btn-save {
   padding: 5px 12px; background: #5b5fc7; color: #fff;

@@ -32,6 +32,7 @@ class Settings(BaseSettings):
 
     # 엑셀 경로
     excel_path: str = "data/targets.xlsx"
+    capacity_excel_path: str = "data/capacity.xlsx"   # 용량관리(ASM/파일시스템 증설) - DATA/ARCH 시트
 
     db_path: str = "data/tracker.db"
 

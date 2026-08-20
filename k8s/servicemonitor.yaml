@@ -1,0 +1,18 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: dr-tracker
+  namespace: dr-tracker
+  labels:
+    release: monitoring   # kube-prometheus-stack의 Prometheus가 release=monitoring 라벨로 ServiceMonitor를 선택함
+spec:
+  selector:
+    matchLabels:
+      app: dr-tracker
+  namespaceSelector:
+    matchNames:
+      - dr-tracker
+  endpoints:
+    - port: http          # k8s/service.yaml의 ports[].name과 매칭
+      path: /metrics
+      interval: 15s

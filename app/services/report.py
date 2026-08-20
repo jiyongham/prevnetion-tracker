@@ -121,17 +121,25 @@ def build_report(half: str | None = None, use_jira: bool = True) -> str:
     # ── 2. 하반기 (상반기 무중단 대상 / 주간 실적·계획) ──
     perf_start, perf_end, plan_start, plan_end = _week_ranges(today)
 
-    # 금주 실적: 다음 주에 완료일(실전환=변경계획완료일 / 무중단=생성일)이 있는 대상 수
+    # 금주 실적: 다음 주에 완료일(실전환=변경계획완료일 / 무중단=생성일)이 있는 대상 수.
+    # JIRA 티켓이 아직 매칭 안 됐어도, 입력된 일정이 해당 주에 있으면 계획으로라도 집계.
     def _has_ticket_in(nos_tickets, start, end):
         return any(
             (d := ticket_done_date(t)) and start <= d <= end
             for t in (nos_tickets or [])
         )
 
-    perf_cnt = sum(
-        1 for item in get_targets(h2_scope)
-        if _has_ticket_in(h2_tmap.get(item["no"]), perf_start, perf_end)
-    )
+    completed_nos = {d["no"] for d in h2_result["details"] if d["completed"]}
+    perf_nos = {
+        d["no"] for d in h2_result["details"]
+        if _has_ticket_in(h2_tmap.get(d["no"]), perf_start, perf_end)
+        or (d["schedule"] and perf_start <= d["schedule"] <= perf_end)
+    }
+    perf_cnt = len(perf_nos)
+
+    # 총 완료/진행률: 현재까지 완료 + 금주 실적을 합쳐서 표시 (같은 대상 중복 집계 방지)
+    projected_done = len(completed_nos | perf_nos)
+    projected_rate = round(projected_done / h2_result["total"] * 100, 1) if h2_result["total"] else 0.0
 
     # 차주 계획: 그 다음 주에 웹/엑셀 등록 일정이 잡힌 대수
     plan_cnt = sum(
@@ -141,8 +149,8 @@ def build_report(half: str | None = None, use_jira: bool = True) -> str:
 
     lines += [
         f"2. `{year2}년 하반기 DR 모의 훈련 (상반기 무중단 대상)",
-        f"   1) 총 {h2_result['total']}대 中 {h2_result['done']}대 완료 "
-        f"(진행률 {_fmt_rate(h2_result['rate'])}%)",
+        f"   1) 총 {h2_result['total']}대 中 {projected_done}대 완료 "
+        f"(진행률 {_fmt_rate(projected_rate)}%)",
         "   2) 실적",
         f"      - 금주 실적 ({perf_start:%m/%d} ~ {perf_end:%m/%d}) : {perf_cnt}대",
         f"      - 차주 계획 ({plan_start:%m/%d} ~ {plan_end:%m/%d}) : {plan_cnt}대",
