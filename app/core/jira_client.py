@@ -45,10 +45,12 @@ class JiraClient:
         DR 티켓 조회 (IP 매칭용 - 본문 포함)
         - 실전환: 제목에 "예방3"
         - 무중단: 제목에 "무중단" (예방3 없음)
+        - 작업 구분(customfield_00002)에 "DR훈련"이 체크된 경우도 포함 (전환기: 제목 태그만으론
+          안 걸리는 티켓도 놓치지 않기 위해 OR로 추가. 예: 제목에 예방3/무중단이 없어도 이 필드로 걸림)
         """
         jql = (
             f'project = {settings.jira_project} '
-            f'AND (summary ~ "예방3" OR summary ~ "무중단") '
+            f'AND (summary ~ "예방3" OR summary ~ "무중단" OR "작업 구분" = "DR훈련") '
             f'ORDER BY created DESC'
         )
         fields = [
@@ -59,6 +61,7 @@ class JiraClient:
             settings.jsm_requester_field,
             settings.planned_end_date_field,
             settings.planned_start_date_field,
+            settings.dr_work_type_field,
             *settings.match_field_list,   # 변경작업 대상 등 (호스트명/IP 포함)
         ]
         return self.search(jql, fields=fields)
@@ -68,6 +71,25 @@ class JiraClient:
         jql = (
             f'project = {settings.jira_project} '
             f'AND summary ~ "예방4" '
+            f'ORDER BY created DESC'
+        )
+        fields = [
+            "summary",
+            "description",
+            "status",
+            "created",
+            settings.jsm_requester_field,
+            settings.planned_end_date_field,
+            settings.planned_start_date_field,
+            *settings.match_field_list,
+        ]
+        return self.search(jql, fields=fields)
+
+    def get_eos_tickets(self):
+        """EoS(노후 OS/DB 전환) 티켓 조회 - 제목에 "예방1" """
+        jql = (
+            f'project = {settings.jira_project} '
+            f'AND summary ~ "예방1" '
             f'ORDER BY created DESC'
         )
         fields = [
