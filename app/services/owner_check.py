@@ -100,6 +100,10 @@ def find_owner_mismatches(targets: list[dict], ticket_map: dict) -> list[dict]:
     """
     CMDB 시스템운영팀 및/또는 JIRA 티켓 JSM요청자 팀이, 현재 엑셀 담당자들의
     팀 어디에도 없는 대상을 '불일치 후보'로 반환 (둘 중 하나만 걸려도 포함).
+
+    담당자 칸 자체에 팀 정보가 전혀 없는 행(예: "이름-팀" 포맷이 아니라 이름만
+    콤마로 나열된 경우)은 비교 기준(current_teams)이 비어서 항상 불일치로 오판되므로,
+    그런 행은 애초에 비교 대상에서 제외한다 (팀 정보 누락이지 실제 불일치가 아님).
     """
     cmdb_map = lookup_cmdb_assets(targets)
 
@@ -107,6 +111,8 @@ def find_owner_mismatches(targets: list[dict], ticket_map: dict) -> list[dict]:
     for item in targets:
         owners = parse_owners(item.get("owner", ""))
         current_teams = {o["team"] for o in owners if o["team"]}
+        if not current_teams:
+            continue
 
         row = {
             "no": item["no"],
