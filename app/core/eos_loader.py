@@ -7,6 +7,7 @@ from pathlib import Path
 import pandas as pd
 from app.config import settings
 from app.models.db import get_eos_inputs
+from app.services.eos_products import load_eos_product_table, match_db_eos_date, match_os_eos_date
 
 # "EOS 진행 (프로젝트) → 제외 (내년)"처럼 화살표로 상태가 갱신된 경우, 화살표 뒤(최신) 값이 진짜 현재 상태
 _MONTH_YEAR_PATTERN = re.compile(r"(?:(\d{2,4})년\s*)?(\d{1,2})월")
@@ -80,6 +81,8 @@ def load_eos_items(excel_path: str | None = None) -> list[dict]:
         raise FileNotFoundError(f"EoS 엑셀 없음: {path}")
 
     df = pd.read_excel(path, sheet_name="EOS대상(OS,DB)", dtype=str)
+    product_table = load_eos_product_table(excel_path)
+    today = date.today()
 
     items = []
     for _, row in df.iterrows():
@@ -89,6 +92,12 @@ def load_eos_items(excel_path: str | None = None) -> list[dict]:
             continue
 
         status_raw = _s(row, "EOS 진행/폐기 예정/제외")
+        is_target = classify_eos_status(status_raw) == "target"
+        os_val = _s(row, "OS")
+        db_val = _s(row, "DB")
+        os_eos_date = match_os_eos_date(os_val, product_table)
+        db_eos_date = match_db_eos_date(db_val, product_table)
+
         items.append({
             "item_no": insight_key or system_name,  # Insight Key가 없으면 시스템명으로 대체
             "no": insight_key or system_name,       # match_items_by_ip가 item["no"]로 색인함 (item_no와 동일값)
@@ -96,7 +105,7 @@ def load_eos_items(excel_path: str | None = None) -> list[dict]:
             "object_type": _s(row, "Object Type"),
             "status_raw": status_raw,
             "status": classify_eos_status(status_raw),
-            "is_target": classify_eos_status(status_raw) == "target",
+            "is_target": is_target,
             "exclude_reason": _s(row, "기타 (제외사유)"),
             "company": _s(row, "자산구분"),
             "system_name": system_name,
@@ -105,8 +114,14 @@ def load_eos_items(excel_path: str | None = None) -> list[dict]:
             "cmdb_status": _s(row, "상태"),
             "virt_type": _s(row, "가상/일반 구분"),
             "center": _s(row, "센터구분"),
-            "os": _s(row, "OS"),
-            "db": _s(row, "DB"),
+            "os": os_val,
+            "db": db_val,
+            # '제품별 EoS 일정' 표 기준 공식 EOS일자. 이미 지났고(오늘 이후 아님) 대상(target)이면
+            # 그 항목은 OS/DB 트랙 각각의 EoS 대상으로 집계한다 (리포트의 [OS]/[DB] 구분 기준).
+            "os_eos_date": os_eos_date,
+            "db_eos_date": db_eos_date,
+            "os_eos_target": is_target and bool(os_eos_date) and os_eos_date <= today,
+            "db_eos_target": is_target and bool(db_eos_date) and db_eos_date <= today,
             "infra_type": _s(row, "통합인프라 종류"),
             "hw": _s(row, "HW장비"),
             "manage_part": _s(row, "서버관리부서"),

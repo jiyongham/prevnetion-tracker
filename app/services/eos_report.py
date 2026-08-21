@@ -80,15 +80,30 @@ def _track_section(
     ]
 
 
+def _track_items(items: list[dict], track_target_field: str) -> list[dict]:
+    """
+    '제품별 EoS 일정' 표로 판별한 os_eos_target/db_eos_target 기준으로 트랙별 대상만 골라낸다.
+    같은 target이어도 OS만 EoS 대상이고 DB는 아직 아닌 경우가 있어(반대도 마찬가지),
+    calc_eos_completion이 보는 is_target을 트랙 기준으로 다시 씌운 사본을 만든다.
+    """
+    result = []
+    for i in items:
+        i2 = dict(i)
+        i2["is_target"] = bool(i["is_target"] and i.get(track_target_field))
+        result.append(i2)
+    return result
+
+
 def build_eos_report(use_jira: bool = True) -> str:
     today = date.today()
     perf_start, perf_end, plan_start, plan_end = week_ranges(today)
 
     items, ticket_map = collect_eos(use_jira)
-    db_items = [i for i in items if not i["is_target"] or bool(i.get("db"))]
+    os_items = _track_items(items, "os_eos_target")
+    db_items = _track_items(items, "db_eos_target")
 
     lines = ["하반기", ""]
-    lines += _track_section("OS", OS_TOTAL_FIXED, items, ticket_map, today, perf_start, perf_end, plan_start, plan_end)
+    lines += _track_section("OS", OS_TOTAL_FIXED, os_items, ticket_map, today, perf_start, perf_end, plan_start, plan_end)
     lines += _track_section("DB", DB_TOTAL_FIXED, db_items, ticket_map, today, perf_start, perf_end, plan_start, plan_end)
 
     return "\n".join(lines)
