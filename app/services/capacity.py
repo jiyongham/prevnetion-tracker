@@ -7,9 +7,10 @@ from app.core.date_utils import half_window, parse_schedule
 from app.services.completion import DONE_MARKS, build_ticket_summary
 
 
-def capacity_ticket_kind(summary: str) -> str:
+def capacity_ticket_kind(f: dict) -> str:
     """티켓 종류 판별 - 용량관리(증설) 티켓은 제목에 "예방4" 포함"""
-    return "예방4" if "예방4" in (summary or "") else "기타"
+    summary = f.get("summary", "") or ""
+    return "예방4" if "예방4" in summary else "기타"
 
 
 def build_capacity_ticket_summary(issues: list[dict], field_id: str) -> list[dict]:

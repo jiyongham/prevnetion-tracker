@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     # JSM요청자 (담당자 불일치 후보 판별용 - '이름(비고) - 팀명' 형식)
     jsm_requester_field: str = "customfield_11500"
 
+    # 작업 구분 (체크박스형 커스텀필드) - DR훈련 완료 판정 보조 기준 ("DR훈련" 값)
+    dr_work_type_field: str = "customfield_19529"
+
     @property
     def match_field_list(self) -> list[str]:
         return [f.strip() for f in self.match_fields.split(",") if f.strip()]
@@ -33,6 +36,7 @@ class Settings(BaseSettings):
     # 엑셀 경로
     excel_path: str = "data/targets.xlsx"
     capacity_excel_path: str = "data/capacity.xlsx"   # 용량관리(ASM/파일시스템 증설) - DATA/ARCH 시트
+    eos_excel_path: str = "data/eos.xlsx"             # EoS(노후 OS/DB 전환) 대상
 
     db_path: str = "data/tracker.db"
 
@@ -58,6 +62,9 @@ class Settings(BaseSettings):
     # 용량관리 전용 관리자 (DR훈련과 별도 - 입력자명 기준, 쉼표 구분)
     capacity_admin_users: str = "홍길동"
 
+    # EoS 전용 관리자
+    eos_admin_users: str = "홍길동"
+
     # 사내 LLM Agent 게이트웨이 (조회 챗봇용)
     agent_token_url: str = ""
     agent_gateway_url: str = ""
@@ -81,6 +88,10 @@ class Settings(BaseSettings):
     @property
     def capacity_admin_set(self) -> set[str]:
         return {a.strip() for a in self.capacity_admin_users.split(",") if a.strip()}
+
+    @property
+    def eos_admin_set(self) -> set[str]:
+        return {a.strip() for a in self.eos_admin_users.split(",") if a.strip()}
 
 
 settings = Settings()

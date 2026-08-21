@@ -9,7 +9,7 @@ from prometheus_fastapi_instrumentator import Instrumentator
 from app.core.scheduler import start_scheduler, stop_scheduler
 from app.models.db import init_db
 from app.web.deps import WEB_DIR
-from app.web.routes import capacity, dr, misc
+from app.web.routes import capacity, dr, eos, misc
 
 logging.basicConfig(
     level=logging.INFO,
@@ -41,4 +41,5 @@ Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_sch
 
 app.include_router(dr.router)
 app.include_router(capacity.router)
+app.include_router(eos.router)
 app.include_router(misc.router)

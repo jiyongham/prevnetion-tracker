@@ -1,35 +1,29 @@
+<!-- app/web/templates/eos.html -->
 <!DOCTYPE html>
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>DR 모의훈련 진척 관리</title>
+  <title>EoS 진척 현황</title>
   <link rel="stylesheet" href="/static/style.css?v=4">
 </head>
 <body>
 <div class="container">
 
   <nav class="top-nav">
-    <a href="/" class="top-nav-item active">🔄 DR훈련</a>
+    <a href="/" class="top-nav-item">🔄 DR훈련</a>
     <a href="/capacity" class="top-nav-item">💾 용량관리</a>
-    <a href="/eos" class="top-nav-item">💻 EoS</a>
+    <a href="/eos" class="top-nav-item active">💻 EoS</a>
   </nav>
 
   <header>
-    <h1>🔄 DR 모의훈련 진척 현황</h1>
+    <h1>💻 EoS 진척 현황 (노후 OS/DB 전환)</h1>
     <div class="controls">
-      <form method="get" class="inline-form">
-        <select name="half" onchange="this.form.submit()">
-          <option value="H1" {% if half == 'H1' %}selected{% endif %}>상반기</option>
-          <option value="H2" {% if half == 'H2' %}selected{% endif %}>하반기</option>
-        </select>
-      </form>
-      <form method="post" action="/send-report" class="inline-form admin-only" style="display:none">
-        <input type="hidden" name="half" value="{{ half }}">
+      <form method="post" action="/eos/send-report" class="inline-form admin-only" style="display:none">
         <button type="submit" class="btn-teams">📤 Teams 발송</button>
       </form>
-      <a href="/remind-preview?half={{ half }}" class="btn-remind admin-only" style="display:none">📣 미계획 리마인드</a>
-      <a href="/owner-check?half={{ half }}" class="btn-sm admin-only" style="display:none">🔍 담당자 확인</a>
+      <a href="/eos/remind-preview" class="btn-remind admin-only" style="display:none">📣 미계획 리마인드</a>
+      <a href="/eos/owner-check" class="btn-sm admin-only" style="display:none">🔍 담당자 확인</a>
     </div>
   </header>
 
@@ -40,7 +34,7 @@
   <!-- 요약 카드 -->
   <section class="cards">
     <div class="card big">
-      <div class="label">전체 완료율 ({{ half_label }})</div>
+      <div class="label">전환 완료율</div>
       <div class="rate">{{ result.rate }}%</div>
       <div class="sub">{{ result.done }} / {{ result.total }}건</div>
       <div class="progress"><div class="bar" style="width: {{ result.rate }}%"></div></div>
@@ -62,11 +56,11 @@
     <h2>운영팀별 현황</h2>
     <table>
       <thead>
-        <tr><th>APP운영팀</th><th>완료</th><th>전체</th><th>완료율</th><th style="width:35%">진행</th></tr>
+        <tr><th>시스템 운영팀</th><th>완료</th><th>전체</th><th>완료율</th><th style="width:35%">진행</th></tr>
       </thead>
       <tbody>
       {% for team, v in by_team.items() %}
-        <tr class="clickable" onclick="location.href='/?half={{ half }}&team={{ team }}'">
+        <tr class="clickable" onclick="location.href='/eos?team={{ team }}'">
           <td>{{ team }}</td>
           <td>{{ v.done }}</td>
           <td>{{ v.total }}</td>
@@ -84,15 +78,14 @@
       <h2>대상 목록 ({{ details|length }}건)</h2>
       <div class="head-right">
         <form method="get" class="inline-form">
-          <input type="hidden" name="half" value="{{ half }}">
-          <input type="text" name="q" value="{{ q }}" placeholder="팀/시스템/호스트/IP 검색" class="search">
+          <input type="text" name="q" value="{{ q }}" placeholder="운영팀/시스템명/호스트/IP 검색" class="search">
           <button type="submit" class="btn-sm">검색</button>
         </form>
         <div class="filters">
-          <a href="/?half={{ half }}" class="chip {% if not filter_status and not filter_team %}active{% endif %}">전체</a>
-          <a href="/?half={{ half }}&status=pending" class="chip {% if filter_status == 'pending' %}active{% endif %}">미완료</a>
-          <a href="/?half={{ half }}&status=unplanned" class="chip {% if filter_status == 'unplanned' %}active{% endif %}">미계획</a>
-          <a href="/?half={{ half }}&status=done" class="chip {% if filter_status == 'done' %}active{% endif %}">완료</a>
+          <a href="/eos" class="chip {% if not filter_status and not filter_team %}active{% endif %}">전체</a>
+          <a href="/eos?status=pending" class="chip {% if filter_status == 'pending' %}active{% endif %}">미완료</a>
+          <a href="/eos?status=unplanned" class="chip {% if filter_status == 'unplanned' %}active{% endif %}">미계획</a>
+          <a href="/eos?status=done" class="chip {% if filter_status == 'done' %}active{% endif %}">완료</a>
         </div>
       </div>
     </div>
@@ -112,9 +105,10 @@
       <thead>
         <tr>
           <th>시스템명</th><th>호스트명</th><th>운영팀</th><th>담당자</th>
+          <th style="width:110px">OS</th>
+          <th style="width:70px">DB</th>
           <th style="width:80px">입력자명</th>
-          <th style="width:90px">일정 ✏️</th>
-          <th style="width:110px">방식 ✏️</th>
+          <th style="width:90px">조치계획 ✏️</th>
           <th style="width:50px">완료 ✏️</th>
           <th style="width:130px">증적 ✏️</th>
           <th style="width:130px">비고 ✏️</th>
@@ -123,7 +117,7 @@
       </thead>
       <tbody>
       {% for d in details %}
-        <tr data-no="{{ d.no }}"
+        <tr data-no="{{ d.item_no }}"
             class="{% if d.completed %}row-done{% endif %} src-{{ d.input_source }}"
             title="{% if d.input_source == 'web' %}웹 입력 ({{ d.updated_by }}, {{ d.updated_at }}){% else %}엑셀 원본{% endif %}">
           <td class="strong">{{ d.system_name }}</td>
@@ -132,29 +126,19 @@
           <td class="owner-cell">
             <input type="text" class="cell owner-edit" value="{{ d.owner }}">
           </td>
+          <td class="small">{{ d.os }}</td>
+          <td class="small">{{ d.db }}</td>
           <td class="small updated-by">{{ d.updated_by }}</td>
 
-          <td><input type="text" class="cell sched {{ 'edited' if d.input_source == 'web' else '' }}" value="{{ d.schedule_disp }}" placeholder="O/O"></td>
-          <td>
-            <select class="cell mode">
-              <option value="" {% if not d.mode %}selected{% endif %}>-</option>
-              <option value="실 전환" {% if '실' in d.mode %}selected{% endif %}>실 전환</option>
-              <option value="무중단" {% if '무중단' in d.mode %}selected{% endif %}>무중단</option>
-            </select>
-          </td>
+          <td><input type="text" class="cell sched {{ 'edited' if d.input_source == 'web' else '' }}" value="{{ d.schedule_disp }}" placeholder="OO월"></td>
           <td class="center"><input type="checkbox" class="cell done" {% if d.completed %}checked{% endif %}></td>
           <td><input type="text" class="cell evidence" value="{{ d.evidence }}" placeholder="증적"></td>
           <td><input type="text" class="cell note" value="{{ d.note }}" placeholder="비고"></td>
 
           <td>
             {% if d.jira_key %}
-            <a href="{{ jira_base }}/browse/{{ d.jira_key }}" target="_blank"
-               class="link small" title="{{ d.jira_keys | join(', ') }}">{{ d.jira_key }}</a>
-            {% if d.jira_keys | length > 1 %}<span class="muted small">+{{ d.jira_keys | length - 1 }}</span>{% endif %}
-            {% else %}
-            <button class="btn-ai" title="왜 매칭이 안 됐는지 AI로 진단"
-                    onclick="diagnoseUnmatched(this, '{{ d.no }}')">🤖</button>
-            {% endif %}
+            <a href="{{ jira_base }}/browse/{{ d.jira_key }}" target="_blank" class="link small">{{ d.jira_key }}</a>
+            {% else %}<span class="muted">-</span>{% endif %}
           </td>
           <td>
             {% if d.completed %}<span class="badge ok" title="{{ d.reason }}">완료</span>
@@ -169,22 +153,21 @@
     </div>
   </section>
 
-  {% if excluded_items %}
+  {% if no_reply_items %}
   <section class="panel">
-    <h2>🚫 제외 대상 ({{ excluded_items|length }}건) <span class="muted small">— 관리자가 일정에 "X" 처리함</span></h2>
+    <h2>🈳 미응답 대상 ({{ no_reply_items|length }}건) <span class="muted small">— EOS 진행/제외 여부 미기입</span></h2>
     <div class="table-scroll">
     <table>
       <thead>
-        <tr><th>시스템명</th><th>호스트명</th><th>운영팀</th><th>담당자</th><th>처리자</th></tr>
+        <tr><th>시스템명</th><th>호스트명</th><th>운영팀</th><th>담당자</th></tr>
       </thead>
       <tbody>
-      {% for d in excluded_items %}
+      {% for d in no_reply_items %}
         <tr>
           <td class="strong">{{ d.system_name }}</td>
           <td class="mono small">{{ d.hostname }}</td>
           <td class="small">{{ d.ops_team }}</td>
           <td class="small">{{ d.owner }}</td>
-          <td class="small">{{ d.updated_by }}</td>
         </tr>
       {% endfor %}
       </tbody>
@@ -194,63 +177,16 @@
   {% endif %}
 
   <footer>
-    <span>기준일 {{ as_of }} · 다음주 {{ next_week }}</span>
-    <span>
-      <a href="/export?half={{ half }}">📥 엑셀 다운로드</a> ·
-      <a href="/logs">변경이력</a> ·
-      <a href="/api/summary?half={{ half }}" target="_blank">API</a>
-    </span>
-  {% if jobs %}
-  <section class="panel schedule-info">
-    <h2>⏰ 자동 발송 스케줄</h2>
-    <table>
-      <thead><tr><th>작업</th><th>다음 실행</th></tr></thead>
-      <tbody>
-      {% for j in jobs %}
-        <tr><td>{{ j.name }}</td><td class="mono">{{ j.next_run }}</td></tr>
-      {% endfor %}
-      </tbody>
-    </table>
-  </section>
-  {% endif %}
+    <span>기준일 {{ as_of }}</span>
   </footer>
 
 </div>
 
 <div id="toast" class="toast"></div>
 
-<!-- 조회 챗봇 위젯 -->
-<button id="chatToggle" class="chat-toggle hidden" onclick="toggleChat()">💬</button>
-<div id="chatPanel" class="chat-panel">
-  <div class="chat-head">
-    <span>💬 DR훈련 조회 챗봇</span>
-    <button class="chat-close" onclick="toggleChat()">✕</button>
-  </div>
-  <div id="chatMsgs" class="chat-msgs">
-    <div class="chat-msg bot">안녕하세요! 입력자명(위 상단)을 채운 뒤, "내 대상 뭐 있어?", "OO시스템 완료됐어?" 처럼 물어보세요.</div>
-  </div>
-  <form id="chatForm" class="chat-form" onsubmit="return sendChat(event)">
-    <input type="text" id="chatInput" placeholder="질문을 입력하세요" autocomplete="off">
-    <button type="submit">전송</button>
-  </form>
-</div>
-
-<!-- AI 진단 결과 모달 (매칭 미확인 원인 / 담당자 불일치 판단 공용) -->
-<div id="aiModal" class="ai-modal hidden" onclick="if(event.target===this) closeAiModal()">
-  <div class="ai-modal-box">
-    <div class="ai-modal-head">
-      <span>🤖 AI 진단</span>
-      <button class="chat-close" onclick="closeAiModal()">✕</button>
-    </div>
-    <div id="aiModalBody" class="ai-modal-body">...</div>
-  </div>
-</div>
-
 <script>
-const HALF = "{{ half }}";
 const ADMINS = {{ admins | tojson }};
 
-// 변경 저장 시 입력자명 2글자 이상 필수
 function requireName() {
   const name = (document.getElementById("updatedBy").value || "").trim();
   if (name.length < 2) {
@@ -266,7 +202,6 @@ function isAdmin() {
   return name !== "" && ADMINS.includes(name);
 }
 
-// 완료 체크박스: 관리자만 조작 가능 (비관리자는 비활성화)
 function applyAdminState() {
   const admin = isAdmin();
   document.querySelectorAll("input.cell.done").forEach(cb => {
@@ -278,10 +213,9 @@ function applyAdminState() {
     el.title = admin ? "" : "담당자 수정은 관리자만 가능합니다";
   });
   const hint = document.getElementById("adminHint");
-  hint.textContent = admin ? "🔓 관리자: 완료 체크 가능" : "🔒 완료 체크는 관리자만 가능";
+  hint.textContent = admin ? "🔓 관리자: 완료 체크/담당자 수정 가능" : "🔒 완료 체크/담당자 수정은 관리자만 가능";
   hint.style.color = admin ? "#2e7d32" : "#b26a00";
 
-  // Teams 발송 / 미계획 리마인드 / 담당자 확인: 관리자만 노출
   document.querySelectorAll(".admin-only").forEach(el => {
     el.style.display = admin ? "" : "none";
   });
@@ -301,9 +235,7 @@ async function saveRow(btn) {
   const tr = btn.closest("tr");
   const payload = {
     item_no: tr.dataset.no,
-    half: HALF,
     schedule: tr.querySelector(".sched").value,
-    mode: tr.querySelector(".mode").value,
     is_done: tr.querySelector(".done").checked,
     evidence: tr.querySelector(".evidence").value,
     note: tr.querySelector(".note").value,
@@ -313,13 +245,13 @@ async function saveRow(btn) {
 
   btn.disabled = true; btn.textContent = "...";
   try {
-    const res = await fetch("/api/save", {
+    const res = await fetch("/api/eos/save", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
     if (res.ok) {
-      showToast(`NO.${payload.item_no} 저장 완료`);
+      showToast(`저장 완료`);
       const ubCell = tr.querySelector(".updated-by");
       if (ubCell) ubCell.textContent = payload.updated_by;
       tr.classList.add("saved");
@@ -329,8 +261,6 @@ async function saveRow(btn) {
   finally { btn.disabled = false; btn.textContent = "저장"; }
 }
 
-// 현재 화면(필터 적용)에 보이는 행 중 '실제로 값이 바뀐 행'만 골라 저장
-// (안 바뀐 행까지 매번 덮어쓰면 그 행의 updated_by가 방금 누른 사람 이름으로 바뀌어버림)
 async function bulkSave() {
   const name = requireName();
   if (!name) return;
@@ -339,14 +269,12 @@ async function bulkSave() {
     const cur = {
       item_no: tr.dataset.no,
       schedule: tr.querySelector(".sched").value,
-      mode: tr.querySelector(".mode").value,
       is_done: tr.querySelector(".done").checked,
       evidence: tr.querySelector(".evidence").value,
       note: tr.querySelector(".note").value,
     };
     const changed =
       cur.schedule !== tr.dataset.origSched ||
-      cur.mode !== tr.dataset.origMode ||
       (cur.is_done ? "1" : "0") !== tr.dataset.origDone ||
       cur.evidence !== tr.dataset.origEvidence ||
       cur.note !== tr.dataset.origNote;
@@ -359,14 +287,10 @@ async function bulkSave() {
   const btn = document.getElementById("bulkSaveBtn");
   btn.disabled = true; btn.textContent = "저장 중...";
   try {
-    const res = await fetch("/api/bulk-save", {
+    const res = await fetch("/api/eos/bulk-save", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        half: HALF,
-        rows,
-        updated_by: name,
-      }),
+      body: JSON.stringify({ rows, updated_by: name }),
     });
     const data = await res.json();
     if (data.ok) {
@@ -385,10 +309,8 @@ document.querySelectorAll("input.cell").forEach(el => {
   });
 });
 
-// 일괄 저장 시 변경 여부 판단 기준값 (렌더링 직후 시점의 값)
 document.querySelectorAll("tr[data-no]").forEach(tr => {
   tr.dataset.origSched = tr.querySelector(".sched").value;
-  tr.dataset.origMode = tr.querySelector(".mode").value;
   tr.dataset.origDone = tr.querySelector(".done").checked ? "1" : "0";
   tr.dataset.origEvidence = tr.querySelector(".evidence").value;
   tr.dataset.origNote = tr.querySelector(".note").value;
@@ -402,81 +324,6 @@ ub.addEventListener("change", () => {
   applyAdminState();
 });
 applyAdminState();
-
-// ── 조회 챗봇 ──
-function toggleChat() {
-  const panel = document.getElementById("chatPanel");
-  const toggle = document.getElementById("chatToggle");
-  const opening = panel.classList.contains("hidden");
-  panel.classList.toggle("hidden", !opening);
-  toggle.classList.toggle("hidden", opening);
-  if (opening) document.getElementById("chatInput").focus();
-}
-
-function addChatMsg(text, who) {
-  const box = document.getElementById("chatMsgs");
-  const el = document.createElement("div");
-  el.className = "chat-msg " + who;
-  el.textContent = text;
-  box.appendChild(el);
-  box.scrollTop = box.scrollHeight;
-  return el;
-}
-
-async function sendChat(e) {
-  e.preventDefault();
-  const input = document.getElementById("chatInput");
-  const query = input.value.trim();
-  if (!query) return false;
-
-  const name = (document.getElementById("updatedBy").value || "").trim();
-  if (name.length < 2) {
-    addChatMsg("먼저 상단 '입력자명'을 2글자 이상 입력해주세요.", "bot");
-    return false;
-  }
-
-  addChatMsg(query, "me");
-  input.value = "";
-  const pending = addChatMsg("...", "bot");
-
-  try {
-    const res = await fetch("/api/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, query, half: HALF }),
-    });
-    const data = await res.json();
-    pending.textContent = data.ok ? data.reply : ("오류: " + (data.error || "응답 실패"));
-  } catch (err) {
-    pending.textContent = "오류: " + err.message;
-  }
-  return false;
-}
-
-// ── AI 진단 (매칭 미확인 사유) ──
-function showAiModal(text) {
-  document.getElementById("aiModalBody").textContent = text;
-  document.getElementById("aiModal").classList.remove("hidden");
-}
-function closeAiModal() {
-  document.getElementById("aiModal").classList.add("hidden");
-}
-
-async function diagnoseUnmatched(btn, itemNo) {
-  btn.disabled = true;
-  showAiModal("진단 중...");
-  try {
-    const res = await fetch("/api/diagnose-unmatched", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ item_no: itemNo, half: HALF }),
-    });
-    const data = await res.json();
-    document.getElementById("aiModalBody").textContent = data.ok ? data.reply : ("오류: " + (data.error || ""));
-  } catch (e) {
-    document.getElementById("aiModalBody").textContent = "오류: " + e.message;
-  } finally { btn.disabled = false; }
-}
 </script>
 </body>
 </html>

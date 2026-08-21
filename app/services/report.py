@@ -1,8 +1,9 @@
 # app/services/report.py
-from datetime import date, timedelta
+from datetime import date
 
 from app.config import settings
 from app.core.agent_client import agent_chat, extract_answer
+from app.core.date_utils import week_ranges
 from app.core.jira_client import jira
 from app.core.excel_loader import get_targets, load_dr_items_merged, scope_h2_targets
 from app.core.teams_client import send_teams_message
@@ -36,20 +37,6 @@ def collect(half: str, use_jira: bool = True):
             print(f"⚠️ JIRA 조회 실패 (엑셀 기준으로 계속): {e}")
 
     return items, ticket_map
-
-
-def _week_ranges(today: date):
-    """
-    발송일(목요일) 기준 주간 구간
-    - 금주 실적: 발송 다음 주 (월~금)
-    - 차주 계획: 그 다음 주 (월~금)
-    """
-    this_monday = today - timedelta(days=today.weekday())
-    perf_start = this_monday + timedelta(days=7)      # 금주 실적 (월)
-    perf_end = perf_start + timedelta(days=4)          # (금)
-    plan_start = perf_start + timedelta(days=7)        # 차주 계획 (월)
-    plan_end = plan_start + timedelta(days=4)          # (금)
-    return perf_start, perf_end, plan_start, plan_end
 
 
 # 제외 대상 사유 (고정) — 이후 폐기분은 제외가 아니라 완료로 처리
@@ -115,7 +102,7 @@ def build_report(half: str | None = None, use_jira: bool = True) -> str:
     ]
 
     # ── 2. 하반기 (상반기 무중단 대상 / 주간 실적·계획) ──
-    perf_start, perf_end, plan_start, plan_end = _week_ranges(today)
+    perf_start, perf_end, plan_start, plan_end = week_ranges(today)
 
     # 금주 실적: 다음 주에 완료일(실전환=변경계획완료일 / 무중단=생성일)이 있는 대상 수.
     # JIRA 티켓이 아직 매칭 안 됐어도, 입력된 일정이 해당 주에 있으면 계획으로라도 집계.

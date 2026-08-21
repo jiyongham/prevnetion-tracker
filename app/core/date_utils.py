@@ -1,6 +1,6 @@
 # app/core/date_utils.py
 import re
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 # 6/15, 6-15, 6.15, 6월 15일, 2025-06-15 등 대응
 PATTERNS = [
@@ -52,6 +52,20 @@ def half_window(year: int, half: str) -> tuple[date, date]:
     if half == "H1":
         return date(year, 1, 1), date(year, 6, 30)
     return date(year, 7, 1), date(year, 12, 31)
+
+
+def week_ranges(today: date):
+    """
+    발송일(목요일) 기준 주간 구간 (DR훈련/EoS 리포트 공용)
+    - 금주 실적: 발송 다음 주 (월~금)
+    - 차주 계획: 그 다음 주 (월~금)
+    """
+    this_monday = today - timedelta(days=today.weekday())
+    perf_start = this_monday + timedelta(days=7)      # 금주 실적 (월)
+    perf_end = perf_start + timedelta(days=4)          # (금)
+    plan_start = perf_start + timedelta(days=7)        # 차주 계획 (월)
+    plan_end = plan_start + timedelta(days=4)          # (금)
+    return perf_start, perf_end, plan_start, plan_end
 
 
 def parse_jira_date(value) -> date | None:

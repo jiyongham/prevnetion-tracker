@@ -91,10 +91,13 @@ def dashboard(
     if team:
         details = [d for d in details if d["ops_team"] == team]
 
-    # 일정 칸에 'X'로 기입된 항목 = 제외 대상으로 별도 분류 (완료/미완료/미계획 목록에선 제외)
+    # 일정 칸에 'X'로 기입된 항목 = 제외 대상으로 별도 분류 (완료/미완료/미계획 목록에선 제외).
+    # 단, 관리자가 웹에서 직접 처리(X 입력+저장)한 경우만 포함한다 — 비관리자가 실수로 입력했거나
+    # 엑셀 원본에 그냥 X라고만 적혀있는 건(누가 처리했는지 확인 불가) 제외 대상으로 안 본다.
     excluded_nos = {
         d["no"] for d in details
         if (d.get("schedule_raw") or "").strip().upper() == "X"
+        and d.get("updated_by") in settings.admin_set
     }
     excluded_items = [d for d in details if d["no"] in excluded_nos]
     details = [d for d in details if d["no"] not in excluded_nos]
