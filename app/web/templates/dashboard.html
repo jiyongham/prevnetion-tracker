@@ -52,7 +52,7 @@
     <div class="card">
       <div class="label">미완료</div>
       <div class="value warn">{{ result.total - result.done }}건</div>
-      <div class="sub">미계획 {{ result.no_schedule }}건</div>
+      <div class="sub">미계획 {{ result.no_schedule }}건 · 제외 {{ excluded_cnt }}건</div>
     </div>
   </section>
 
@@ -170,19 +170,24 @@
 
   {% if excluded_items %}
   <section class="panel">
-    <h2>🚫 제외 대상 ({{ excluded_items|length }}건) <span class="muted small">— 일정에 "X" 기입됨</span></h2>
+    <h2>🚫 제외 대상 (<span id="excludedCount">{{ excluded_items|length }}</span>건) <span class="muted small">— 일정에 "X" 기입됨</span></h2>
+    <label class="hint" style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
+      <input type="checkbox" id="excludedMineOnly" checked onchange="applyExcludedFilter()">
+      내가 처리한 것만 보기 (처리자 = 위 입력자명)
+    </label>
     <div class="table-scroll">
     <table>
       <thead>
-        <tr><th>시스템명</th><th>호스트명</th><th>운영팀</th><th>담당자</th></tr>
+        <tr><th>시스템명</th><th>호스트명</th><th>운영팀</th><th>담당자</th><th>처리자</th></tr>
       </thead>
       <tbody>
       {% for d in excluded_items %}
-        <tr>
+        <tr data-updated-by="{{ d.updated_by }}">
           <td class="strong">{{ d.system_name }}</td>
           <td class="mono small">{{ d.hostname }}</td>
           <td class="small">{{ d.ops_team }}</td>
           <td class="small">{{ d.owner }}</td>
+          <td class="small">{{ d.updated_by or "(엑셀 원본)" }}</td>
         </tr>
       {% endfor %}
       </tbody>
@@ -218,8 +223,8 @@
 <div id="toast" class="toast"></div>
 
 <!-- 조회 챗봇 위젯 -->
-<button id="chatToggle" class="chat-toggle" onclick="toggleChat()">💬</button>
-<div id="chatPanel" class="chat-panel hidden">
+<button id="chatToggle" class="chat-toggle hidden" onclick="toggleChat()">💬</button>
+<div id="chatPanel" class="chat-panel">
   <div class="chat-head">
     <span>💬 DR훈련 조회 챗봇</span>
     <button class="chat-close" onclick="toggleChat()">✕</button>
@@ -392,14 +397,34 @@ document.querySelectorAll("tr[data-no]").forEach(tr => {
   tr.dataset.origNote = tr.querySelector(".note").value;
 });
 
+// 제외 대상: '내가 처리한 것만 보기' 체크 시 처리자(updated_by)가 현재 입력자명과
+// 일치하는 행만 남긴다 (일정칸에 X를 직접 입력한 사람 기준 - 엑셀 원본은 처리자가 없어 항상 숨김).
+function applyExcludedFilter() {
+  const checkbox = document.getElementById("excludedMineOnly");
+  if (!checkbox) return;
+  const mineOnly = checkbox.checked;
+  const name = (document.getElementById("updatedBy").value || "").trim();
+  let shown = 0;
+  document.querySelectorAll("table tbody tr[data-updated-by]").forEach(tr => {
+    const mine = name !== "" && tr.dataset.updatedBy === name;
+    const visible = !mineOnly || mine;
+    tr.style.display = visible ? "" : "none";
+    if (visible) shown++;
+  });
+  const countEl = document.getElementById("excludedCount");
+  if (countEl) countEl.textContent = shown;
+}
+
 const ub = document.getElementById("updatedBy");
 ub.value = localStorage.getItem("updatedBy") || "";
-ub.addEventListener("input", applyAdminState);
+ub.addEventListener("input", () => { applyAdminState(); applyExcludedFilter(); });
 ub.addEventListener("change", () => {
   localStorage.setItem("updatedBy", ub.value);
   applyAdminState();
+  applyExcludedFilter();
 });
 applyAdminState();
+applyExcludedFilter();
 
 // ── 조회 챗봇 ──
 function toggleChat() {

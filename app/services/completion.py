@@ -8,6 +8,11 @@ from app.core.excel_loader import get_targets
 DONE_MARKS = {"O", "0", "완료", "Y", "YES", "DONE"}
 
 
+def fmt_rate(rate: float) -> str:
+    """100.0 -> '100', 5.0 -> '5', 4.5 -> '4.5' (리포트 진행률 표시용, DR/용량관리 공용)"""
+    return f"{rate:g}"
+
+
 def ticket_kind(summary: str) -> str:
     """
     티켓 종류 판별.

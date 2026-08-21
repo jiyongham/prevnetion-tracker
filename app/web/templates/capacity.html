@@ -22,6 +22,7 @@
         <input type="hidden" name="sheet" value="{{ sheet }}">
         <button type="submit" class="btn-teams">📤 Teams 발송</button>
       </form>
+      <a href="/capacity/remind-preview?sheet={{ sheet }}" class="btn-remind admin-only" style="display:none">📣 미계획 리마인드</a>
     </div>
   </header>
 
@@ -50,7 +51,7 @@
     <div class="card">
       <div class="label">미완료</div>
       <div class="value warn">{{ result.total - result.done }}건</div>
-      <div class="sub">미계획 {{ result.no_schedule }}건</div>
+      <div class="sub">미계획 {{ result.no_schedule }}건 · 제외 {{ excluded_cnt }}건</div>
     </div>
   </section>
 
@@ -156,6 +157,29 @@
     </table>
     </div>
   </section>
+
+  {% if no_reply_items %}
+  <section class="panel">
+    <h2>🈳 미회신 대상 ({{ no_reply_items|length }}건) <span class="muted small">— 증설 여부(O,X) 미기입</span></h2>
+    <div class="table-scroll">
+    <table>
+      <thead>
+        <tr><th>CI명</th><th>호스트명</th><th>운영팀</th><th>담당자</th></tr>
+      </thead>
+      <tbody>
+      {% for d in no_reply_items %}
+        <tr>
+          <td class="strong">{{ d.ci_name }}</td>
+          <td class="mono small">{{ d.hostname }}</td>
+          <td class="small">{{ d.ops_team }}</td>
+          <td class="small">{{ d.owner }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </section>
+  {% endif %}
 
   <footer>
     <span>기준일 {{ as_of }}</span>
