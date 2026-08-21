@@ -98,6 +98,40 @@ def init_db():
         );
 
         CREATE INDEX IF NOT EXISTS idx_capacity_remind_log_team ON capacity_remind_log(sheet, ops_team);
+
+        CREATE TABLE IF NOT EXISTS eos_input (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            item_no     TEXT NOT NULL UNIQUE,   -- Insight Key (예: SINCASN-94705)
+            schedule    TEXT,
+            is_done     INTEGER DEFAULT 0,
+            evidence    TEXT,
+            note        TEXT,
+            owner       TEXT,
+            updated_by  TEXT,
+            updated_at  TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS eos_change_log (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            item_no     TEXT NOT NULL,
+            field       TEXT,
+            old_value   TEXT,
+            new_value   TEXT,
+            updated_by  TEXT,
+            updated_at  TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS eos_remind_log (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            ops_team        TEXT NOT NULL,
+            recipient_name  TEXT,
+            recipient_team  TEXT,
+            ok              INTEGER DEFAULT 0,
+            error           TEXT,
+            sent_at         TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_eos_remind_log_team ON eos_remind_log(ops_team);
         """)
 
 
@@ -319,6 +353,100 @@ def get_capacity_remind_log_summary(sheet: str) -> dict[str, dict]:
             SELECT ops_team, recipient_name, recipient_team, ok, sent_at
             FROM capacity_remind_log WHERE sheet = ? ORDER BY sent_at ASC
         """, (sheet,)).fetchall()
+
+    summary: dict[str, dict] = {}
+    for r in rows:
+        d = dict(r)
+        s = summary.setdefault(d["ops_team"], {"count": 0})
+        s["count"] += 1
+        s["sent_at"] = d["sent_at"]
+        s["ok"] = bool(d["ok"])
+        s["recipient_name"] = d["recipient_name"]
+        s["recipient_team"] = d["recipient_team"]
+    return summary
+
+
+def get_eos_inputs() -> dict[str, dict]:
+    """EoS 입력값 전체 조회 -> {item_no: row}"""
+    with get_conn() as conn:
+        rows = conn.execute("SELECT * FROM eos_input").fetchall()
+    return {r["item_no"]: dict(r) for r in rows}
+
+
+def get_eos_input(item_no: str) -> dict | None:
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM eos_input WHERE item_no = ?", (item_no,)
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def upsert_eos_input(
+    item_no: str,
+    schedule: str = "",
+    is_done: bool = False,
+    evidence: str = "",
+    note: str = "",
+    updated_by: str = "",
+    owner: str | None = None,
+):
+    """EoS 조치계획 입력/수정 (변경 이력 기록). owner는 명시적으로 넘겼을 때만 갱신."""
+    before = get_eos_input(item_no)
+
+    with get_conn() as conn:
+        conn.execute("""
+            INSERT INTO eos_input
+                (item_no, schedule, is_done, evidence, note, updated_by, owner, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
+            ON CONFLICT(item_no) DO UPDATE SET
+                schedule   = excluded.schedule,
+                is_done    = excluded.is_done,
+                evidence   = excluded.evidence,
+                note       = excluded.note,
+                updated_by = excluded.updated_by,
+                owner      = COALESCE(excluded.owner, eos_input.owner),
+                updated_at = datetime('now', 'localtime')
+        """, (item_no, schedule, int(is_done), evidence, note, updated_by, owner))
+
+        new_vals = {
+            "schedule": schedule, "is_done": str(int(is_done)),
+            "evidence": evidence, "note": note,
+        }
+        if owner is not None:
+            new_vals["owner"] = owner
+        for field, new_v in new_vals.items():
+            old_v = str(before.get(field, "")) if before else ""
+            if old_v != str(new_v):
+                conn.execute("""
+                    INSERT INTO eos_change_log
+                        (item_no, field, old_value, new_value, updated_by, updated_at)
+                    VALUES (?, ?, ?, ?, ?, datetime('now','localtime'))
+                """, (item_no, field, old_v, str(new_v), updated_by))
+
+
+def log_eos_remind(
+    ops_team: str,
+    recipient_name: str,
+    recipient_team: str,
+    ok: bool,
+    error: str = "",
+):
+    """EoS 미계획 리마인드 DM 발송 시도 기록 (성공/실패 모두)"""
+    with get_conn() as conn:
+        conn.execute("""
+            INSERT INTO eos_remind_log
+                (ops_team, recipient_name, recipient_team, ok, error, sent_at)
+            VALUES (?, ?, ?, ?, ?, datetime('now', 'localtime'))
+        """, (ops_team, recipient_name, recipient_team, int(ok), error or ""))
+
+
+def get_eos_remind_log_summary() -> dict[str, dict]:
+    """운영팀별 가장 최근 발송 이력 -> {ops_team: {sent_at, ok, recipient_name, recipient_team, count}}"""
+    with get_conn() as conn:
+        rows = conn.execute("""
+            SELECT ops_team, recipient_name, recipient_team, ok, sent_at
+            FROM eos_remind_log ORDER BY sent_at ASC
+        """).fetchall()
 
     summary: dict[str, dict] = {}
     for r in rows:

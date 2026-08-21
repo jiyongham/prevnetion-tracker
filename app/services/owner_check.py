@@ -13,10 +13,13 @@
 import concurrent.futures
 
 from app.config import settings
+from app.core.eos_loader import get_targets as get_eos_targets
+from app.core.eos_loader import load_eos_items_merged
 from app.core.excel_loader import get_targets, load_dr_items_merged, scope_h2_targets
 from app.core.insight_client import get_server_asset
 from app.core.jira_client import jira
 from app.services.completion import build_ticket_summary
+from app.services.eos import build_eos_ticket_summary
 from app.services.matcher import match_items_by_ip
 from app.services.reminder import clean_name, parse_owners
 
@@ -45,6 +48,25 @@ def collect_targets_with_tickets(half: str, use_jira: bool = True):
         try:
             issues = jira.get_dr_tickets()
             tickets = build_ticket_summary(issues, settings.planned_end_date_field)
+            match_result = match_items_by_ip(targets, tickets)
+            ticket_map = match_result["matched"]
+        except Exception as e:
+            jira_error = str(e)
+
+    return targets, ticket_map, jira_error
+
+
+def collect_eos_targets_with_tickets(use_jira: bool = True):
+    """EoS 대상 목록 + (윈도우 제한 없는) 매칭 티켓맵"""
+    items = load_eos_items_merged()
+    targets = get_eos_targets(items)
+
+    ticket_map = {}
+    jira_error = None
+    if use_jira:
+        try:
+            issues = jira.get_eos_tickets()
+            tickets = build_eos_ticket_summary(issues, settings.planned_end_date_field)
             match_result = match_items_by_ip(targets, tickets)
             ticket_map = match_result["matched"]
         except Exception as e:
