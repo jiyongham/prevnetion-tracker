@@ -10,6 +10,7 @@ from app.services.capacity import (
     calc_capacity_completion,
     filter_tickets_by_sheet,
 )
+from app.services.completion import fmt_rate
 from app.services.matcher import match_items_by_ip
 
 
@@ -26,10 +27,6 @@ def collect_capacity(sheet: str, use_jira: bool = True):
         except Exception as e:
             print(f"⚠️ 용량관리 JIRA 조회 실패 (엑셀 기준으로 계속): {e}")
     return items, ticket_map
-
-
-def _fmt_rate(rate: float) -> str:
-    return f"{rate:g}"
 
 
 def build_capacity_report(use_jira: bool = True) -> str:
@@ -51,7 +48,7 @@ def build_capacity_report(use_jira: bool = True) -> str:
     rate = round(total_done / total_target * 100, 1) if total_target else 0.0
 
     lines = [
-        "용량관리 현황 공유 드립니다.",
+        "[용량 관리]",
         "",
         "1. 목적 : '26년 하반기 그룹사 용량관리 기준 임계치 초과 DB서버 디스크 용량 증설",
         "",
@@ -65,7 +62,7 @@ def build_capacity_report(use_jira: bool = True) -> str:
         f"      - 디스크증설 86대 中 {planned_cnt}대 증설 예정",
         f"            ※ 프로젝트 진행 및 폐기 예정 등 {excluded_cnt}대 제외, 미회신 {no_reply_cnt}대",
         "   3) 디스크 증설 수행",
-        f"       - 디스크 {total_target}대 中 {total_done}대 완료 (진행률 {_fmt_rate(rate)}%)",
+        f"       - 디스크 {total_target}대 中 {total_done}대 완료 (진행률 {fmt_rate(rate)}%)",
     ]
     return "\n".join(lines)
 

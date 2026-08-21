@@ -1,90 +1,41 @@
-# app/main.py
+# app/web/routes/dr.py
+"""DR 모의훈련 관련 라우트 (대시보드/저장/리마인드/담당자확인/챗봇/AI진단/리포트/내보내기)"""
 import io
 import logging
-from contextlib import asynccontextmanager
 from datetime import date, timedelta
-from pathlib import Path
 from urllib.parse import quote
 
 import pandas as pd
-from fastapi import FastAPI, Form, HTTPException, Request
+from fastapi import APIRouter, Form, Request
 from fastapi.responses import (
     HTMLResponse,
     JSONResponse,
     RedirectResponse,
     StreamingResponse,
 )
-from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
-from prometheus_fastapi_instrumentator import Instrumentator
 
 from app.config import settings
-from app.core.capacity_loader import load_capacity_items_merged
 from app.core.excel_loader import get_targets as get_dr_targets
 from app.core.excel_loader import load_dr_items_merged, scope_h2_targets
 from app.core.jira_client import jira
-from app.core.scheduler import get_jobs_info, start_scheduler, stop_scheduler
+from app.core.scheduler import get_jobs_info
 from app.core.teams_client import send_teams_dm, send_teams_message
-from app.models.db import (
-    get_capacity_input,
-    get_capacity_remind_log_summary,
-    get_input,
-    get_logs,
-    get_remind_log_summary,
-    init_db,
-    log_capacity_remind,
-    log_remind,
-    upsert_capacity_input,
-    upsert_input,
-)
-from app.services.capacity import (
-    build_capacity_ticket_summary,
-    calc_capacity_completion,
-    filter_tickets_by_sheet,
-)
+from app.models.db import get_input, get_logs, get_remind_log_summary, log_remind, upsert_input
+from app.services import ai_diagnose, chatbot
 from app.services.completion import build_ticket_summary, calc_completion, group_by
 from app.services.matcher import match_items_by_ip
-from app.services import ai_diagnose, chatbot
 from app.services.owner_check import (
     collect_targets_with_tickets,
     find_owner_mismatches,
     lookup_cmdb_assets,
 )
-from app.services.capacity_reminder import group_capacity_no_reply, group_capacity_unplanned
-from app.services.capacity_report import send_capacity_report
 from app.services.reminder import group_unplanned_by_service
 from app.services.report import get_current_half, send_report
+from app.web.deps import require_updated_by, resolve_owner, templates
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-)
 logger = logging.getLogger(__name__)
 
-BASE_DIR = Path(__file__).resolve().parent
-templates = Jinja2Templates(directory=str(BASE_DIR / "web" / "templates"))
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # startup
-    init_db()
-    logger.info("✅ DB 초기화 완료")
-    start_scheduler()
-    yield
-    # shutdown
-    stop_scheduler()
-
-
-app = FastAPI(title="장애예방 활동 진척 관리", lifespan=lifespan)
-
-app.mount(
-    "/static",
-    StaticFiles(directory=str(BASE_DIR / "web" / "static")),
-    name="static",
-)
-
-Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
+router = APIRouter()
 
 
 # ─────────────────────────────────────────────
@@ -113,31 +64,10 @@ def get_dashboard_data(half: str, as_of: date, use_jira: bool = True):
     return result, jira_error
 
 
-def get_capacity_dashboard_data(sheet: str, as_of: date, use_jira: bool = True):
-    items = load_capacity_items_merged(sheet=sheet)
-    ticket_map = {}
-    jira_error = None
-
-    if use_jira:
-        try:
-            issues = jira.get_capacity_tickets()
-            tickets = build_capacity_ticket_summary(issues, settings.planned_end_date_field)
-            targets = [i for i in items if i["is_target"]]
-            match_result = match_items_by_ip(targets, tickets)
-            # 같은 서버가 DATA/ARCH 양쪽에 다 있을 수 있어, 변경작업내용으로 이 시트 소속만 남김
-            ticket_map = filter_tickets_by_sheet(match_result["matched"], sheet)
-        except Exception as e:
-            jira_error = str(e)
-            logger.warning(f"용량관리 JIRA 조회 실패: {e}")
-
-    result = calc_capacity_completion(items, ticket_map, as_of)
-    return result, jira_error
-
-
 # ─────────────────────────────────────────────
 # 대시보드
 # ─────────────────────────────────────────────
-@app.get("/", response_class=HTMLResponse)
+@router.get("/", response_class=HTMLResponse)
 def dashboard(
     request: Request,
     half: str | None = None,
@@ -219,14 +149,6 @@ def dashboard(
 # ─────────────────────────────────────────────
 # 일정 입력 저장
 # ─────────────────────────────────────────────
-def _require_updated_by(updated_by: str) -> str:
-    """변경 저장은 입력자명 2글자 이상 필수 (누가 바꿨는지 추적 가능하도록)"""
-    name = (updated_by or "").strip()
-    if len(name) < 2:
-        raise HTTPException(status_code=400, detail="입력자명을 2글자 이상 입력해주세요")
-    return name
-
-
 def _resolve_is_done(item_no: str, half: str, requested: bool, updated_by: str) -> bool:
     """
     완료(체크) 처리는 관리자만 변경 가능.
@@ -238,26 +160,15 @@ def _resolve_is_done(item_no: str, half: str, requested: bool, updated_by: str) 
     return bool(existing["is_done"]) if existing else False
 
 
-def _resolve_owner(requested: str, updated_by: str, admin_set: set[str] | None = None) -> str | None:
-    """
-    담당자 수정은 관리자만 가능.
-    비관리자가 보낸 값이거나 빈 값이면 None을 반환해 기존 담당자를 그대로 유지한다.
-    """
-    requested = (requested or "").strip()
-    if not requested or updated_by not in (admin_set if admin_set is not None else settings.admin_set):
-        return None
-    return requested
-
-
-@app.post("/api/save")
+@router.post("/api/save")
 async def api_save(request: Request):
     """AJAX 인라인 저장"""
     data = await request.json()
-    updated_by = _require_updated_by(data.get("updated_by", ""))
+    updated_by = require_updated_by(data.get("updated_by", ""))
     is_done = _resolve_is_done(
         data["item_no"], data["half"], bool(data.get("is_done")), updated_by
     )
-    owner = _resolve_owner(data.get("owner", ""), updated_by)
+    owner = resolve_owner(data.get("owner", ""), updated_by, settings.admin_set)
     upsert_input(
         item_no=data["item_no"],
         half=data["half"],
@@ -272,12 +183,12 @@ async def api_save(request: Request):
     return JSONResponse({"ok": True})
 
 
-@app.post("/api/bulk-save")
+@router.post("/api/bulk-save")
 async def api_bulk_save(request: Request):
     """현재 목록의 여러 행을 한 번에 저장. 완료값은 관리자만 반영."""
     data = await request.json()
     half = data["half"]
-    updated_by = _require_updated_by(data.get("updated_by", ""))
+    updated_by = require_updated_by(data.get("updated_by", ""))
     rows = data.get("rows", [])
 
     for r in rows:
@@ -298,207 +209,7 @@ async def api_bulk_save(request: Request):
     return JSONResponse({"ok": True, "count": len(rows)})
 
 
-# ─────────────────────────────────────────────
-# 용량관리 (ASM/파일시스템 증설 - [예방4])
-# ─────────────────────────────────────────────
-@app.get("/capacity", response_class=HTMLResponse)
-def capacity_dashboard(
-    request: Request,
-    sheet: str = "DATA",
-    team: str | None = None,
-    status: str | None = None,
-    q: str | None = None,
-):
-    if sheet not in ("DATA", "ARCH"):
-        sheet = "DATA"
-    today = date.today()
-
-    result, jira_error = get_capacity_dashboard_data(sheet, today)
-    by_team = group_by(result, "ops_team")
-
-    details = result["details"]
-    if team:
-        details = [d for d in details if d["ops_team"] == team]
-    if status == "done":
-        details = [d for d in details if d["completed"]]
-    elif status == "pending":
-        details = [d for d in details if not d["completed"]]
-    elif status == "unplanned":
-        details = [d for d in details if not d["planned"]]
-    if q:
-        kw = q.lower()
-
-        def _match(d):
-            return (
-                kw in (d["ops_team"] or "").lower()
-                or kw in (d["ci_name"] or "").lower()
-                or kw in (d["hostname"] or "").lower()
-                or kw in (d["ip"] or "").lower()
-            )
-
-        details = [d for d in details if _match(d)]
-
-    details = sorted(details, key=lambda d: (d["schedule"] is None, d["schedule"]))
-
-    # 증설 여부(O,X)가 공란인 미회신 대상 (완료율 분모엔 안 들어가지만 별도로 보여줌)
-    all_items = load_capacity_items_merged(sheet=sheet)
-    excluded_cnt = sum(1 for i in all_items if (i.get("expand_flag") or "") == "X")
-    no_reply_items = [i for i in all_items if (i.get("expand_flag") or "") not in ("O", "X")]
-    if team:
-        no_reply_items = [i for i in no_reply_items if i["ops_team"] == team]
-    if q:
-        kw = q.lower()
-        no_reply_items = [
-            i for i in no_reply_items
-            if kw in (i["ops_team"] or "").lower()
-            or kw in (i["ci_name"] or "").lower()
-            or kw in (i["hostname"] or "").lower()
-            or kw in (i["ip"] or "").lower()
-        ]
-
-    return templates.TemplateResponse("capacity.html", {
-        "request": request,
-        "result": result,
-        "details": details,
-        "no_reply_items": no_reply_items,
-        "excluded_cnt": excluded_cnt,
-        "by_team": dict(sorted(by_team.items(), key=lambda x: x[1]["rate"])),
-        "sheet": sheet,
-        "sheet_label": "일반(ASM/파일시스템)" if sheet == "DATA" else "아카이브",
-        "as_of": today,
-        "filter_team": team or "",
-        "filter_status": status or "",
-        "q": q or "",
-        "teams": sorted(by_team.keys()),
-        "admins": sorted(settings.capacity_admin_set),
-        "jira_error": jira_error,
-        "jira_base": settings.jira_url.rstrip("/"),
-    })
-
-
-def _resolve_capacity_is_done(item_no: str, sheet: str, requested: bool, updated_by: str) -> bool:
-    """완료(체크) 처리는 관리자만 변경 가능. 비관리자가 보낸 값은 무시하고 기존값 유지."""
-    if updated_by in settings.capacity_admin_set:
-        return requested
-    existing = get_capacity_input(item_no, sheet)
-    return bool(existing["is_done"]) if existing else False
-
-
-@app.post("/api/capacity/save")
-async def api_capacity_save(request: Request):
-    """용량관리 AJAX 인라인 저장"""
-    data = await request.json()
-    item_no = data["item_no"]
-    sheet = data["sheet"]
-    updated_by = _require_updated_by(data.get("updated_by", ""))
-    is_done = _resolve_capacity_is_done(item_no, sheet, bool(data.get("is_done")), updated_by)
-    owner = _resolve_owner(data.get("owner", ""), updated_by, settings.capacity_admin_set)
-    upsert_capacity_input(
-        item_no=item_no,
-        sheet=sheet,
-        schedule=data.get("schedule", "").strip(),
-        is_done=is_done,
-        evidence=data.get("evidence", "").strip(),
-        note=data.get("note", "").strip(),
-        updated_by=updated_by,
-        owner=owner,
-    )
-    return JSONResponse({"ok": True})
-
-
-@app.post("/api/capacity/bulk-save")
-async def api_capacity_bulk_save(request: Request):
-    """용량관리 변경된 행만 일괄 저장. 완료값은 관리자만 반영."""
-    data = await request.json()
-    sheet = data["sheet"]
-    updated_by = _require_updated_by(data.get("updated_by", ""))
-    rows = data.get("rows", [])
-
-    for r in rows:
-        item_no = r["item_no"]
-        is_done = _resolve_capacity_is_done(item_no, sheet, bool(r.get("is_done")), updated_by)
-        upsert_capacity_input(
-            item_no=item_no,
-            sheet=sheet,
-            schedule=(r.get("schedule") or "").strip(),
-            is_done=is_done,
-            evidence=(r.get("evidence") or "").strip(),
-            note=(r.get("note") or "").strip(),
-            updated_by=updated_by,
-        )
-    return JSONResponse({"ok": True, "count": len(rows)})
-
-
-# ─────────────────────────────────────────────
-# 용량관리 미계획 리마인드 미리보기 (운영팀별 초안, 발송 없음)
-# ─────────────────────────────────────────────
-@app.get("/capacity/remind-preview", response_class=HTMLResponse)
-def capacity_remind_preview(
-    request: Request,
-    sheet: str = "DATA",
-    team: str | None = None,
-    kind: str = "blank",
-):
-    if sheet not in ("DATA", "ARCH"):
-        sheet = "DATA"
-    result, jira_error = get_capacity_dashboard_data(sheet, date.today())
-
-    # 같은 '미계획'이라도 완전 미기입 / 대략적 일정만(예: '11월 예정') 있는 경우를 분리
-    blank_groups = group_capacity_unplanned(result["details"], hinted=False)
-    hinted_groups = group_capacity_unplanned(result["details"], hinted=True)
-    # 미회신(증설 여부 O/X 자체가 공란)은 대상(O)이 아니라 엑셀 전체 행 기준으로 판단
-    no_reply_groups = group_capacity_no_reply(load_capacity_items_merged(sheet=sheet))
-
-    groups = {"hinted": hinted_groups, "no_reply": no_reply_groups}.get(kind, blank_groups)
-
-    # 운영팀별 발송 이력(1회라도 보냈으면 표시)
-    log_summary = get_capacity_remind_log_summary(sheet)
-    for g in blank_groups + hinted_groups + no_reply_groups:
-        g["sent"] = log_summary.get(g["ops_team"])
-
-    selected = None
-    if team:
-        selected = next((g for g in groups if g["ops_team"] == team), None)
-
-    return templates.TemplateResponse("capacity_remind_preview.html", {
-        "request": request,
-        "sheet": sheet,
-        "sheet_label": "일반(ASM/파일시스템)" if sheet == "DATA" else "아카이브",
-        "kind": kind,
-        "groups": groups,
-        "selected": selected,
-        "total_unplanned": sum(g["count"] for g in groups),
-        "blank_total": sum(g["count"] for g in blank_groups),
-        "hinted_total": sum(g["count"] for g in hinted_groups),
-        "no_reply_total": sum(g["count"] for g in no_reply_groups),
-        "sender_team": settings.sender_team,
-        "sender_name": settings.sender_name,
-        "teams_enabled": bool(settings.teams_webhook),
-        "dm_enabled": bool(settings.teams_dm_trigger_webhook),
-        "jira_error": jira_error,
-    })
-
-
-@app.post("/api/capacity/remind-dm")
-async def api_capacity_remind_dm(request: Request):
-    """용량관리 미계획 리마인드 초안을 담당자에게 개인 DM 발송 (Power Automate 경유)"""
-    data = await request.json()
-    name = (data.get("name") or "").strip()
-    team = (data.get("team") or "").strip()
-    message = (data.get("message") or "").strip()
-    sheet = (data.get("sheet") or "").strip()
-    ops_team = (data.get("ops_team") or "").strip()
-    if not name or not message:
-        return JSONResponse(
-            {"ok": False, "error": "이름과 메시지가 필요합니다."}, status_code=400
-        )
-    ok, err = send_teams_dm(name, team, message)
-    if sheet and ops_team:
-        log_capacity_remind(sheet, ops_team, name, team, ok, err)
-    return JSONResponse({"ok": ok, "error": err})
-
-
-@app.post("/save")
+@router.post("/save")
 def save_schedule(
     item_no: str = Form(...),
     half: str = Form(...),
@@ -511,7 +222,7 @@ def save_schedule(
     redirect_to: str = Form("/"),
 ):
     """폼 전송 저장"""
-    updated_by = _require_updated_by(updated_by)
+    updated_by = require_updated_by(updated_by)
     done_requested = is_done in ("on", "1", "true")
     upsert_input(
         item_no=item_no,
@@ -529,7 +240,7 @@ def save_schedule(
 # ─────────────────────────────────────────────
 # 변경 이력
 # ─────────────────────────────────────────────
-@app.get("/logs", response_class=HTMLResponse)
+@router.get("/logs", response_class=HTMLResponse)
 def view_logs(request: Request, item_no: str | None = None):
     logs = get_logs(item_no=item_no, limit=200)
     return templates.TemplateResponse("logs.html", {
@@ -542,7 +253,7 @@ def view_logs(request: Request, item_no: str | None = None):
 # ─────────────────────────────────────────────
 # 미계획 리마인드 미리보기 (담당자별 초안, 발송 없음)
 # ─────────────────────────────────────────────
-@app.get("/remind-preview", response_class=HTMLResponse)
+@router.get("/remind-preview", response_class=HTMLResponse)
 def remind_preview(
     request: Request,
     half: str | None = None,
@@ -586,7 +297,7 @@ def remind_preview(
     })
 
 
-@app.post("/api/remind-test")
+@router.post("/api/remind-test")
 async def api_remind_test(request: Request):
     """미계획 리마인드 초안을 Teams 웹훅으로 테스트 발송 (설정된 채널로 전송)"""
     data = await request.json()
@@ -601,7 +312,7 @@ async def api_remind_test(request: Request):
     return JSONResponse({"ok": ok})
 
 
-@app.post("/api/remind-dm")
+@router.post("/api/remind-dm")
 async def api_remind_dm(request: Request):
     """미계획 리마인드 초안을 담당자에게 개인 DM 발송 (Power Automate 경유). 발송 이력은 성공/실패 모두 기록."""
     data = await request.json()
@@ -623,7 +334,7 @@ async def api_remind_dm(request: Request):
 # ─────────────────────────────────────────────
 # 담당자 불일치 후보 (조직변경으로 팀명 등이 바뀌었을 가능성)
 # ─────────────────────────────────────────────
-@app.get("/owner-check", response_class=HTMLResponse)
+@router.get("/owner-check", response_class=HTMLResponse)
 def owner_check(request: Request, half: str | None = None):
     half = half or get_current_half()
     targets, ticket_map, jira_error = collect_targets_with_tickets(half)
@@ -640,7 +351,7 @@ def owner_check(request: Request, half: str | None = None):
     })
 
 
-@app.post("/api/save-owner")
+@router.post("/api/save-owner")
 async def api_save_owner(request: Request):
     """담당자 불일치 후보에서 담당자를 직접 수정 (관리자만 가능, 엑셀 원본은 그대로 두고 DB override)"""
     data = await request.json()
@@ -675,7 +386,7 @@ async def api_save_owner(request: Request):
 # ─────────────────────────────────────────────
 # 조회 챗봇 (사내 LLM Agent)
 # ─────────────────────────────────────────────
-@app.post("/api/chat")
+@router.post("/api/chat")
 async def api_chat(request: Request):
     data = await request.json()
     name = (data.get("name") or "").strip()
@@ -695,7 +406,7 @@ async def api_chat(request: Request):
     return JSONResponse({"ok": True, "reply": reply})
 
 
-@app.post("/api/diagnose-unmatched")
+@router.post("/api/diagnose-unmatched")
 async def api_diagnose_unmatched(request: Request):
     """JIRA 매칭이 안 된 대상 하나에 대해, 버튼 클릭 시에만 AI 진단 (자동/일괄 실행 없음)"""
     data = await request.json()
@@ -717,7 +428,7 @@ async def api_diagnose_unmatched(request: Request):
     return JSONResponse({"ok": True, "reply": reply})
 
 
-@app.post("/api/diagnose-mismatch")
+@router.post("/api/diagnose-mismatch")
 async def api_diagnose_mismatch(request: Request):
     """담당자 불일치 후보 한 건에 대해, 버튼 클릭 시에만 AI 판단 (자동/일괄 실행 없음)"""
     data = await request.json()
@@ -731,22 +442,16 @@ async def api_diagnose_mismatch(request: Request):
 # ─────────────────────────────────────────────
 # Teams 발송
 # ─────────────────────────────────────────────
-@app.post("/send-report")
+@router.post("/send-report")
 def trigger_report(half: str = Form(...)):
     send_report(half=half)
     return RedirectResponse(url=f"/?half={half}", status_code=303)
 
 
-@app.post("/capacity/send-report")
-def trigger_capacity_report(sheet: str = Form("DATA")):
-    send_capacity_report()
-    return RedirectResponse(url=f"/capacity?sheet={sheet}", status_code=303)
-
-
 # ─────────────────────────────────────────────
 # 엑셀 다운로드
 # ─────────────────────────────────────────────
-@app.get("/export")
+@router.get("/export")
 def export_excel(half: str | None = None):
     half = half or get_current_half()
     as_of_date = date.today()
@@ -790,7 +495,7 @@ def export_excel(half: str | None = None):
 # ─────────────────────────────────────────────
 # API
 # ─────────────────────────────────────────────
-@app.get("/api/summary")
+@router.get("/api/summary")
 def api_summary(half: str | None = None):
     half = half or get_current_half()
     result, _ = get_dashboard_data(half, date.today())
@@ -802,13 +507,3 @@ def api_summary(half: str | None = None):
         "rate": result["rate"],
         "by_team": group_by(result, "ops_team"),
     }
-
-
-@app.get("/api/jobs")
-def api_jobs():
-    return {"jobs": get_jobs_info()}
-
-
-@app.get("/health")
-def health():
-    return {"status": "ok"}

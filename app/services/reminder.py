@@ -117,6 +117,37 @@ def candidates_of(items: list[dict], cmdb_map: dict | None = None) -> list[dict]
     return list(seen.values())
 
 
+def group_and_vote(items: list[dict], key_fn, include_fn) -> list[dict]:
+    """
+    공통 그룹핑 로직 (DR훈련/용량관리 리마인드가 공유).
+    items를 key_fn(d) 기준으로 묶고, 그룹 안에서 각 대상의 1순위 담당자에게 표를 준다.
+    include_fn(d)이 False인 대상은 건너뛴다.
+    반환: [{"key": ..., "items": [...], "votes": {raw_owner: count}}, ...]
+    """
+    groups: dict[str, dict] = {}
+    for d in items:
+        if not include_fn(d):
+            continue
+        owners = parse_owners(d.get("owner", ""))
+        if not owners:
+            continue
+
+        key = key_fn(d) or "미지정"
+        g = groups.setdefault(key, {"key": key, "items": [], "votes": {}})
+        g["items"].append(d)
+        raw = owners[0]["raw"]  # 이 대상의 1순위 담당자에게 표 하나
+        g["votes"][raw] = g["votes"].get(raw, 0) + 1
+    return list(groups.values())
+
+
+def pick_representative(g: dict) -> tuple[str, dict, str]:
+    """그룹 내 1순위 최다 득표 담당자 선정. 반환: (top_raw, parsed_owner, given)"""
+    top_raw = max(g["votes"], key=g["votes"].get)  # 그룹 내 최다 1순위 = 대표 담당자
+    p = parse_owners(top_raw)[0]
+    given = strip_surname(p["name"]) or p["name"] or "담당자"
+    return top_raw, p, given
+
+
 def group_unplanned_by_service(
     details: list[dict], cmdb_map: dict | None = None, hinted: bool | None = None
 ) -> list[dict]:
@@ -137,32 +168,20 @@ def group_unplanned_by_service(
     cmdb_map(item_no -> CMDB 자산)이 주어지면, DM 발송 대상 팀명을 CMDB 기준으로 보정한다.
     반환: [{owner, service, name, team, given, count, targets, message}, ...] (대상 많은 순)
     """
-    groups: dict[str, dict] = {}
-    for d in details:
-        if d.get("planned"):
-            continue
-        if hinted is not None and has_schedule_hint(d) != hinted:
-            continue
-        owners = parse_owners(d.get("owner", ""))
-        if not owners:
-            continue
-
-        service = d.get("business_name") or d.get("system_name") or "미지정"
-        g = groups.setdefault(service, {"service": service, "items": [], "votes": {}})
-        g["items"].append(d)
-        raw = owners[0]["raw"]  # 이 대상의 1순위 담당자에게 표 하나
-        g["votes"][raw] = g["votes"].get(raw, 0) + 1
+    raw_groups = group_and_vote(
+        details,
+        key_fn=lambda d: d.get("business_name") or d.get("system_name"),
+        include_fn=lambda d: not d.get("planned") and (hinted is None or has_schedule_hint(d) == hinted),
+    )
 
     is_hinted = bool(hinted)
     result = []
-    for g in groups.values():
-        top_raw = max(g["votes"], key=g["votes"].get)  # 서비스 내 최다 1순위 = 대표 담당자
-        p = parse_owners(top_raw)[0]
-        given = strip_surname(p["name"]) or p["name"] or "담당자"
+    for g in raw_groups:
+        top_raw, p, given = pick_representative(g)
         team = team_via_cmdb(p["name"], g["items"], cmdb_map, p["team"])
         result.append({
             "owner": top_raw,          # 이름-팀 (선택 키, 엑셀 원본 기준)
-            "service": g["service"],
+            "service": g["key"],
             "name": p["name"],
             "team": team,               # DM 발송용 (CMDB 보정)
             "given": given,

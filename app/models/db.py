@@ -85,6 +85,19 @@ def init_db():
         );
 
         CREATE INDEX IF NOT EXISTS idx_capacity_input_sheet ON capacity_input(sheet);
+
+        CREATE TABLE IF NOT EXISTS capacity_remind_log (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            sheet           TEXT NOT NULL,
+            ops_team        TEXT NOT NULL,
+            recipient_name  TEXT,
+            recipient_team  TEXT,
+            ok              INTEGER DEFAULT 0,
+            error           TEXT,
+            sent_at         TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_capacity_remind_log_team ON capacity_remind_log(sheet, ops_team);
         """)
 
 
@@ -274,6 +287,43 @@ def get_remind_log_summary(half: str) -> dict[str, dict]:
     for r in rows:
         d = dict(r)
         s = summary.setdefault(d["service"], {"count": 0})
+        s["count"] += 1
+        s["sent_at"] = d["sent_at"]
+        s["ok"] = bool(d["ok"])
+        s["recipient_name"] = d["recipient_name"]
+        s["recipient_team"] = d["recipient_team"]
+    return summary
+
+
+def log_capacity_remind(
+    sheet: str,
+    ops_team: str,
+    recipient_name: str,
+    recipient_team: str,
+    ok: bool,
+    error: str = "",
+):
+    """용량관리 미계획 리마인드 DM 발송 시도 기록 (성공/실패 모두)"""
+    with get_conn() as conn:
+        conn.execute("""
+            INSERT INTO capacity_remind_log
+                (sheet, ops_team, recipient_name, recipient_team, ok, error, sent_at)
+            VALUES (?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
+        """, (sheet, ops_team, recipient_name, recipient_team, int(ok), error or ""))
+
+
+def get_capacity_remind_log_summary(sheet: str) -> dict[str, dict]:
+    """운영팀별 가장 최근 발송 이력 -> {ops_team: {sent_at, ok, recipient_name, recipient_team, count}}"""
+    with get_conn() as conn:
+        rows = conn.execute("""
+            SELECT ops_team, recipient_name, recipient_team, ok, sent_at
+            FROM capacity_remind_log WHERE sheet = ? ORDER BY sent_at ASC
+        """, (sheet,)).fetchall()
+
+    summary: dict[str, dict] = {}
+    for r in rows:
+        d = dict(r)
+        s = summary.setdefault(d["ops_team"], {"count": 0})
         s["count"] += 1
         s["sent_at"] = d["sent_at"]
         s["ok"] = bool(d["ok"])
