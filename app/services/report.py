@@ -9,6 +9,7 @@ from app.core.teams_client import send_teams_message
 from app.services.completion import (
     build_ticket_summary,
     calc_completion,
+    fmt_rate,
     group_by,
     ticket_done_date,
 )
@@ -35,11 +36,6 @@ def collect(half: str, use_jira: bool = True):
             print(f"⚠️ JIRA 조회 실패 (엑셀 기준으로 계속): {e}")
 
     return items, ticket_map
-
-
-def _fmt_rate(rate: float) -> str:
-    """100.0 -> '100', 5.0 -> '5', 4.5 -> '4.5'"""
-    return f"{rate:g}"
 
 
 def _week_ranges(today: date):
@@ -150,7 +146,7 @@ def build_report(half: str | None = None, use_jira: bool = True) -> str:
     lines += [
         f"2. `{year2}년 하반기 DR 모의 훈련 (상반기 무중단 대상)",
         f"   1) 총 {h2_result['total']}대 中 {projected_done}대 완료 "
-        f"(진행률 {_fmt_rate(projected_rate)}%)",
+        f"(진행률 {fmt_rate(projected_rate)}%)",
         "   2) 실적",
         f"      - 금주 실적 ({perf_start:%m/%d} ~ {perf_end:%m/%d}) : {perf_cnt}대",
         f"      - 차주 계획 ({plan_start:%m/%d} ~ {plan_end:%m/%d}) : {plan_cnt}대",
