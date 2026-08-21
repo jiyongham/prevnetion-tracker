@@ -149,6 +149,11 @@ def calc_completion(
         overdue_unfulfilled = bool(sched) and sched < as_of and not completed
         planned = bool(sched) and not overdue_unfulfilled
 
+        # 이 시스템에 연결된(IP/호스트명 매칭) 티켓 중 가장 최근 생성된 것의 JSM요청자.
+        # 미계획 리마인드에서 여러 담당자 후보 중 누구를 1순위로 볼지 판단하는 데 쓰인다.
+        most_recent = max(matched, key=lambda t: t.get("created") or "") if matched else None
+        jsm_requester = (most_recent or {}).get("jsm_requester", "")
+
         details.append({
             "no": item["no"],
             "company": item["company"],
@@ -158,6 +163,7 @@ def calc_completion(
             "ip": item["ip"],
             "ops_team": item["ops_team"],
             "owner": item["owner"],
+            "jsm_requester": jsm_requester,
             "schedule_raw": item["schedule_raw"],
             "schedule": sched,
             # 표시용 일정: M/D로 통일 (엑셀 날짜형/텍스트형 혼재 정규화)

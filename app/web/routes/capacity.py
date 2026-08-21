@@ -1,0 +1,259 @@
+# app/web/routes/capacity.py
+"""용량관리(ASM/파일시스템 증설 - [예방4]) 관련 라우트"""
+import logging
+from datetime import date
+
+from fastapi import APIRouter, Form, Request
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+
+from app.config import settings
+from app.core.capacity_loader import load_capacity_items_merged
+from app.core.jira_client import jira
+from app.core.teams_client import send_teams_dm
+from app.models.db import (
+    get_capacity_input,
+    get_capacity_remind_log_summary,
+    log_capacity_remind,
+    upsert_capacity_input,
+)
+from app.services.capacity import (
+    build_capacity_ticket_summary,
+    calc_capacity_completion,
+    filter_tickets_by_sheet,
+)
+from app.services.capacity_reminder import group_capacity_no_reply, group_capacity_unplanned
+from app.services.capacity_report import send_capacity_report
+from app.services.completion import group_by
+from app.services.matcher import match_items_by_ip
+from app.web.deps import require_updated_by, resolve_owner, templates
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter()
+
+
+def get_capacity_dashboard_data(sheet: str, as_of: date, use_jira: bool = True):
+    items = load_capacity_items_merged(sheet=sheet)
+    ticket_map = {}
+    jira_error = None
+
+    if use_jira:
+        try:
+            issues = jira.get_capacity_tickets()
+            tickets = build_capacity_ticket_summary(issues, settings.planned_end_date_field)
+            targets = [i for i in items if i["is_target"]]
+            match_result = match_items_by_ip(targets, tickets)
+            # 같은 서버가 DATA/ARCH 양쪽에 다 있을 수 있어, 변경작업내용으로 이 시트 소속만 남김
+            ticket_map = filter_tickets_by_sheet(match_result["matched"], sheet)
+        except Exception as e:
+            jira_error = str(e)
+            logger.warning(f"용량관리 JIRA 조회 실패: {e}")
+
+    result = calc_capacity_completion(items, ticket_map, as_of)
+    return result, jira_error
+
+
+@router.get("/capacity", response_class=HTMLResponse)
+def capacity_dashboard(
+    request: Request,
+    sheet: str = "DATA",
+    team: str | None = None,
+    status: str | None = None,
+    q: str | None = None,
+):
+    if sheet not in ("DATA", "ARCH"):
+        sheet = "DATA"
+    today = date.today()
+
+    result, jira_error = get_capacity_dashboard_data(sheet, today)
+    by_team = group_by(result, "ops_team")
+
+    details = result["details"]
+    if team:
+        details = [d for d in details if d["ops_team"] == team]
+    if status == "done":
+        details = [d for d in details if d["completed"]]
+    elif status == "pending":
+        details = [d for d in details if not d["completed"]]
+    elif status == "unplanned":
+        details = [d for d in details if not d["planned"]]
+    if q:
+        kw = q.lower()
+
+        def _match(d):
+            return (
+                kw in (d["ops_team"] or "").lower()
+                or kw in (d["ci_name"] or "").lower()
+                or kw in (d["hostname"] or "").lower()
+                or kw in (d["ip"] or "").lower()
+            )
+
+        details = [d for d in details if _match(d)]
+
+    details = sorted(details, key=lambda d: (d["schedule"] is None, d["schedule"]))
+
+    # 증설 여부(O,X)가 공란인 미회신 대상 (완료율 분모엔 안 들어가지만 별도로 보여줌)
+    all_items = load_capacity_items_merged(sheet=sheet)
+    excluded_cnt = sum(1 for i in all_items if (i.get("expand_flag") or "") == "X")
+    no_reply_items = [i for i in all_items if (i.get("expand_flag") or "") not in ("O", "X")]
+    if team:
+        no_reply_items = [i for i in no_reply_items if i["ops_team"] == team]
+    if q:
+        kw = q.lower()
+        no_reply_items = [
+            i for i in no_reply_items
+            if kw in (i["ops_team"] or "").lower()
+            or kw in (i["ci_name"] or "").lower()
+            or kw in (i["hostname"] or "").lower()
+            or kw in (i["ip"] or "").lower()
+        ]
+
+    return templates.TemplateResponse("capacity.html", {
+        "request": request,
+        "result": result,
+        "details": details,
+        "no_reply_items": no_reply_items,
+        "excluded_cnt": excluded_cnt,
+        "by_team": dict(sorted(by_team.items(), key=lambda x: x[1]["rate"])),
+        "sheet": sheet,
+        "sheet_label": "일반(ASM/파일시스템)" if sheet == "DATA" else "아카이브",
+        "as_of": today,
+        "filter_team": team or "",
+        "filter_status": status or "",
+        "q": q or "",
+        "teams": sorted(by_team.keys()),
+        "admins": sorted(settings.capacity_admin_set),
+        "jira_error": jira_error,
+        "jira_base": settings.jira_url.rstrip("/"),
+    })
+
+
+def _resolve_capacity_is_done(item_no: str, sheet: str, requested: bool, updated_by: str) -> bool:
+    """완료(체크) 처리는 관리자만 변경 가능. 비관리자가 보낸 값은 무시하고 기존값 유지."""
+    if updated_by in settings.capacity_admin_set:
+        return requested
+    existing = get_capacity_input(item_no, sheet)
+    return bool(existing["is_done"]) if existing else False
+
+
+@router.post("/api/capacity/save")
+async def api_capacity_save(request: Request):
+    """용량관리 AJAX 인라인 저장"""
+    data = await request.json()
+    item_no = data["item_no"]
+    sheet = data["sheet"]
+    updated_by = require_updated_by(data.get("updated_by", ""))
+    is_done = _resolve_capacity_is_done(item_no, sheet, bool(data.get("is_done")), updated_by)
+    owner = resolve_owner(data.get("owner", ""), updated_by, settings.capacity_admin_set)
+    upsert_capacity_input(
+        item_no=item_no,
+        sheet=sheet,
+        schedule=data.get("schedule", "").strip(),
+        is_done=is_done,
+        evidence=data.get("evidence", "").strip(),
+        note=data.get("note", "").strip(),
+        updated_by=updated_by,
+        owner=owner,
+    )
+    return JSONResponse({"ok": True})
+
+
+@router.post("/api/capacity/bulk-save")
+async def api_capacity_bulk_save(request: Request):
+    """용량관리 변경된 행만 일괄 저장. 완료값은 관리자만 반영."""
+    data = await request.json()
+    sheet = data["sheet"]
+    updated_by = require_updated_by(data.get("updated_by", ""))
+    rows = data.get("rows", [])
+
+    for r in rows:
+        item_no = r["item_no"]
+        is_done = _resolve_capacity_is_done(item_no, sheet, bool(r.get("is_done")), updated_by)
+        upsert_capacity_input(
+            item_no=item_no,
+            sheet=sheet,
+            schedule=(r.get("schedule") or "").strip(),
+            is_done=is_done,
+            evidence=(r.get("evidence") or "").strip(),
+            note=(r.get("note") or "").strip(),
+            updated_by=updated_by,
+        )
+    return JSONResponse({"ok": True, "count": len(rows)})
+
+
+# ─────────────────────────────────────────────
+# 용량관리 미계획 리마인드 미리보기 (운영팀별 초안, 발송 없음)
+# ─────────────────────────────────────────────
+@router.get("/capacity/remind-preview", response_class=HTMLResponse)
+def capacity_remind_preview(
+    request: Request,
+    sheet: str = "DATA",
+    team: str | None = None,
+    kind: str = "blank",
+):
+    if sheet not in ("DATA", "ARCH"):
+        sheet = "DATA"
+    result, jira_error = get_capacity_dashboard_data(sheet, date.today())
+
+    # 같은 '미계획'이라도 완전 미기입 / 대략적 일정만(예: '11월 예정') 있는 경우를 분리
+    blank_groups = group_capacity_unplanned(result["details"], hinted=False)
+    hinted_groups = group_capacity_unplanned(result["details"], hinted=True)
+    # 미회신(증설 여부 O/X 자체가 공란)은 대상(O)이 아니라 엑셀 전체 행 기준으로 판단
+    no_reply_groups = group_capacity_no_reply(load_capacity_items_merged(sheet=sheet))
+
+    groups = {"hinted": hinted_groups, "no_reply": no_reply_groups}.get(kind, blank_groups)
+
+    # 운영팀별 발송 이력(1회라도 보냈으면 표시)
+    log_summary = get_capacity_remind_log_summary(sheet)
+    for g in blank_groups + hinted_groups + no_reply_groups:
+        g["sent"] = log_summary.get(g["ops_team"])
+
+    selected = None
+    if team:
+        selected = next((g for g in groups if g["ops_team"] == team), None)
+
+    return templates.TemplateResponse("capacity_remind_preview.html", {
+        "request": request,
+        "sheet": sheet,
+        "sheet_label": "일반(ASM/파일시스템)" if sheet == "DATA" else "아카이브",
+        "kind": kind,
+        "groups": groups,
+        "selected": selected,
+        "total_unplanned": sum(g["count"] for g in groups),
+        "blank_total": sum(g["count"] for g in blank_groups),
+        "hinted_total": sum(g["count"] for g in hinted_groups),
+        "no_reply_total": sum(g["count"] for g in no_reply_groups),
+        "sender_team": settings.sender_team,
+        "sender_name": settings.sender_name,
+        "teams_enabled": bool(settings.teams_webhook),
+        "dm_enabled": bool(settings.teams_dm_trigger_webhook),
+        "jira_error": jira_error,
+    })
+
+
+@router.post("/api/capacity/remind-dm")
+async def api_capacity_remind_dm(request: Request):
+    """용량관리 미계획 리마인드 초안을 담당자에게 개인 DM 발송 (Power Automate 경유)"""
+    data = await request.json()
+    name = (data.get("name") or "").strip()
+    team = (data.get("team") or "").strip()
+    message = (data.get("message") or "").strip()
+    sheet = (data.get("sheet") or "").strip()
+    ops_team = (data.get("ops_team") or "").strip()
+    if not name or not message:
+        return JSONResponse(
+            {"ok": False, "error": "이름과 메시지가 필요합니다."}, status_code=400
+        )
+    ok, err = send_teams_dm(name, team, message)
+    if sheet and ops_team:
+        log_capacity_remind(sheet, ops_team, name, team, ok, err)
+    return JSONResponse({"ok": ok, "error": err})
+
+
+# ─────────────────────────────────────────────
+# Teams 발송
+# ─────────────────────────────────────────────
+@router.post("/capacity/send-report")
+def trigger_capacity_report(sheet: str = Form("DATA")):
+    send_capacity_report()
+    return RedirectResponse(url=f"/capacity?sheet={sheet}", status_code=303)
