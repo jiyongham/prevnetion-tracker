@@ -117,6 +117,21 @@ def candidates_of(items: list[dict], cmdb_map: dict | None = None) -> list[dict]
     return list(seen.values())
 
 
+def pick_priority_owner(owners: list[dict], jsm_requester: str = "") -> dict:
+    """
+    한 대상의 여러 담당자 후보 중 1순위를 정한다.
+    이 시스템에 연결된 JIRA 티켓 중 가장 최근 것의 JSM요청자와 이름이 일치하는 담당자가
+    있으면 그 사람을 1순위로 (실제로 최근에 그 사람이 변경작업을 요청했다는 뜻이므로),
+    없으면 엑셀 담당자 칸에 적힌 순서 그대로 첫 번째 사람을 1순위로 쓴다.
+    """
+    if jsm_requester:
+        target = clean_name(jsm_requester)
+        for o in owners:
+            if clean_name(o["name"]) == target:
+                return o
+    return owners[0]
+
+
 def group_and_vote(items: list[dict], key_fn, include_fn) -> list[dict]:
     """
     공통 그룹핑 로직 (DR훈련/용량관리 리마인드가 공유).
@@ -135,8 +150,8 @@ def group_and_vote(items: list[dict], key_fn, include_fn) -> list[dict]:
         key = key_fn(d) or "미지정"
         g = groups.setdefault(key, {"key": key, "items": [], "votes": {}})
         g["items"].append(d)
-        raw = owners[0]["raw"]  # 이 대상의 1순위 담당자에게 표 하나
-        g["votes"][raw] = g["votes"].get(raw, 0) + 1
+        top = pick_priority_owner(owners, d.get("jsm_requester", ""))
+        g["votes"][top["raw"]] = g["votes"].get(top["raw"], 0) + 1
     return list(groups.values())
 
 
