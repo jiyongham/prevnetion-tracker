@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     # 작업 구분 (체크박스형 커스텀필드) - DR훈련 완료 판정 보조 기준 ("DR훈련" 값)
     dr_work_type_field: str = "customfield_19529"
 
+    # 작업 완료(CMDB) - EoS 티켓에서 실제로 전환 완료된 CMDB 대상(Insight Key 포함)을 담는 필드.
+    # "[시스템명]_OLD (SINCASN-xxxxx)" 형태 - 변경작업내용 텍스트에 호스트명/IP가 없어도 이 필드로 정확히 매칭 가능
+    eos_cmdb_done_field: str = "customfield_14615"
+
     @property
     def match_field_list(self) -> list[str]:
         return [f.strip() for f in self.match_fields.split(",") if f.strip()]

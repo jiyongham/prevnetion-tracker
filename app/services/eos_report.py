@@ -6,8 +6,8 @@ from app.core.date_utils import week_ranges
 from app.core.eos_loader import load_eos_items_merged
 from app.core.jira_client import jira
 from app.core.teams_client import send_teams_message
-from app.services.eos import build_eos_ticket_summary, calc_eos_completion, eos_ticket_done_date
-from app.services.matcher import match_items_by_ip
+from app.services.eos import build_eos_ticket_summary, calc_eos_completion, eos_ticket_done_date, filter_track
+from app.services.matcher import match_items_by_cmdb_key, match_items_by_ip, merge_ticket_maps
 
 # OS/DB 트랙 전체 대상 수는 프로젝트 착수 시점에 고정된 모수 (엑셀 행 수와 별개 - 지시에 따라 계산하지 않고 고정값 사용)
 OS_TOTAL_FIXED = 384
@@ -22,8 +22,10 @@ def collect_eos(use_jira: bool = True):
             issues = jira.get_eos_tickets()
             tickets = build_eos_ticket_summary(issues, settings.planned_end_date_field)
             targets = [i for i in items if i["is_target"]]
-            match_result = match_items_by_ip(targets, tickets)
-            ticket_map = match_result["matched"]
+            # 작업 완료(CMDB) 필드의 Insight Key로 우선 매칭, 그 필드가 없는 티켓은 IP/호스트명으로 보강
+            cmdb_map = match_items_by_cmdb_key(targets, tickets)
+            ip_map = match_items_by_ip(targets, tickets)["matched"]
+            ticket_map = merge_ticket_maps(cmdb_map, ip_map)
         except Exception as e:
             print(f"⚠️ EoS JIRA 조회 실패 (엑셀 기준으로 계속): {e}")
     return items, ticket_map
@@ -80,27 +82,13 @@ def _track_section(
     ]
 
 
-def _track_items(items: list[dict], track_target_field: str) -> list[dict]:
-    """
-    '제품별 EoS 일정' 표로 판별한 os_eos_target/db_eos_target 기준으로 트랙별 대상만 골라낸다.
-    같은 target이어도 OS만 EoS 대상이고 DB는 아직 아닌 경우가 있어(반대도 마찬가지),
-    calc_eos_completion이 보는 is_target을 트랙 기준으로 다시 씌운 사본을 만든다.
-    """
-    result = []
-    for i in items:
-        i2 = dict(i)
-        i2["is_target"] = bool(i["is_target"] and i.get(track_target_field))
-        result.append(i2)
-    return result
-
-
 def build_eos_report(use_jira: bool = True) -> str:
     today = date.today()
     perf_start, perf_end, plan_start, plan_end = week_ranges(today)
 
     items, ticket_map = collect_eos(use_jira)
-    os_items = _track_items(items, "os_eos_target")
-    db_items = _track_items(items, "db_eos_target")
+    os_items = filter_track(items, "OS")
+    db_items = filter_track(items, "DB")
 
     lines = ["하반기", ""]
     lines += _track_section("OS", OS_TOTAL_FIXED, os_items, ticket_map, today, perf_start, perf_end, plan_start, plan_end)

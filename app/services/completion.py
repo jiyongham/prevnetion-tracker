@@ -1,4 +1,5 @@
 # app/services/completion.py
+import re
 from datetime import date
 
 from app.config import settings
@@ -6,6 +7,20 @@ from app.core.date_utils import half_window, parse_schedule, parse_jira_date
 from app.core.excel_loader import get_targets
 
 DONE_MARKS = {"O", "0", "완료", "Y", "YES", "DONE"}
+
+_CMDB_KEY_PATTERN = re.compile(r"\(([A-Z]+-\d+)\)\s*$")
+
+
+def _extract_cmdb_keys(raw: list | None) -> set[str]:
+    """'작업 완료(CMDB)' 필드(예: '[시스템명]_OLD (SINCASN-97837)') -> {Insight Key, ...}"""
+    if not raw:
+        return set()
+    keys = set()
+    for entry in raw:
+        m = _CMDB_KEY_PATTERN.search(str(entry))
+        if m:
+            keys.add(m.group(1))
+    return keys
 
 
 def fmt_rate(rate: float) -> str:
@@ -32,8 +47,12 @@ def ticket_kind(f: dict) -> str:
     return "기타"
 
 
-def build_ticket_summary(issues: list[dict], field_id: str, kind_fn=ticket_kind) -> list[dict]:
-    """JIRA 원본 -> 필요 필드만 (kind_fn: 티켓 종류 판별 함수(fields dict를 받음), 기본은 DR훈련용)"""
+def build_ticket_summary(issues: list[dict], field_id: str, kind_fn=ticket_kind, cmdb_field: str | None = None) -> list[dict]:
+    """
+    JIRA 원본 -> 필요 필드만 (kind_fn: 티켓 종류 판별 함수(fields dict를 받음), 기본은 DR훈련용)
+    cmdb_field: '작업 완료(CMDB)'류 필드 ID를 주면 그 안의 Insight Key들을 cmdb_keys로 뽑아준다
+    (변경작업내용 텍스트에 호스트명/IP가 없는 티켓도 이 필드로 정확히 매칭하기 위함 - EoS 전용)
+    """
     result = []
     for issue in issues:
         f = issue["fields"]
@@ -47,6 +66,7 @@ def build_ticket_summary(issues: list[dict], field_id: str, kind_fn=ticket_kind)
             "kind": kind_fn(f),
             "description": f.get("description") or "",
             "match_text": match_text,
+            "cmdb_keys": _extract_cmdb_keys(f.get(cmdb_field)) if cmdb_field else set(),
             "status": f["status"]["name"],
             "planned_end_date": parse_jira_date(f.get(field_id)),
             "planned_start_date": parse_jira_date(f.get(settings.planned_start_date_field)),
