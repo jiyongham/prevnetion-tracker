@@ -120,6 +120,7 @@
           <th style="width:130px">증적 ✏️</th>
           <th style="width:130px">비고 ✏️</th>
           <th>JIRA</th><th>상태</th><th style="width:60px">저장</th>
+          <th class="admin-only" style="width:60px;display:none">제외</th>
         </tr>
       </thead>
       <tbody>
@@ -154,12 +155,52 @@
             {% else %}<span class="badge bad">미완료</span>{% endif %}
           </td>
           <td><button class="btn-save" onclick="saveRow(this)">저장</button></td>
+          <td class="admin-only" style="display:none">
+            <button class="btn-sm btn-exclude" onclick="excludeRow(this)" title="증설 안 함으로 확정 - 제외 대상으로 이동">🚫 제외</button>
+          </td>
         </tr>
       {% endfor %}
       </tbody>
     </table>
     </div>
   </section>
+
+  {% if excluded_items %}
+  <section class="panel">
+    <h2>🚫 제외 대상 ({{ excluded_items|length }}건) <span class="muted small">— 증설 안 함으로 확정된 대상</span></h2>
+    <div class="table-scroll">
+    <table>
+      <thead>
+        <tr><th>CI명</th><th>호스트명</th><th>운영팀</th><th>담당자</th><th>사유/처리자</th><th class="admin-only" style="display:none">복귀</th></tr>
+      </thead>
+      <tbody>
+      {% for d in excluded_items %}
+        <tr>
+          <td class="strong">{{ d.ci_name }}</td>
+          <td class="mono small">{{ d.hostname }}</td>
+          <td class="small">{{ d.ops_team }}</td>
+          <td class="small">{{ d.owner }}</td>
+          <td class="small">
+            {% if d.expand_flag == 'X' %}
+              {{ d.exclude_reason or "(엑셀 X)" }}
+            {% else %}
+              {{ d.updated_by }} 처리
+            {% endif %}
+          </td>
+          <td class="admin-only" style="display:none">
+            {% if d.expand_flag != 'X' %}
+            <button class="btn-sm" data-no="{{ d.item_no }}" data-sheet="{{ d.sheet }}" onclick="restoreRow(this)">↩️ 복귀</button>
+            {% else %}
+            <span class="muted small">-</span>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </section>
+  {% endif %}
 
   <footer>
     <span>기준일 {{ as_of }}</span>
@@ -246,6 +287,54 @@ async function saveRow(btn) {
     } else { showToast("저장 실패", false); }
   } catch (e) { showToast("오류: " + e.message, false); }
   finally { btn.disabled = false; btn.textContent = "저장"; }
+}
+
+async function excludeRow(btn) {
+  const name = requireName();
+  if (!name) return;
+  const tr = btn.closest("tr");
+  const ci = tr.querySelector("td.strong").textContent;
+  if (!confirm(`${ci} 을(를) 증설 안 함으로 확정해 제외 대상으로 옮깁니다. 계속할까요?`)) return;
+
+  btn.disabled = true;
+  try {
+    const res = await fetch("/api/capacity/exclude", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ item_no: tr.dataset.no, sheet: tr.dataset.sheet, updated_by: name, excluded: true }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      showToast("제외 처리 완료");
+      setTimeout(() => location.reload(), 500);
+    } else {
+      showToast("실패: " + (data.error || ""), false);
+      btn.disabled = false;
+    }
+  } catch (e) { showToast("오류: " + e.message, false); btn.disabled = false; }
+}
+
+async function restoreRow(btn) {
+  const name = requireName();
+  if (!name) return;
+  if (!confirm("제외를 해제하고 다시 대상 목록으로 복귀시킬까요?")) return;
+
+  btn.disabled = true;
+  try {
+    const res = await fetch("/api/capacity/exclude", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ item_no: btn.dataset.no, sheet: btn.dataset.sheet, updated_by: name, excluded: false }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      showToast("복귀 완료");
+      setTimeout(() => location.reload(), 500);
+    } else {
+      showToast("실패: " + (data.error || ""), false);
+      btn.disabled = false;
+    }
+  } catch (e) { showToast("오류: " + e.message, false); btn.disabled = false; }
 }
 
 async function bulkSave() {
