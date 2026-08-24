@@ -79,9 +79,9 @@ def main():
                 print("  -- 매칭된 티켓의 DATA/ARCH 소속 판정 (이 시트로 인정되는지) --")
                 for t in all_matched:
                     cls = classify_capacity_sheet(t.get("match_text"))
-                    mark = "O 이 시트로 인정됨" if cls == sheet else f"X 이 시트로 인정 안 됨 (판정: {cls or '보류(패턴 매칭 실패)'})"
+                    mark = "O 이 시트로 인정됨" if sheet in cls else f"X 이 시트로 인정 안 됨 (판정: {cls or '보류(패턴 매칭 실패)'})"
                     print(f"    {t['key']} [{mark}] planned_end_date={t.get('planned_end_date')}")
-                    if cls != sheet:
+                    if sheet not in cls:
                         print(f"        변경작업내용 일부: {(t.get('match_text') or '')[:200]!r}")
             print()
 
