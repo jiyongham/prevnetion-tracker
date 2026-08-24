@@ -26,7 +26,11 @@ def load_eos_product_table(excel_path: str | None = None) -> list[dict]:
     if not path.exists():
         return []
 
-    df = pd.read_excel(path, sheet_name="제품별 EoS 일정", header=None, dtype=object)
+    try:
+        df = pd.read_excel(path, sheet_name="제품별 EoS 일정", header=None, dtype=object)
+    except ValueError as e:
+        print(f"⚠️ '제품별 EoS 일정' 시트 로드 실패 (엑셀 파일이 최신본이 아닐 수 있음): {e}")
+        return []
 
     rows = []
     cur_kind = cur_vendor = cur_model = None
@@ -123,6 +127,9 @@ def match_db_eos_date(raw: str, table: list[dict]) -> date | None:
     if not text:
         return None
     db_rows = [r for r in table if r["kind"] == "DBMS"]
+    # 오픈소스 DB(PostgreSQL/Redis/MariaDB/MySQL)는 "(DC)" 표기가 붙은 것만 우리가 EoS를 챙기는
+    # 대상이라, 그 표기가 없으면 버전이 매칭되더라도 대상에서 제외한다 (상용 DB는 해당 없음).
+    has_dc = bool(re.search(r"\(dc\)", text, re.I))
 
     m = re.search(r"oracle[_\s]*(\d+)([cg])", text, re.I)
     if m:
@@ -151,21 +158,29 @@ def match_db_eos_date(raw: str, table: list[dict]) -> date | None:
 
     m = re.search(r"postgre(?:sql)?[_\s]*(\d+)", text, re.I)
     if m:
+        if not has_dc:
+            return None
         hit = _best_by_version([r for r in db_rows if r["vendor"] == "PostgreSQL"], _parse_version_tuple(m.group(1)))
         return hit["eos_date"] if hit else None
 
     m = re.search(r"redis[_\s]*([\d.]+)", text, re.I)
     if m:
+        if not has_dc:
+            return None
         hit = _best_by_version([r for r in db_rows if r["vendor"] == "Redis"], _parse_version_tuple(m.group(1)))
         return hit["eos_date"] if hit else None
 
     m = re.search(r"maria\s*db[_\s]*([\d.]+)", text, re.I)
     if m:
+        if not has_dc:
+            return None
         hit = _best_by_version([r for r in db_rows if r["vendor"] == "MariaDB"], _parse_version_tuple(m.group(1)))
         return hit["eos_date"] if hit else None
 
     m = re.search(r"mysql[_\s]*([\d.]+)", text, re.I)
     if m:
+        if not has_dc:
+            return None
         hit = _best_by_version([r for r in db_rows if r["vendor"] == "MySQL"], _parse_version_tuple(m.group(1)))
         return hit["eos_date"] if hit else None
 

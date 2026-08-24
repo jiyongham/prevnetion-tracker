@@ -87,3 +87,36 @@ def match_items_by_ip(items: list[dict], tickets: list[dict]) -> dict:
         "unmatched": unmatched,
         "ip_index_size": len(ip_index),
     }
+
+
+def match_items_by_cmdb_key(items: list[dict], tickets: list[dict]) -> dict[str, list[dict]]:
+    """
+    티켓의 '작업 완료(CMDB)' 필드(cmdb_keys, Insight Key 집합)로 직접 매칭 (EoS 전용).
+    변경작업내용에 호스트명/IP가 안 적혀 있어도, 이 필드에 대상 CMDB Key가 있으면
+    IP/호스트명 매칭 없이도 정확히 연결된다.
+    """
+    key_index: dict[str, list[dict]] = {}
+    for t in tickets:
+        for key in t.get("cmdb_keys") or ():
+            key_index.setdefault(key, []).append(t)
+
+    matched = {}
+    for item in items:
+        found = key_index.get(item["no"])
+        if found:
+            matched[item["no"]] = found
+    return matched
+
+
+def merge_ticket_maps(*maps: dict[str, list[dict]]) -> dict[str, list[dict]]:
+    """여러 매칭 소스(ticket_map)를 item_no 기준으로 합친다 (같은 티켓 key는 중복 제거)"""
+    merged: dict[str, list[dict]] = {}
+    for m in maps:
+        for item_no, tickets in m.items():
+            bucket = merged.setdefault(item_no, [])
+            seen = {t["key"] for t in bucket}
+            for t in tickets:
+                if t["key"] not in seen:
+                    seen.add(t["key"])
+                    bucket.append(t)
+    return merged

@@ -12,6 +12,10 @@ from app.services.eos_products import load_eos_product_table, match_db_eos_date,
 # "EOS 진행 (프로젝트) → 제외 (내년)"처럼 화살표로 상태가 갱신된 경우, 화살표 뒤(최신) 값이 진짜 현재 상태
 _MONTH_YEAR_PATTERN = re.compile(r"(?:(\d{2,4})년\s*)?(\d{1,2})월")
 
+# 이 프로젝트의 OS/DB EoS 대상 범위: 벤더 EOS일자가 "오늘" 지난 것만이 아니라, 2027년 하반기(연말)까지
+# 도래하는 것까지 전부 이번 프로젝트 대상으로 본다 (아직 지원종료 전이어도 선제적으로 전환 대상에 포함).
+OS_DB_TARGET_CUTOFF = date(2027, 12, 31)
+
 
 def _s(row, col: str) -> str:
     """안전하게 문자열 추출"""
@@ -27,6 +31,25 @@ def _effective(raw: str) -> str:
     if "→" in raw:
         raw = raw.split("→")[-1].strip()
     return raw
+
+
+def _original(raw: str) -> str:
+    """'A → B' 형태면 처음(최초) 값만 사용"""
+    raw = (raw or "").strip()
+    if "→" in raw:
+        raw = raw.split("→")[0].strip()
+    return raw
+
+
+def was_originally_target(raw: str) -> bool:
+    """
+    OS/DB EoS 대상(분모) 판정은 최신 상태가 아니라 '프로젝트 착수 시 EOS 진행(대상)으로
+    산정됐었는지'를 기준으로 한다. 이후 '폐기(예정)'/'제외 (내년)'처럼 화살표로 갱신된 건
+    실제로는 대부분 계속 대상으로 유지돼야 하는 걸로 확인됨 (실제 OS/DB 대상 키 목록과
+    대조해 검증 완료) - 반대로 '미응답 → EOS 진행'처럼 나중에 확정된 건은 원래 미응답이라
+    실제 목록엔 없는 경우가 확인됨. status(표시용 배지/제외건수)는 여전히 최신값 기준.
+    """
+    return _original(raw).lower().startswith("eos 진행")
 
 
 def classify_eos_status(raw: str) -> str:
@@ -82,7 +105,6 @@ def load_eos_items(excel_path: str | None = None) -> list[dict]:
 
     df = pd.read_excel(path, sheet_name="EOS대상(OS,DB)", dtype=str)
     product_table = load_eos_product_table(excel_path)
-    today = date.today()
 
     items = []
     for _, row in df.iterrows():
@@ -92,7 +114,7 @@ def load_eos_items(excel_path: str | None = None) -> list[dict]:
             continue
 
         status_raw = _s(row, "EOS 진행/폐기 예정/제외")
-        is_target = classify_eos_status(status_raw) == "target"
+        is_target = was_originally_target(status_raw)
         os_val = _s(row, "OS")
         db_val = _s(row, "DB")
         os_eos_date = match_os_eos_date(os_val, product_table)
@@ -116,12 +138,14 @@ def load_eos_items(excel_path: str | None = None) -> list[dict]:
             "center": _s(row, "센터구분"),
             "os": os_val,
             "db": db_val,
-            # '제품별 EoS 일정' 표 기준 공식 EOS일자. 이미 지났고(오늘 이후 아님) 대상(target)이면
-            # 그 항목은 OS/DB 트랙 각각의 EoS 대상으로 집계한다 (리포트의 [OS]/[DB] 구분 기준).
+            # '제품별 EoS 일정' 표 기준 공식 EOS일자. 이 프로젝트 대상 범위(2027년 하반기까지 EOS
+            # 도래하는 것 전부)에 들어오고 대상(target)이면, 그 항목은 OS/DB 트랙 각각의 EoS 대상으로
+            # 집계한다 (리포트의 [OS]/[DB] 구분 기준). "오늘 이미 지났는지"가 아니라 "2027년 말까지
+            # 도래하는지"가 기준 - 벤더 지원종료가 아직 안 됐어도 선제적으로 전환 대상에 포함되는 경우가 많다.
             "os_eos_date": os_eos_date,
             "db_eos_date": db_eos_date,
-            "os_eos_target": is_target and bool(os_eos_date) and os_eos_date <= today,
-            "db_eos_target": is_target and bool(db_eos_date) and db_eos_date <= today,
+            "os_eos_target": is_target and bool(os_eos_date) and os_eos_date <= OS_DB_TARGET_CUTOFF,
+            "db_eos_target": is_target and bool(db_eos_date) and db_eos_date <= OS_DB_TARGET_CUTOFF,
             "infra_type": _s(row, "통합인프라 종류"),
             "hw": _s(row, "HW장비"),
             "manage_part": _s(row, "서버관리부서"),
