@@ -3,15 +3,37 @@ from datetime import date
 
 from app.config import settings
 from app.core.capacity_loader import load_capacity_items_merged
+from app.core.date_utils import week_ranges
 from app.core.jira_client import jira
 from app.core.teams_client import send_teams_message
 from app.services.capacity import (
     build_capacity_ticket_summary,
     calc_capacity_completion,
+    capacity_ticket_done_date,
     filter_tickets_by_sheet,
 )
 from app.services.completion import fmt_rate
 from app.services.matcher import match_items_by_ip
+
+
+def _projected_done(result: dict, ticket_map: dict, perf_start: date, perf_end: date) -> int:
+    """
+    완료 댓수 = 이미 완료된 대상 + 차주(perf window)에 완료 예정인 대상.
+    DR훈련 리포트(report.py의 projected_done)와 동일한 방식.
+    """
+    def _has_ticket_in(no):
+        return any(
+            (d := capacity_ticket_done_date(t)) and perf_start <= d <= perf_end
+            for t in (ticket_map.get(no) or [])
+        )
+
+    completed_nos = {d["no"] for d in result["details"] if d["completed"]}
+    perf_nos = {
+        d["no"] for d in result["details"]
+        if _has_ticket_in(d["no"])
+        or (d["schedule"] and perf_start <= d["schedule"] <= perf_end)
+    }
+    return len(completed_nos | perf_nos)
 
 
 def collect_capacity(sheet: str, use_jira: bool = True):
@@ -44,7 +66,13 @@ def build_capacity_report(use_jira: bool = True) -> str:
     data_result = calc_capacity_completion(data_items, data_tmap, today)
     arch_result = calc_capacity_completion(arch_items, arch_tmap, today)
     total_target = data_result["total"] + arch_result["total"]
-    total_done = data_result["done"] + arch_result["done"]
+
+    # 완료 댓수 = 오늘 기준 완료 + 차주(발송 다음 주) 완료 예정 (DR훈련 리포트와 동일 기준)
+    perf_start, perf_end, _, _ = week_ranges(today)
+    total_done = (
+        _projected_done(data_result, data_tmap, perf_start, perf_end)
+        + _projected_done(arch_result, arch_tmap, perf_start, perf_end)
+    )
     rate = round(total_done / total_target * 100, 1) if total_target else 0.0
 
     lines = [
