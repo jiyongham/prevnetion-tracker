@@ -11,23 +11,24 @@
 <div class="container">
 
   <header>
-    <h1>📣 용량관리 미계획 리마인드 미리보기 ({{ sheet_label }})</h1>
-    <a href="/capacity?sheet={{ sheet }}" class="btn-sm">← 용량관리</a>
+    <h1>📣 용량관리 미계획 리마인드 미리보기 (일반+아카이브 통합)</h1>
+    <a href="/capacity" class="btn-sm">← 용량관리</a>
   </header>
 
   <div class="alert" style="background:#eef4ff;color:#334">
     운영팀별 <strong>{{ total_unplanned }}건</strong> · 아래는 <strong>발송 전 초안</strong>입니다.
-    (아직 실제 발송은 하지 않습니다. 내용·대상 확인용)
+    (아직 실제 발송은 하지 않습니다. 내용·대상 확인용. 같은 서버가 일반/아카이브 양쪽에 다 있으면
+    한 줄로 합쳐서 보여줍니다)
   </div>
 
   <div class="tabs">
-    <a href="/capacity/remind-preview?sheet={{ sheet }}&kind=blank" class="tab {% if kind == 'blank' %}active{% endif %}">
+    <a href="/capacity/remind-preview?kind=blank" class="tab {% if kind == 'blank' %}active{% endif %}">
       🈳 일정 미기입 <span class="cnt">{{ blank_total }}</span>
     </a>
-    <a href="/capacity/remind-preview?sheet={{ sheet }}&kind=hinted" class="tab {% if kind == 'hinted' %}active{% endif %}">
+    <a href="/capacity/remind-preview?kind=hinted" class="tab {% if kind == 'hinted' %}active{% endif %}">
       🕓 대략적 일정만 있음 <span class="cnt">{{ hinted_total }}</span>
     </a>
-    <a href="/capacity/remind-preview?sheet={{ sheet }}&kind=no_reply" class="tab {% if kind == 'no_reply' %}active{% endif %}">
+    <a href="/capacity/remind-preview?kind=no_reply" class="tab {% if kind == 'no_reply' %}active{% endif %}">
       📢 미회신(O,X 미기입) <span class="cnt">{{ no_reply_total }}</span>
     </a>
   </div>
@@ -45,12 +46,12 @@
     <!-- 운영팀 선택 -->
     <aside class="panel remind-side">
       <h2>운영팀 선택</h2>
-      <a href="/capacity/remind-preview?sheet={{ sheet }}&kind={{ kind }}"
+      <a href="/capacity/remind-preview?kind={{ kind }}"
          class="owner-item {% if not selected %}active{% endif %}">
         <span>전체 보기</span><span class="cnt">{{ total_unplanned }}</span>
       </a>
       {% for g in groups %}
-      <a href="/capacity/remind-preview?sheet={{ sheet }}&kind={{ kind }}&team={{ g.ops_team | urlencode }}"
+      <a href="/capacity/remind-preview?kind={{ kind }}&team={{ g.ops_team | urlencode }}"
          class="owner-item {% if selected and selected.ops_team == g.ops_team %}active{% endif %}">
         <span>{% if g.sent %}✅ {% endif %}{{ g.ops_team }} <span class="muted">{{ g.name }}</span></span>
         <span class="cnt">{{ g.count }}</span>
@@ -65,7 +66,7 @@
     <section class="remind-main">
       {% set show = [selected] if selected else groups %}
       {% for g in show %}
-      <div class="panel draft" data-owner="{{ g.owner }}" data-sheet="{{ sheet }}" data-ops-team="{{ g.ops_team }}">
+      <div class="panel draft" data-owner="{{ g.owner }}" data-ops-team="{{ g.ops_team }}">
         <div class="panel-head">
           <h2>{{ g.ops_team }} <span class="muted">{{ g.name }} · {{ g.count }}건</span>
             <span class="send-status">
@@ -95,7 +96,7 @@
         <pre class="msg">안녕하세요, <span class="greet-name">{{ g.given }}</span>{{ g.greeting_suffix }}</pre>
         <table class="editable">
           <thead>
-            <tr><th>CI명</th><th>호스트명</th><th>IP</th><th>운영팀</th></tr>
+            <tr><th>CI명</th><th>호스트명</th><th>IP</th><th>구분</th><th>운영팀</th></tr>
           </thead>
           <tbody>
           {% for d in g.targets %}
@@ -103,6 +104,7 @@
               <td class="strong">{{ d.ci_name }}</td>
               <td class="mono small">{{ d.hostname }}</td>
               <td class="mono small">{{ d.ip }}</td>
+              <td class="small">{{ d.sheet_label }}</td>
               <td class="small">{{ d.ops_team }}</td>
             </tr>
           {% endfor %}
@@ -147,13 +149,12 @@ async function doSendDM(draft) {
   const name = opt.dataset.name;
   const team = opt.dataset.team || "";
   const message = draft.querySelector(".msg").textContent;
-  const sheet = draft.dataset.sheet;
   const opsTeam = draft.dataset.opsTeam;
   try {
     const res = await fetch("/api/capacity/remind-dm", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, team, message, sheet, ops_team: opsTeam }),
+      body: JSON.stringify({ name, team, message, ops_team: opsTeam }),
     });
     const data = await res.json();
     setStatus(draft, data.ok, data.ok ? "발송완료 (새로고침하면 이력 표시)" : (data.error || "발송 실패"));
