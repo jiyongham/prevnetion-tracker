@@ -137,7 +137,16 @@ def calc_capacity_completion(
     as_of: date,
     base_year: int | None = None,
 ) -> dict:
-    """완료율 계산 (증설 여부 O만 분모). ticket_map은 item['no'](시트 내 번호) 기준."""
+    """
+    완료율 계산 (증설 여부 O만 분모). ticket_map은 item['no'](시트 내 번호) 기준.
+
+    상태 판정 기준 (3단계):
+    - 완료   : judge_capacity 기준 완료 처리됨
+    - 미완료 : JIRA 티켓은 실제로 잡혀 있는데(jira_matched) 아직 완료는 아님
+    - 미계획 : 아직 JIRA 티켓이 없음 - 엑셀/웹에 "9월중"처럼 대략적인 일정 텍스트만
+               적혀 있어도 실제 티켓이 없으면 미계획으로 본다 (일정 텍스트 존재 여부가
+               아니라 티켓 존재 여부가 기준).
+    """
     year = base_year or as_of.year
     targets = get_targets(items)
     w_start, w_end = half_window(year, "H2")
@@ -160,8 +169,7 @@ def calc_capacity_completion(
         )
 
         sched = parse_schedule(item.get("schedule_raw", ""), year)
-        overdue_unfulfilled = bool(sched) and sched < as_of and not completed
-        planned = bool(sched) and not overdue_unfulfilled
+        planned = bool(in_window)  # "미완료" 여부 = 실제 JIRA 티켓 존재 여부
 
         # 이 시스템에 연결된(IP/호스트명 매칭) 티켓 중 가장 최근 생성된 것의 JSM요청자.
         # 미계획 리마인드에서 여러 담당자 후보 중 누구를 1순위로 볼지 판단하는 데 쓰인다.

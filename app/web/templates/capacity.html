@@ -171,7 +171,7 @@
     <div class="table-scroll">
     <table>
       <thead>
-        <tr><th>CI명</th><th>호스트명</th><th>운영팀</th><th>담당자</th><th>사유/처리자</th><th class="admin-only" style="display:none">복귀</th></tr>
+        <tr><th>CI명</th><th>호스트명</th><th>운영팀</th><th>담당자</th><th>사유/처리자</th><th>상태</th><th class="admin-only" style="display:none">복귀</th></tr>
       </thead>
       <tbody>
       {% for d in excluded_items %}
@@ -187,6 +187,7 @@
               {{ d.updated_by }} 처리
             {% endif %}
           </td>
+          <td><span class="badge muted">제외</span></td>
           <td class="admin-only" style="display:none">
             {% if d.expand_flag != 'X' %}
             <button class="btn-sm" data-no="{{ d.item_no }}" data-sheet="{{ d.sheet }}" onclick="restoreRow(this)">↩️ 복귀</button>
