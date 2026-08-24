@@ -28,21 +28,28 @@ _DATA_PATTERNS = [re.compile(r"/oradata", re.I), re.compile(r"\bDATA(?!BASE)", r
 _ARCH_PATTERNS = [re.compile(r"/arch", re.I), re.compile(r"\bRECO(?!VERY)", re.I)]
 
 
-def classify_capacity_sheet(match_text: str) -> str | None:
-    """티켓의 변경작업내용에서 DATA/ARCH 여부 판별. 둘 다 안 걸리면 None(판정 보류)."""
+def classify_capacity_sheet(match_text: str) -> set[str]:
+    """
+    티켓의 변경작업내용에서 DATA/ARCH 여부 판별 (해당 없으면 빈 set).
+    한 티켓에서 DATA·RECO(ASM) 영역을 같이 증설 요청하는 경우가 흔해서
+    (예: "DATA 영역 2T, Arch 영역 1T 증설") 둘 다 걸릴 수 있어 set으로 반환한다 -
+    예전처럼 DATA를 먼저 체크해서 하나만 반환하면, 두 영역을 같이 요청한 티켓이
+    전부 DATA로만 잡히고 ARCH 쪽에서는 완전히 누락됐다.
+    """
     text = match_text or ""
+    sheets = set()
     if any(p.search(text) for p in _DATA_PATTERNS):
-        return "DATA"
+        sheets.add("DATA")
     if any(p.search(text) for p in _ARCH_PATTERNS):
-        return "ARCH"
-    return None
+        sheets.add("ARCH")
+    return sheets
 
 
 def filter_tickets_by_sheet(ticket_map: dict[str, list[dict]], sheet: str) -> dict[str, list[dict]]:
     """IP/호스트명으로 매칭된 티켓 중, 변경작업내용상 이 시트(DATA/ARCH) 소속인 것만 남긴다."""
     filtered = {}
     for no, tickets in ticket_map.items():
-        keep = [t for t in tickets if classify_capacity_sheet(t.get("match_text")) == sheet]
+        keep = [t for t in tickets if sheet in classify_capacity_sheet(t.get("match_text"))]
         if keep:
             filtered[no] = keep
     return filtered
