@@ -100,17 +100,19 @@ def build_no_reply_message(given: str, items: list[dict]) -> str:
 
 def group_capacity_no_reply(items: list[dict]) -> list[dict]:
     """
-    증설 여부(O,X)가 공란인 '미회신' 대상을 시스템 운영팀 단위로 묶고 초안까지 생성.
+    '진짜 미회신'(증설 여부 공란 + 아직 일정도 없음) 대상을 시스템 운영팀 단위로 묶고 초안까지 생성.
     주의: items는 대상(O)만이 아니라 엑셀 전체 행이어야 한다 (calc_capacity_completion
-    결과의 details는 이미 O만 걸러진 상태라 여기엔 못 씀 - load_capacity_items_merged를 그대로 넘길 것).
+    결과의 details는 이미 대상만 걸러진 상태라 여기엔 못 씀 - load_capacity_items_merged를 그대로 넘길 것).
     DATA/ARCH 두 시트 항목을 같이 넘기면, 같은 서버는 한 줄(초안 한 건)로 합쳐진다.
+    status_kind가 "no_reply"인 것만 포함 - 일정을 이미 입력한 대상은 증설 의사로 보고
+    (status_kind="target") 이 리마인드에서 빠진다.
 
     반환: [{owner, ops_team, name, team, given, count, targets, message}, ...] (대상 많은 순)
     """
     raw_groups = group_and_vote(
         items,
         key_fn=lambda d: d.get("ops_team"),
-        include_fn=lambda d: (d.get("expand_flag") or "") not in ("O", "X"),
+        include_fn=lambda d: d.get("status_kind") == "no_reply",
     )
 
     result = []
