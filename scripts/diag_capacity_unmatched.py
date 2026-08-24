@@ -4,7 +4,7 @@
 매칭은 됐는데 화면에 안 뜨는지) 확인.
 
 DR훈련용 diag_unmatched_item.py와 같은 방식이되, 용량관리는 매칭 성공 이후에도
-DATA/ARCH 소속 판정(classify_capacity_sheet)에서 한 번 더 걸러질 수 있어 그 단계도 같이 보여준다.
+DATA/ARCH 소속 판정(classify_capacity_sheets)에서 한 번 더 걸러질 수 있어 그 단계도 같이 보여준다.
 
 사용법:
   python -m scripts.diag_capacity_unmatched scdf-imalldb1
@@ -15,7 +15,7 @@ import sys
 from app.config import settings
 from app.core.capacity_loader import load_capacity_items_merged
 from app.core.jira_client import jira
-from app.services.capacity import capacity_ticket_kind, classify_capacity_sheet
+from app.services.capacity import capacity_ticket_kind, classify_capacity_sheets
 from app.services.completion import build_ticket_summary
 from app.services.matcher import build_ip_index, parse_excel_ips
 
@@ -76,12 +76,12 @@ def main():
                       "아직 JIRA 티켓이 안 만들어졌거나(제목에 '예방4' 없음), "
                       "변경작업 대상 필드에 이 IP/호스트명이 안 적혀 있을 가능성이 큽니다.")
             else:
-                print("  -- 매칭된 티켓의 DATA/ARCH 소속 판정 (이 시트로 인정되는지) --")
+                print("  -- 매칭된 티켓의 DATA/ARCH 소속 판정 (이 시트로 인정되는지, 양쪽 다 인정될 수도 있음) --")
                 for t in all_matched:
-                    cls = classify_capacity_sheet(t.get("match_text"))
-                    mark = "O 이 시트로 인정됨" if cls == sheet else f"X 이 시트로 인정 안 됨 (판정: {cls or '보류(패턴 매칭 실패)'})"
+                    cls = classify_capacity_sheets(t.get("match_text"))
+                    mark = "O 이 시트로 인정됨" if sheet in cls else f"X 이 시트로 인정 안 됨 (판정: {sorted(cls) or '보류(패턴 매칭 실패)'})"
                     print(f"    {t['key']} [{mark}] planned_end_date={t.get('planned_end_date')}")
-                    if cls != sheet:
+                    if sheet not in cls:
                         print(f"        변경작업내용 일부: {(t.get('match_text') or '')[:200]!r}")
             print()
 
