@@ -52,22 +52,22 @@ class Settings(BaseSettings):
     report_cron_minute: int = 0       # 분
     timezone: str = "Asia/Seoul"
 
-    # 미계획 리마인드 발신자 (초안 서명)
-    sender_team: str = "OO팀"
-    sender_name: str = "홍길동"
-    capacity_sender_name: str = "홍길동"   # 용량관리 리마인드는 발신자가 다름
+    # 미계획 리마인드 발신자 (초안 서명) - 실명/부서명이라 기본값 없이 .env에서만 설정
+    sender_team: str
+    sender_name: str
+    capacity_sender_name: str   # 용량관리 리마인드는 발신자가 다름
 
-    # 대시보드 접속 주소 (리마인드 메시지 하단 안내용, 동적 IP라 바뀌면 .env만 수정)
-    dashboard_url: str = "http://0.0.0.0:8000"
+    # 대시보드 접속 주소 (리마인드 메시지 하단 안내용, 사내 IP라 .env에서만 설정)
+    dashboard_url: str
 
-    # 완료(체크) 처리 가능한 관리자 (입력자명 기준, 쉼표 구분)
-    admin_users: str = "홍길동"
+    # 완료(체크) 처리 가능한 관리자 (입력자명 기준, 쉼표 구분) - 실명이라 기본값 없이 .env에서만 설정
+    admin_users: str
 
     # 용량관리 전용 관리자 (DR훈련과 별도 - 입력자명 기준, 쉼표 구분)
-    capacity_admin_users: str = "홍길동"
+    capacity_admin_users: str
 
     # EoS 전용 관리자
-    eos_admin_users: str = "홍길동"
+    eos_admin_users: str
 
     # 사내 LLM Agent 게이트웨이 (조회 챗봇용)
     agent_token_url: str = ""
