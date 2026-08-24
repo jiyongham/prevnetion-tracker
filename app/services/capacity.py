@@ -21,8 +21,11 @@ def build_capacity_ticket_summary(issues: list[dict], field_id: str) -> list[dic
 # 변경작업내용(match_text) 안의 마운트/디스크그룹 표기로 DATA(일반)/ARCH(아카이브) 티켓 판별
 # 같은 서버가 DATA·ARCH 양쪽 시트에 다 나오는 경우가 많아서, IP/호스트명만으로는 어느 쪽
 # 작업인지 구분이 안 됨 -> 변경작업내용 텍스트로 소속 시트를 가려낸다.
-_DATA_PATTERNS = [re.compile(r"/oradata", re.I), re.compile(r"\bDATA", re.I)]
-_ARCH_PATTERNS = [re.compile(r"/arch", re.I), re.compile(r"\bRECO", re.I)]
+# 주의: \bDATA/\bRECO는 뒤쪽 경계가 없어 "DATABASE"/"RECOVERY" 같은 일반 단어의 접두부에도
+# 걸린다. 티켓 설명엔 "데이터베이스(Database)"가 거의 항상 들어가므로, 이 lookahead가 없으면
+# 실제로는 ARCH(RECO) 작업인 티켓도 DATA로 오판정돼 조용히 걸러져버린다.
+_DATA_PATTERNS = [re.compile(r"/oradata", re.I), re.compile(r"\bDATA(?!BASE)", re.I)]
+_ARCH_PATTERNS = [re.compile(r"/arch", re.I), re.compile(r"\bRECO(?!VERY)", re.I)]
 
 
 def classify_capacity_sheet(match_text: str) -> str | None:
