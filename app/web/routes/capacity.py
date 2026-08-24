@@ -70,15 +70,19 @@ def capacity_dashboard(
     result, jira_error = get_capacity_dashboard_data(sheet, today)
     by_team = group_by(result, "ops_team")
 
-    # 증설 여부(O,X)가 공란인 미회신 대상 (완료율 분모엔 안 들어가지만 상세 목록엔 같이 보여줌)
+    # 증설 여부(O,X)가 공란이면서 아직 일정도 없는 '진짜 미회신' 대상만 미응답으로 (완료율
+    # 분모엔 안 들어가지만 상세 목록엔 같이 보여줌). 일정이 들어온 순간부터는 status_kind가
+    # "target"으로 바뀌어 result["details"]에 정상적으로 이미 포함돼 있다.
     all_items = load_capacity_items_merged(sheet=sheet)
-    excluded_cnt = sum(1 for i in all_items if (i.get("expand_flag") or "") == "X")
-    no_reply_raw = [i for i in all_items if (i.get("expand_flag") or "") not in ("O", "X")]
+    excluded_items = [i for i in all_items if i["status_kind"] == "excluded"]
+    excluded_cnt = len(excluded_items)
+    no_reply_raw = [i for i in all_items if i["status_kind"] == "no_reply"]
     no_reply_details = build_no_reply_details(no_reply_raw, today.year)
 
     details = result["details"] + no_reply_details
     if team:
         details = [d for d in details if d["ops_team"] == team]
+        excluded_items = [d for d in excluded_items if d["ops_team"] == team]
     if status == "done":
         details = [d for d in details if d["completed"]]
     elif status == "pending":
@@ -97,6 +101,7 @@ def capacity_dashboard(
             )
 
         details = [d for d in details if _match(d)]
+        excluded_items = [d for d in excluded_items if _match(d)]
 
     details = sorted(details, key=lambda d: (d["schedule"] is None, d["schedule"]))
 
@@ -104,6 +109,7 @@ def capacity_dashboard(
         "request": request,
         "result": result,
         "details": details,
+        "excluded_items": excluded_items,
         "excluded_cnt": excluded_cnt,
         "by_team": dict(sorted(by_team.items(), key=lambda x: x[1]["rate"])),
         "sheet": sheet,
@@ -170,6 +176,40 @@ async def api_capacity_bulk_save(request: Request):
             updated_by=updated_by,
         )
     return JSONResponse({"ok": True, "count": len(rows)})
+
+
+@router.post("/api/capacity/exclude")
+async def api_capacity_exclude(request: Request):
+    """
+    제외 처리/해제 (관리자만). "증설 안 함"으로 확정된 대상을 대상 목록에서 빼서
+    제외 대상 섹션으로 옮긴다. excluded:false로 다시 부르면 해제(복귀) 가능.
+    (엑셀 자체에 "증설 여부"가 X로 적힌 행은 이 버튼으로 해제할 수 없음 - 엑셀이 원본.)
+    """
+    data = await request.json()
+    item_no = (data.get("item_no") or "").strip()
+    sheet = (data.get("sheet") or "").strip()
+    updated_by = (data.get("updated_by") or "").strip()
+    excluded = bool(data.get("excluded", True))
+
+    if not item_no or not sheet:
+        return JSONResponse({"ok": False, "error": "필수 값이 없습니다."}, status_code=400)
+    if updated_by not in settings.capacity_admin_set:
+        return JSONResponse(
+            {"ok": False, "error": "제외 처리는 관리자만 가능합니다."}, status_code=403
+        )
+
+    existing = get_capacity_input(item_no, sheet) or {}
+    upsert_capacity_input(
+        item_no=item_no,
+        sheet=sheet,
+        schedule=existing.get("schedule") or "",
+        is_done=bool(existing.get("is_done")),
+        evidence=existing.get("evidence") or "",
+        note=existing.get("note") or "",
+        updated_by=updated_by,
+        excluded=excluded,
+    )
+    return JSONResponse({"ok": True})
 
 
 # ─────────────────────────────────────────────

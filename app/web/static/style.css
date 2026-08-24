@@ -55,6 +55,9 @@ select, input[type="date"], input[type="text"] {
 }
 .btn-sm:hover { background: #f4f6f8; }
 
+.btn-exclude { color: #c62828; border-color: #f0c4c4; }
+.btn-exclude:hover { background: #fdecea; }
+
 .alert {
   background: #fff4e5; border: 1px solid #ffd59e; color: #8a5300;
   padding: 10px 14px; border-radius: 6px; margin-bottom: 16px; font-size: 13px;

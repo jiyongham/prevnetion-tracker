@@ -59,10 +59,11 @@ def build_capacity_report(use_jira: bool = True) -> str:
     arch_items, arch_tmap = collect_capacity("ARCH", use_jira)
     all_items = data_items + arch_items
 
-    # 증설 여부(O/X/공란) 기준 상태 집계. 공란(O도 X도 아님) = 미회신.
-    planned_cnt = sum(1 for i in all_items if i["expand_flag"] == "O")
-    excluded_cnt = sum(1 for i in all_items if i["expand_flag"] == "X")
-    no_reply_cnt = sum(1 for i in all_items if i["expand_flag"] not in ("O", "X"))
+    # 최종 상태(status_kind) 기준 집계. target=증설 예정(엑셀 O 또는 미회신+일정입력),
+    # excluded=제외(엑셀 X 또는 웹 제외처리), no_reply=진짜 미회신(공란+일정없음).
+    planned_cnt = sum(1 for i in all_items if i["status_kind"] == "target")
+    excluded_cnt = sum(1 for i in all_items if i["status_kind"] == "excluded")
+    no_reply_cnt = sum(1 for i in all_items if i["status_kind"] == "no_reply")
 
     data_result = calc_capacity_completion(data_items, data_tmap, today)
     arch_result = calc_capacity_completion(arch_items, arch_tmap, today)
