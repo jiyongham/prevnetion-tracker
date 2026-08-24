@@ -1,0 +1,45 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Python syntax check
+        run: python -m compileall -q app
+
+      - name: Docker build check
+        run: docker build -t dr-tracker:ci .
+
+  deploy:
+    needs: ci
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t dr-tracker:local .
+
+      - name: Load image into kind
+        run: kind load docker-image dr-tracker:local
+
+      - name: Rollout restart
+        run: kubectl -n dr-tracker rollout restart deployment/dr-tracker
+
+      - name: Wait for rollout
+        run: kubectl -n dr-tracker rollout status deployment/dr-tracker --timeout=120s
