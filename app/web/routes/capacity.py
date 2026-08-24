@@ -25,6 +25,7 @@ from app.services.capacity_reminder import group_capacity_no_reply, group_capaci
 from app.services.capacity_report import send_capacity_report
 from app.services.completion import group_by
 from app.services.matcher import match_items_by_ip
+from app.services.owner_check import collect_capacity_targets_with_tickets, find_owner_mismatches
 from app.web.deps import require_updated_by, resolve_owner, templates
 
 logger = logging.getLogger(__name__)
@@ -257,3 +258,54 @@ async def api_capacity_remind_dm(request: Request):
 def trigger_capacity_report(sheet: str = Form("DATA")):
     send_capacity_report()
     return RedirectResponse(url=f"/capacity?sheet={sheet}", status_code=303)
+
+
+# ─────────────────────────────────────────────
+# 담당자 불일치 후보 (조직변경으로 팀명 등이 바뀌었을 가능성)
+# ─────────────────────────────────────────────
+@router.get("/capacity/owner-check", response_class=HTMLResponse)
+def capacity_owner_check(request: Request, sheet: str = "DATA"):
+    if sheet not in ("DATA", "ARCH"):
+        sheet = "DATA"
+    targets, ticket_map, jira_error = collect_capacity_targets_with_tickets(sheet)
+    candidates = find_owner_mismatches(targets, ticket_map)
+
+    return templates.TemplateResponse("capacity_owner_check.html", {
+        "request": request,
+        "sheet": sheet,
+        "sheet_label": "일반(ASM/파일시스템)" if sheet == "DATA" else "아카이브",
+        "candidates": candidates,
+        "jira_error": jira_error,
+        "jira_base": settings.jira_url.rstrip("/"),
+        "admins": sorted(settings.capacity_admin_set),
+    })
+
+
+@router.post("/api/capacity/save-owner")
+async def api_capacity_save_owner(request: Request):
+    """용량관리 담당자 불일치 후보에서 담당자를 직접 수정 (관리자만 가능, 엑셀 원본은 그대로 두고 DB override)"""
+    data = await request.json()
+    item_no = (data.get("item_no") or "").strip()
+    sheet = (data.get("sheet") or "").strip()
+    owner = (data.get("owner") or "").strip()
+    updated_by = (data.get("updated_by") or "").strip()
+
+    if not item_no or not sheet or not owner:
+        return JSONResponse({"ok": False, "error": "필수 값이 없습니다."}, status_code=400)
+    if updated_by not in settings.capacity_admin_set:
+        return JSONResponse(
+            {"ok": False, "error": "담당자 수정은 관리자만 가능합니다."}, status_code=403
+        )
+
+    existing = get_capacity_input(item_no, sheet) or {}
+    upsert_capacity_input(
+        item_no=item_no,
+        sheet=sheet,
+        schedule=existing.get("schedule") or "",
+        is_done=bool(existing.get("is_done")),
+        evidence=existing.get("evidence") or "",
+        note=existing.get("note") or "",
+        updated_by=updated_by,
+        owner=owner,
+    )
+    return JSONResponse({"ok": True})

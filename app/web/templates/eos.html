@@ -27,6 +27,12 @@
     </div>
   </header>
 
+  <div class="tabs">
+    <a href="/eos?track=ALL" class="tab {% if track == 'ALL' %}active{% endif %}">전체</a>
+    <a href="/eos?track=OS" class="tab {% if track == 'OS' %}active{% endif %}">OS</a>
+    <a href="/eos?track=DB" class="tab {% if track == 'DB' %}active{% endif %}">DB</a>
+  </div>
+
   {% if jira_error %}
   <div class="alert">⚠️ JIRA 연동 실패 (엑셀 기준 표시): {{ jira_error[:100] }}</div>
   {% endif %}
@@ -34,7 +40,7 @@
   <!-- 요약 카드 -->
   <section class="cards">
     <div class="card big">
-      <div class="label">전환 완료율</div>
+      <div class="label">전환 완료율{% if track != 'ALL' %} ({{ track }}){% endif %}</div>
       <div class="rate">{{ result.rate }}%</div>
       <div class="sub">{{ result.done }} / {{ result.total }}건</div>
       <div class="progress"><div class="bar" style="width: {{ result.rate }}%"></div></div>
@@ -60,7 +66,7 @@
       </thead>
       <tbody>
       {% for team, v in by_team.items() %}
-        <tr class="clickable" onclick="location.href='/eos?team={{ team }}'">
+        <tr class="clickable" onclick="location.href='/eos?track={{ track }}&team={{ team }}'">
           <td>{{ team }}</td>
           <td>{{ v.done }}</td>
           <td>{{ v.total }}</td>
@@ -78,14 +84,15 @@
       <h2>대상 목록 ({{ details|length }}건)</h2>
       <div class="head-right">
         <form method="get" class="inline-form">
+          <input type="hidden" name="track" value="{{ track }}">
           <input type="text" name="q" value="{{ q }}" placeholder="운영팀/시스템명/호스트/IP 검색" class="search">
           <button type="submit" class="btn-sm">검색</button>
         </form>
         <div class="filters">
-          <a href="/eos" class="chip {% if not filter_status and not filter_team %}active{% endif %}">전체</a>
-          <a href="/eos?status=pending" class="chip {% if filter_status == 'pending' %}active{% endif %}">미완료</a>
-          <a href="/eos?status=unplanned" class="chip {% if filter_status == 'unplanned' %}active{% endif %}">미계획</a>
-          <a href="/eos?status=done" class="chip {% if filter_status == 'done' %}active{% endif %}">완료</a>
+          <a href="/eos?track={{ track }}" class="chip {% if not filter_status and not filter_team %}active{% endif %}">전체</a>
+          <a href="/eos?track={{ track }}&status=pending" class="chip {% if filter_status == 'pending' %}active{% endif %}">미완료</a>
+          <a href="/eos?track={{ track }}&status=unplanned" class="chip {% if filter_status == 'unplanned' %}active{% endif %}">미계획</a>
+          <a href="/eos?track={{ track }}&status=done" class="chip {% if filter_status == 'done' %}active{% endif %}">완료</a>
         </div>
       </div>
     </div>

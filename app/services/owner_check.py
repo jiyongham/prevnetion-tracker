@@ -13,14 +13,17 @@
 import concurrent.futures
 
 from app.config import settings
+from app.core.capacity_loader import get_targets as get_capacity_targets
+from app.core.capacity_loader import load_capacity_items_merged
 from app.core.eos_loader import get_targets as get_eos_targets
 from app.core.eos_loader import load_eos_items_merged
 from app.core.excel_loader import get_targets, load_dr_items_merged, scope_h2_targets
 from app.core.insight_client import get_server_asset
 from app.core.jira_client import jira
+from app.services.capacity import build_capacity_ticket_summary, filter_tickets_by_sheet
 from app.services.completion import build_ticket_summary
 from app.services.eos import build_eos_ticket_summary
-from app.services.matcher import match_items_by_ip
+from app.services.matcher import match_items_by_cmdb_key, match_items_by_ip, merge_ticket_maps
 from app.services.reminder import clean_name, parse_owners
 
 
@@ -67,8 +70,28 @@ def collect_eos_targets_with_tickets(use_jira: bool = True):
         try:
             issues = jira.get_eos_tickets()
             tickets = build_eos_ticket_summary(issues, settings.planned_end_date_field)
+            cmdb_map = match_items_by_cmdb_key(targets, tickets)
+            ip_map = match_items_by_ip(targets, tickets)["matched"]
+            ticket_map = merge_ticket_maps(cmdb_map, ip_map)
+        except Exception as e:
+            jira_error = str(e)
+
+    return targets, ticket_map, jira_error
+
+
+def collect_capacity_targets_with_tickets(sheet: str, use_jira: bool = True):
+    """용량관리 대상 목록 + (윈도우 제한 없는) 매칭 티켓맵 (시트별 - DATA/ARCH)"""
+    items = load_capacity_items_merged(sheet=sheet)
+    targets = get_capacity_targets(items)
+
+    ticket_map = {}
+    jira_error = None
+    if use_jira:
+        try:
+            issues = jira.get_capacity_tickets()
+            tickets = build_capacity_ticket_summary(issues, settings.planned_end_date_field)
             match_result = match_items_by_ip(targets, tickets)
-            ticket_map = match_result["matched"]
+            ticket_map = filter_tickets_by_sheet(match_result["matched"], sheet)
         except Exception as e:
             jira_error = str(e)
 
@@ -116,7 +139,8 @@ def find_owner_mismatches(targets: list[dict], ticket_map: dict) -> list[dict]:
 
         row = {
             "no": item["no"],
-            "system_name": item["system_name"],
+            "item_no": item.get("item_no", item["no"]),  # 저장용 키 (용량관리는 "DATA:5"처럼 시트 접두어 포함)
+            "system_name": item.get("system_name") or item.get("ci_name", ""),
             "hostname": item["hostname"],
             "ip": item["ip"],
             "ops_team": item["ops_team"],

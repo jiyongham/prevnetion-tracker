@@ -17,10 +17,10 @@ from app.models.db import (
     upsert_eos_input,
 )
 from app.services.completion import group_by
-from app.services.eos import build_eos_ticket_summary, calc_eos_completion
+from app.services.eos import build_eos_ticket_summary, calc_eos_completion, filter_track
 from app.services.eos_reminder import group_eos_no_reply, group_eos_unplanned
 from app.services.eos_report import send_eos_report
-from app.services.matcher import match_items_by_ip
+from app.services.matcher import match_items_by_cmdb_key, match_items_by_ip, merge_ticket_maps
 from app.services.owner_check import collect_eos_targets_with_tickets, find_owner_mismatches
 from app.web.deps import require_updated_by, resolve_owner, templates
 
@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-def get_eos_dashboard_data(as_of: date, use_jira: bool = True):
+def get_eos_dashboard_data(as_of: date, use_jira: bool = True, track: str = "ALL"):
     items = load_eos_items_merged()
     ticket_map = {}
     jira_error = None
@@ -39,26 +39,30 @@ def get_eos_dashboard_data(as_of: date, use_jira: bool = True):
             issues = jira.get_eos_tickets()
             tickets = build_eos_ticket_summary(issues, settings.planned_end_date_field)
             targets = [i for i in items if i["is_target"]]
-            match_result = match_items_by_ip(targets, tickets)
-            ticket_map = match_result["matched"]
+            cmdb_map = match_items_by_cmdb_key(targets, tickets)
+            ip_map = match_items_by_ip(targets, tickets)["matched"]
+            ticket_map = merge_ticket_maps(cmdb_map, ip_map)
         except Exception as e:
             jira_error = str(e)
             logger.warning(f"EoS JIRA 조회 실패: {e}")
 
-    result = calc_eos_completion(items, ticket_map, as_of)
+    result = calc_eos_completion(filter_track(items, track), ticket_map, as_of)
     return result, jira_error
 
 
 @router.get("/eos", response_class=HTMLResponse)
 def eos_dashboard(
     request: Request,
+    track: str = "ALL",
     team: str | None = None,
     status: str | None = None,
     q: str | None = None,
 ):
+    if track not in ("ALL", "OS", "DB"):
+        track = "ALL"
     today = date.today()
 
-    result, jira_error = get_eos_dashboard_data(today)
+    result, jira_error = get_eos_dashboard_data(today, track=track)
     by_team = group_by(result, "ops_team")
 
     details = result["details"]
@@ -109,6 +113,7 @@ def eos_dashboard(
         "excluded_cnt": excluded_cnt,
         "by_team": dict(sorted(by_team.items(), key=lambda x: x[1]["rate"])),
         "as_of": today,
+        "track": track,
         "filter_team": team or "",
         "filter_status": status or "",
         "q": q or "",

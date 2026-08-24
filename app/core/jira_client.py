@@ -100,6 +100,7 @@ class JiraClient:
             settings.jsm_requester_field,
             settings.planned_end_date_field,
             settings.planned_start_date_field,
+            settings.eos_cmdb_done_field,
             *settings.match_field_list,
         ]
         return self.search(jql, fields=fields)
