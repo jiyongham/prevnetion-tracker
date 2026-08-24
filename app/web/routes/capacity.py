@@ -117,7 +117,7 @@ def capacity_dashboard(
         "excluded_cnt": excluded_cnt,
         "by_team": dict(sorted(by_team.items(), key=lambda x: x[1]["rate"])),
         "sheet": sheet,
-        "sheet_label": "일반(ASM/파일시스템)" if sheet == "DATA" else "아카이브",
+        "sheet_label": "DATA (ASM/파일시스템)" if sheet == "DATA" else "ARCH (아카이브)",
         "as_of": today,
         "filter_team": team or "",
         "filter_status": status or "",
@@ -274,7 +274,7 @@ def capacity_owner_check(request: Request, sheet: str = "DATA"):
     return templates.TemplateResponse("capacity_owner_check.html", {
         "request": request,
         "sheet": sheet,
-        "sheet_label": "일반(ASM/파일시스템)" if sheet == "DATA" else "아카이브",
+        "sheet_label": "DATA (ASM/파일시스템)" if sheet == "DATA" else "ARCH (아카이브)",
         "candidates": candidates,
         "jira_error": jira_error,
         "jira_base": settings.jira_url.rstrip("/"),
