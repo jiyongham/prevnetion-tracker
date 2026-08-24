@@ -11,20 +11,27 @@ SHEET_LABEL = {"DATA": "일반", "ARCH": "아카이브"}
 
 
 def _server_key(d: dict) -> str:
-    """같은 서버 판별 키 (호스트명 우선, 없으면 IP/CI명)."""
-    return (d.get("hostname") or d.get("ip") or d.get("ci_name") or "").strip().lower()
+    """
+    같은 서버 판별 키.
+    CI명을 우선으로 쓴다 - DATA/ARCH 두 시트가 "같은 서버"를 가리키는 표준 식별자는
+    CI명이고, HOSTNAME/IP는 아카이브 마운트가 별도 장비(NAS 등)로 잡혀 있어 시트마다
+    다르게 기재된 경우가 있다 (예: "스타벅스 SAP ERP DB#1"이 DATA/ARCH 양쪽에 다
+    미회신으로 있어도 호스트명/IP가 시트마다 달라 호스트명 우선이면 병합이 안 됐음).
+    CI명이 비어있을 때만 호스트명/IP로 대체한다.
+    """
+    return (d.get("ci_name") or d.get("hostname") or d.get("ip") or "").strip().lower()
 
 
 def merge_same_server(items: list[dict]) -> list[dict]:
     """
     같은 서버가 DATA(일반)/ARCH(아카이브) 양쪽 시트에 다 걸려 있으면 한 줄로 합친다.
-    (호스트명 기준 - 한 서버 앞으로 리마인드가 두 번 따로 안 가게)
+    (CI명 기준 - 한 서버 앞으로 리마인드가 두 번 따로 안 가게)
     합쳐진 항목엔 'sheet_label'을 붙여서 본문/화면에 "일반+아카이브"처럼 표기한다.
     """
     merged: dict[str, dict] = {}
     order: list[str] = []
     for i, d in enumerate(items):
-        # 호스트명/IP/CI명이 전부 비어있으면 서로 다른 대상을 잘못 합칠 수 있으니 병합하지 않는다
+        # CI명/호스트명/IP가 전부 비어있으면 서로 다른 대상을 잘못 합칠 수 있으니 병합하지 않는다
         key = _server_key(d) or f"__no_key_{i}"
         if key not in merged:
             merged[key] = {**d, "_sheets": {d.get("sheet")}}
