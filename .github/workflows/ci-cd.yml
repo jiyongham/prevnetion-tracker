@@ -39,7 +39,7 @@ jobs:
         run: docker build -t dr-tracker:local .
 
       - name: Load image into kind
-        run: kind load docker-image dr-tracker:local
+        run: kind load docker-image dr-tracker:local --name dr-tracker
 
       - name: Rollout restart
         run: kubectl -n dr-tracker rollout restart deployment/dr-tracker
