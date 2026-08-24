@@ -7,7 +7,7 @@ from app.services.reminder import (
     pick_representative,
 )
 
-SHEET_LABEL = {"DATA": "일반", "ARCH": "아카이브"}
+SHEET_LABEL = {"DATA": "DATA", "ARCH": "ARCH"}  # 엑셀 시트명 그대로 표기 (일반/아카이브라고 부르면 엑셀과 달라 헷갈림)
 
 
 def _server_key(d: dict) -> str:
@@ -24,9 +24,9 @@ def _server_key(d: dict) -> str:
 
 def merge_same_server(items: list[dict]) -> list[dict]:
     """
-    같은 서버가 DATA(일반)/ARCH(아카이브) 양쪽 시트에 다 걸려 있으면 한 줄로 합친다.
+    같은 서버가 DATA/ARCH 양쪽 시트에 다 걸려 있으면 한 줄로 합친다.
     (CI명 기준 - 한 서버 앞으로 리마인드가 두 번 따로 안 가게)
-    합쳐진 항목엔 'sheet_label'을 붙여서 본문/화면에 "일반+아카이브"처럼 표기한다.
+    합쳐진 항목엔 'sheet_label'을 붙여서 본문/화면에 "DATA+ARCH"처럼 표기한다.
     """
     merged: dict[str, dict] = {}
     order: list[str] = []
