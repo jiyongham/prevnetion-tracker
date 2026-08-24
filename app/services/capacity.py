@@ -55,6 +55,51 @@ def filter_tickets_by_sheet(ticket_map: dict[str, list[dict]], sheet: str) -> di
     return filtered
 
 
+def build_no_reply_details(items: list[dict], base_year: int) -> list[dict]:
+    """
+    '미회신'(증설 여부 O/X 미기입) 대상을 상세 목록에 같이 보여주기 위한 변환.
+    완료율(분모/분자)에는 안 들어가고 - 여전히 증설 여부 O(target) 대상 기준 - 화면 상세
+    목록에서만 나머지 대상들과 나란히 보여준다. status 배지는 무조건 "미응답"으로 표시.
+    """
+    result = []
+    for item in items:
+        sched = parse_schedule(item.get("schedule_raw", ""), base_year)
+        result.append({
+            "item_no": item["item_no"],
+            "sheet": item["sheet"],
+            "no": item["no"],
+            "ci_name": item["ci_name"],
+            "hostname": item["hostname"],
+            "ip": item["ip"],
+            "ops_team": item["ops_team"],
+            "owner": item["owner"],
+            "jsm_requester": "",
+            "center": item["center"],
+            "fs_type": item["fs_type"],
+            "infra_type": item["infra_type"],
+            "total_gb": item["total_gb"],
+            "remaining_gb": item["remaining_gb"],
+            "usage_pct": item["usage_pct"],
+            "required_gb": item["required_gb"],
+            "schedule_raw": item.get("schedule_raw", ""),
+            "schedule": sched,
+            "schedule_disp": f"{sched.month}/{sched.day}" if sched else (item.get("schedule_raw") or ""),
+            "planned": False,
+            "jira_key": "",
+            "jira_matched": False,
+            "completed": False,
+            "reason": "",
+            "input_source": item.get("input_source", "excel"),
+            "updated_by": item.get("updated_by", ""),
+            "updated_at": item.get("updated_at", ""),
+            "evidence": item.get("evidence", ""),
+            "note": item.get("note", ""),
+            "exclude_reason": item.get("exclude_reason", ""),
+            "no_reply": True,
+        })
+    return result
+
+
 def capacity_ticket_done_date(t: dict) -> date | None:
     """완료로 볼 날짜: 변경계획완료일 (예방4는 실전환/무중단 구분 없음)"""
     if t.get("kind") == "예방4":

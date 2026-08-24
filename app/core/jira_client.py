@@ -16,8 +16,14 @@ class JiraClient:
         self.session.mount("https://", adapter)
         self.session.mount("http://", adapter)
 
-    def search(self, jql: str, fields: list[str] | None = None, max_results: int = 500):
-        """JQL 검색 (페이징 처리)"""
+    def search(self, jql: str, fields: list[str] | None = None):
+        """
+        JQL 검색 (페이징 처리, 전체 건수 다 가져올 때까지).
+        예전엔 max_results=500 상한이 있었는데, ORDER BY created DESC라
+        상한을 넘는 티켓 중 "생성일이 오래된" 쪽이 통째로 잘려나갔다. EoS(예방1)가
+        864건까지 쌓이면서 실제로 이 상한에 걸려, 예정된 작업인데도 티켓이 오래전에
+        만들어졌다는 이유만으로 리포트/대시보드에서 누락되는 문제가 있었다.
+        """
         url = f"{self.base_url}/rest/api/2/search"
         all_issues = []
         start_at = 0
@@ -35,7 +41,7 @@ class JiraClient:
             all_issues.extend(issues)
 
             start_at += len(issues)
-            if start_at >= data.get("total", 0) or not issues or start_at >= max_results:
+            if start_at >= data.get("total", 0) or not issues:
                 break
 
         return all_issues
