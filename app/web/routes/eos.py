@@ -17,7 +17,7 @@ from app.models.db import (
     upsert_eos_input,
 )
 from app.services.completion import group_by
-from app.services.eos import build_eos_ticket_summary, calc_eos_completion, filter_track
+from app.services.eos import build_eos_ticket_summary, build_no_reply_details, calc_eos_completion, filter_track
 from app.services.eos_reminder import group_eos_no_reply, group_eos_unplanned
 from app.services.eos_report import send_eos_report
 from app.services.matcher import match_items_by_cmdb_key, match_items_by_ip, merge_ticket_maps
@@ -65,7 +65,12 @@ def eos_dashboard(
     result, jira_error = get_eos_dashboard_data(today, track=track)
     by_team = group_by(result, "ops_team")
 
-    details = result["details"]
+    all_items = load_eos_items_merged()
+    excluded_cnt = sum(1 for i in all_items if i["status"] == "excluded")
+    no_reply_raw = [i for i in all_items if i["status"] == "no_reply"]
+    no_reply_details = build_no_reply_details(no_reply_raw, today.year)
+
+    details = result["details"] + no_reply_details
     if team:
         details = [d for d in details if d["ops_team"] == team]
     if status == "done":
@@ -89,27 +94,10 @@ def eos_dashboard(
 
     details = sorted(details, key=lambda d: (d["schedule"] is None, d["schedule"]))
 
-    # 대상(target)이 아닌 나머지: 제외/미응답 별도로 보여줌
-    all_items = load_eos_items_merged()
-    excluded_cnt = sum(1 for i in all_items if i["status"] == "excluded")
-    no_reply_items = [i for i in all_items if i["status"] == "no_reply"]
-    if team:
-        no_reply_items = [i for i in no_reply_items if i["ops_team"] == team]
-    if q:
-        kw = q.lower()
-        no_reply_items = [
-            i for i in no_reply_items
-            if kw in (i["ops_team"] or "").lower()
-            or kw in (i["system_name"] or "").lower()
-            or kw in (i["hostname"] or "").lower()
-            or kw in (i["ip"] or "").lower()
-        ]
-
     return templates.TemplateResponse("eos.html", {
         "request": request,
         "result": result,
         "details": details,
-        "no_reply_items": no_reply_items,
         "excluded_cnt": excluded_cnt,
         "by_team": dict(sorted(by_team.items(), key=lambda x: x[1]["rate"])),
         "as_of": today,

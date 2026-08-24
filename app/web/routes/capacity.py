@@ -18,6 +18,7 @@ from app.models.db import (
 )
 from app.services.capacity import (
     build_capacity_ticket_summary,
+    build_no_reply_details,
     calc_capacity_completion,
     filter_tickets_by_sheet,
 )
@@ -69,7 +70,13 @@ def capacity_dashboard(
     result, jira_error = get_capacity_dashboard_data(sheet, today)
     by_team = group_by(result, "ops_team")
 
-    details = result["details"]
+    # 증설 여부(O,X)가 공란인 미회신 대상 (완료율 분모엔 안 들어가지만 상세 목록엔 같이 보여줌)
+    all_items = load_capacity_items_merged(sheet=sheet)
+    excluded_cnt = sum(1 for i in all_items if (i.get("expand_flag") or "") == "X")
+    no_reply_raw = [i for i in all_items if (i.get("expand_flag") or "") not in ("O", "X")]
+    no_reply_details = build_no_reply_details(no_reply_raw, today.year)
+
+    details = result["details"] + no_reply_details
     if team:
         details = [d for d in details if d["ops_team"] == team]
     if status == "done":
@@ -93,27 +100,10 @@ def capacity_dashboard(
 
     details = sorted(details, key=lambda d: (d["schedule"] is None, d["schedule"]))
 
-    # 증설 여부(O,X)가 공란인 미회신 대상 (완료율 분모엔 안 들어가지만 별도로 보여줌)
-    all_items = load_capacity_items_merged(sheet=sheet)
-    excluded_cnt = sum(1 for i in all_items if (i.get("expand_flag") or "") == "X")
-    no_reply_items = [i for i in all_items if (i.get("expand_flag") or "") not in ("O", "X")]
-    if team:
-        no_reply_items = [i for i in no_reply_items if i["ops_team"] == team]
-    if q:
-        kw = q.lower()
-        no_reply_items = [
-            i for i in no_reply_items
-            if kw in (i["ops_team"] or "").lower()
-            or kw in (i["ci_name"] or "").lower()
-            or kw in (i["hostname"] or "").lower()
-            or kw in (i["ip"] or "").lower()
-        ]
-
     return templates.TemplateResponse("capacity.html", {
         "request": request,
         "result": result,
         "details": details,
-        "no_reply_items": no_reply_items,
         "excluded_cnt": excluded_cnt,
         "by_team": dict(sorted(by_team.items(), key=lambda x: x[1]["rate"])),
         "sheet": sheet,

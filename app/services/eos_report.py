@@ -90,7 +90,7 @@ def build_eos_report(use_jira: bool = True) -> str:
     os_items = filter_track(items, "OS")
     db_items = filter_track(items, "DB")
 
-    lines = ["하반기", ""]
+    lines = ["[EoS]", ""]
     lines += _track_section("OS", OS_TOTAL_FIXED, os_items, ticket_map, today, perf_start, perf_end, plan_start, plan_end)
     lines += _track_section("DB", DB_TOTAL_FIXED, db_items, ticket_map, today, perf_start, perf_end, plan_start, plan_end)
 

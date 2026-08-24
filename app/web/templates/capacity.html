@@ -148,7 +148,8 @@
             {% else %}<span class="muted">-</span>{% endif %}
           </td>
           <td>
-            {% if d.completed %}<span class="badge ok" title="{{ d.reason }}">완료</span>
+            {% if d.no_reply %}<span class="badge muted">미응답</span>
+            {% elif d.completed %}<span class="badge ok" title="{{ d.reason }}">완료</span>
             {% elif not d.planned %}<span class="badge warn">미계획</span>
             {% else %}<span class="badge bad">미완료</span>{% endif %}
           </td>
@@ -159,29 +160,6 @@
     </table>
     </div>
   </section>
-
-  {% if no_reply_items %}
-  <section class="panel">
-    <h2>🈳 미회신 대상 ({{ no_reply_items|length }}건) <span class="muted small">— 증설 여부(O,X) 미기입</span></h2>
-    <div class="table-scroll">
-    <table>
-      <thead>
-        <tr><th>CI명</th><th>호스트명</th><th>운영팀</th><th>담당자</th></tr>
-      </thead>
-      <tbody>
-      {% for d in no_reply_items %}
-        <tr>
-          <td class="strong">{{ d.ci_name }}</td>
-          <td class="mono small">{{ d.hostname }}</td>
-          <td class="small">{{ d.ops_team }}</td>
-          <td class="small">{{ d.owner }}</td>
-        </tr>
-      {% endfor %}
-      </tbody>
-    </table>
-    </div>
-  </section>
-  {% endif %}
 
   <footer>
     <span>기준일 {{ as_of }}</span>

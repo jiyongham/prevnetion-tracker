@@ -197,6 +197,7 @@ tr.saved { animation: flash 1.2s; }
 .badge.ok { background: #e6f4ea; color: #2e7d32; }
 .badge.bad { background: #fdecea; color: #c62828; }
 .badge.warn { background: #fff4e5; color: #b26a00; }
+.badge.muted { background: #eceff1; color: #607d8b; }
 
 /* 미계획 리마인드 미리보기 */
 .remind-layout { display: flex; gap: 16px; align-items: flex-start; }
