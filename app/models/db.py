@@ -330,29 +330,35 @@ def get_remind_log_summary(half: str) -> dict[str, dict]:
 
 
 def log_capacity_remind(
-    sheet: str,
     ops_team: str,
     recipient_name: str,
     recipient_team: str,
     ok: bool,
     error: str = "",
 ):
-    """용량관리 미계획 리마인드 DM 발송 시도 기록 (성공/실패 모두)"""
+    """
+    용량관리 미계획 리마인드 DM 발송 시도 기록 (성공/실패 모두).
+    DATA/ARCH를 합쳐서 한 통으로 보내게 된 뒤로는 시트 구분이 의미 없어져서 "ALL"로 고정 기록한다
+    (컬럼 자체는 과거 이력과의 호환을 위해 스키마 변경 없이 그대로 둠).
+    """
     with get_conn() as conn:
         conn.execute("""
             INSERT INTO capacity_remind_log
                 (sheet, ops_team, recipient_name, recipient_team, ok, error, sent_at)
             VALUES (?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
-        """, (sheet, ops_team, recipient_name, recipient_team, int(ok), error or ""))
+        """, ("ALL", ops_team, recipient_name, recipient_team, int(ok), error or ""))
 
 
-def get_capacity_remind_log_summary(sheet: str) -> dict[str, dict]:
-    """운영팀별 가장 최근 발송 이력 -> {ops_team: {sent_at, ok, recipient_name, recipient_team, count}}"""
+def get_capacity_remind_log_summary() -> dict[str, dict]:
+    """
+    운영팀별 가장 최근 발송 이력 -> {ops_team: {sent_at, ok, recipient_name, recipient_team, count}}.
+    DATA/ARCH 통합 이후로는 시트 구분 없이 전체(과거 DATA/ARCH 개별 발송 이력 포함) 조회한다.
+    """
     with get_conn() as conn:
         rows = conn.execute("""
             SELECT ops_team, recipient_name, recipient_team, ok, sent_at
-            FROM capacity_remind_log WHERE sheet = ? ORDER BY sent_at ASC
-        """, (sheet,)).fetchall()
+            FROM capacity_remind_log ORDER BY sent_at ASC
+        """).fetchall()
 
     summary: dict[str, dict] = {}
     for r in rows:

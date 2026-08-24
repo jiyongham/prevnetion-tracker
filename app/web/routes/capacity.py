@@ -107,7 +107,7 @@ def capacity_dashboard(
         "excluded_cnt": excluded_cnt,
         "by_team": dict(sorted(by_team.items(), key=lambda x: x[1]["rate"])),
         "sheet": sheet,
-        "sheet_label": "일반(ASM/파일시스템)" if sheet == "DATA" else "아카이브",
+        "sheet_label": "DATA (ASM/파일시스템)" if sheet == "DATA" else "ARCH (아카이브)",
         "as_of": today,
         "filter_team": team or "",
         "filter_status": status or "",
@@ -174,28 +174,32 @@ async def api_capacity_bulk_save(request: Request):
 
 # ─────────────────────────────────────────────
 # 용량관리 미계획 리마인드 미리보기 (운영팀별 초안, 발송 없음)
+# DATA(일반)/ARCH(아카이브) 두 시트를 합쳐서 초안을 만든다 - 같은 서버가 양쪽에 다 있으면
+# 팀당 메시지가 두 번 따로 나가던 걸 한 통으로 합치기 위함 (merge_same_server).
 # ─────────────────────────────────────────────
 @router.get("/capacity/remind-preview", response_class=HTMLResponse)
 def capacity_remind_preview(
     request: Request,
-    sheet: str = "DATA",
     team: str | None = None,
     kind: str = "blank",
 ):
-    if sheet not in ("DATA", "ARCH"):
-        sheet = "DATA"
-    result, jira_error = get_capacity_dashboard_data(sheet, date.today())
+    today = date.today()
+    data_result, data_err = get_capacity_dashboard_data("DATA", today)
+    arch_result, arch_err = get_capacity_dashboard_data("ARCH", today)
+    jira_error = data_err or arch_err
+    combined_details = data_result["details"] + arch_result["details"]
 
     # 같은 '미계획'이라도 완전 미기입 / 대략적 일정만(예: '11월 예정') 있는 경우를 분리
-    blank_groups = group_capacity_unplanned(result["details"], hinted=False)
-    hinted_groups = group_capacity_unplanned(result["details"], hinted=True)
+    blank_groups = group_capacity_unplanned(combined_details, hinted=False)
+    hinted_groups = group_capacity_unplanned(combined_details, hinted=True)
     # 미회신(증설 여부 O/X 자체가 공란)은 대상(O)이 아니라 엑셀 전체 행 기준으로 판단
-    no_reply_groups = group_capacity_no_reply(load_capacity_items_merged(sheet=sheet))
+    all_items = load_capacity_items_merged(sheet="DATA") + load_capacity_items_merged(sheet="ARCH")
+    no_reply_groups = group_capacity_no_reply(all_items)
 
     groups = {"hinted": hinted_groups, "no_reply": no_reply_groups}.get(kind, blank_groups)
 
-    # 운영팀별 발송 이력(1회라도 보냈으면 표시)
-    log_summary = get_capacity_remind_log_summary(sheet)
+    # 운영팀별 발송 이력(1회라도 보냈으면 표시) - DATA/ARCH 통합 이후로는 시트 구분 없이 조회
+    log_summary = get_capacity_remind_log_summary()
     for g in blank_groups + hinted_groups + no_reply_groups:
         g["sent"] = log_summary.get(g["ops_team"])
 
@@ -205,8 +209,6 @@ def capacity_remind_preview(
 
     return templates.TemplateResponse("capacity_remind_preview.html", {
         "request": request,
-        "sheet": sheet,
-        "sheet_label": "일반(ASM/파일시스템)" if sheet == "DATA" else "아카이브",
         "kind": kind,
         "groups": groups,
         "selected": selected,
@@ -215,7 +217,7 @@ def capacity_remind_preview(
         "hinted_total": sum(g["count"] for g in hinted_groups),
         "no_reply_total": sum(g["count"] for g in no_reply_groups),
         "sender_team": settings.sender_team,
-        "sender_name": settings.sender_name,
+        "sender_name": settings.capacity_sender_name,
         "teams_enabled": bool(settings.teams_webhook),
         "dm_enabled": bool(settings.teams_dm_trigger_webhook),
         "jira_error": jira_error,
@@ -229,15 +231,14 @@ async def api_capacity_remind_dm(request: Request):
     name = (data.get("name") or "").strip()
     team = (data.get("team") or "").strip()
     message = (data.get("message") or "").strip()
-    sheet = (data.get("sheet") or "").strip()
     ops_team = (data.get("ops_team") or "").strip()
     if not name or not message:
         return JSONResponse(
             {"ok": False, "error": "이름과 메시지가 필요합니다."}, status_code=400
         )
     ok, err = send_teams_dm(name, team, message)
-    if sheet and ops_team:
-        log_capacity_remind(sheet, ops_team, name, team, ok, err)
+    if ops_team:
+        log_capacity_remind(ops_team, name, team, ok, err)
     return JSONResponse({"ok": ok, "error": err})
 
 
@@ -263,7 +264,7 @@ def capacity_owner_check(request: Request, sheet: str = "DATA"):
     return templates.TemplateResponse("capacity_owner_check.html", {
         "request": request,
         "sheet": sheet,
-        "sheet_label": "일반(ASM/파일시스템)" if sheet == "DATA" else "아카이브",
+        "sheet_label": "DATA (ASM/파일시스템)" if sheet == "DATA" else "ARCH (아카이브)",
         "candidates": candidates,
         "jira_error": jira_error,
         "jira_base": settings.jira_url.rstrip("/"),
