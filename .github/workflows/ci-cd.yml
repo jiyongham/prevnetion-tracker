@@ -29,6 +29,9 @@ jobs:
     needs: ci
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: self-hosted
+    env:
+      # 셀프호스티드 러너가 systemd 서비스로 뜰 때 PATH가 제한적이라 kind/kubectl(/usr/local/bin)을 못 찾는 문제 방지
+      PATH: /usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
     steps:
       - uses: actions/checkout@v4
 
