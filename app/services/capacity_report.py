@@ -16,24 +16,25 @@ from app.services.completion import fmt_rate
 from app.services.matcher import match_items_by_ip
 
 
-def _projected_done(result: dict, ticket_map: dict, perf_start: date, perf_end: date) -> int:
+def _projected_done(result: dict, ticket_map: dict, today: date, cutoff: date) -> int:
     """
-    완료 댓수 = 이미 완료된 대상 + 차주(perf window)에 완료 예정인 대상.
-    DR훈련 리포트(report.py의 projected_done)와 동일한 방식.
+    완료 댓수 = 이미 완료된 대상 + 오늘부터 차주 말(cutoff)까지 완료 예정인 대상.
+    (단순히 '차주 한 주'만 보면 일정이 그 주에 딱 걸리는 대상이 없을 때 숫자가 그대로라
+    오늘~차주 말까지 누적으로 잡는다. 이미 지나버린(연체) 일정은 완료로 치지 않음.)
     """
-    def _has_ticket_in(no):
+    def _has_ticket_by(no):
         return any(
-            (d := capacity_ticket_done_date(t)) and perf_start <= d <= perf_end
+            (d := capacity_ticket_done_date(t)) and today <= d <= cutoff
             for t in (ticket_map.get(no) or [])
         )
 
     completed_nos = {d["no"] for d in result["details"] if d["completed"]}
-    perf_nos = {
+    upcoming_nos = {
         d["no"] for d in result["details"]
-        if _has_ticket_in(d["no"])
-        or (d["schedule"] and perf_start <= d["schedule"] <= perf_end)
+        if _has_ticket_by(d["no"])
+        or (d["schedule"] and today <= d["schedule"] <= cutoff)
     }
-    return len(completed_nos | perf_nos)
+    return len(completed_nos | upcoming_nos)
 
 
 def collect_capacity(sheet: str, use_jira: bool = True):
@@ -67,11 +68,11 @@ def build_capacity_report(use_jira: bool = True) -> str:
     arch_result = calc_capacity_completion(arch_items, arch_tmap, today)
     total_target = data_result["total"] + arch_result["total"]
 
-    # 완료 댓수 = 오늘 기준 완료 + 차주(발송 다음 주) 완료 예정 (DR훈련 리포트와 동일 기준)
-    perf_start, perf_end, _, _ = week_ranges(today)
+    # 완료 댓수 = 오늘 기준 완료 + 오늘~차주 말까지 일정/티켓상 완료 예정인 대상
+    _, perf_end, _, _ = week_ranges(today)
     total_done = (
-        _projected_done(data_result, data_tmap, perf_start, perf_end)
-        + _projected_done(arch_result, arch_tmap, perf_start, perf_end)
+        _projected_done(data_result, data_tmap, today, perf_end)
+        + _projected_done(arch_result, arch_tmap, today, perf_end)
     )
     rate = round(total_done / total_target * 100, 1) if total_target else 0.0
 
