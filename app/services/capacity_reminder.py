@@ -7,12 +7,46 @@ from app.services.reminder import (
     pick_representative,
 )
 
+SHEET_LABEL = {"DATA": "일반", "ARCH": "아카이브"}
+
+
+def _server_key(d: dict) -> str:
+    """같은 서버 판별 키 (호스트명 우선, 없으면 IP/CI명)."""
+    return (d.get("hostname") or d.get("ip") or d.get("ci_name") or "").strip().lower()
+
+
+def merge_same_server(items: list[dict]) -> list[dict]:
+    """
+    같은 서버가 DATA(일반)/ARCH(아카이브) 양쪽 시트에 다 걸려 있으면 한 줄로 합친다.
+    (호스트명 기준 - 한 서버 앞으로 리마인드가 두 번 따로 안 가게)
+    합쳐진 항목엔 'sheet_label'을 붙여서 본문/화면에 "일반+아카이브"처럼 표기한다.
+    """
+    merged: dict[str, dict] = {}
+    order: list[str] = []
+    for i, d in enumerate(items):
+        # 호스트명/IP/CI명이 전부 비어있으면 서로 다른 대상을 잘못 합칠 수 있으니 병합하지 않는다
+        key = _server_key(d) or f"__no_key_{i}"
+        if key not in merged:
+            merged[key] = {**d, "_sheets": {d.get("sheet")}}
+            order.append(key)
+        else:
+            merged[key]["_sheets"].add(d.get("sheet"))
+
+    result = []
+    for key in order:
+        d = merged[key]
+        sheets = d.pop("_sheets")
+        d["sheet_label"] = "+".join(SHEET_LABEL.get(s, s) for s in sorted(sheets) if s)
+        result.append(d)
+    return result
+
 
 def build_capacity_body(items: list[dict], show_raw: bool = False) -> str:
-    """대상 목록 본문 (CI명 / 호스트명 / IP). show_raw면 현재 등록된 텍스트도 같이 표기"""
+    """대상 목록 본문 (CI명 / 호스트명 / IP / 구분). show_raw면 현재 등록된 텍스트도 같이 표기"""
     lines = []
     for d in items:
-        line = f"{d.get('ci_name', '')} / {d.get('hostname', '')} / {d.get('ip', '')}"
+        tag = d.get("sheet_label") or SHEET_LABEL.get(d.get("sheet"), "")
+        line = f"{d.get('ci_name', '')} / {d.get('hostname', '')} / {d.get('ip', '')} ({tag})"
         if show_raw and d.get("schedule_raw"):
             line += f" (현재 등록: {d['schedule_raw']})"
         lines.append(line)
@@ -62,6 +96,7 @@ def group_capacity_no_reply(items: list[dict]) -> list[dict]:
     증설 여부(O,X)가 공란인 '미회신' 대상을 시스템 운영팀 단위로 묶고 초안까지 생성.
     주의: items는 대상(O)만이 아니라 엑셀 전체 행이어야 한다 (calc_capacity_completion
     결과의 details는 이미 O만 걸러진 상태라 여기엔 못 씀 - load_capacity_items_merged를 그대로 넘길 것).
+    DATA/ARCH 두 시트 항목을 같이 넘기면, 같은 서버는 한 줄(초안 한 건)로 합쳐진다.
 
     반환: [{owner, ops_team, name, team, given, count, targets, message}, ...] (대상 많은 순)
     """
@@ -74,17 +109,18 @@ def group_capacity_no_reply(items: list[dict]) -> list[dict]:
     result = []
     for g in raw_groups:
         top_raw, p, given = pick_representative(g)
+        targets = merge_same_server(g["items"])
         result.append({
             "owner": top_raw,
             "ops_team": g["key"],
             "name": p["name"],
             "team": p["team"],
             "given": given,
-            "count": len(g["items"]),
-            "targets": g["items"],
-            "greeting_suffix": no_reply_greeting_suffix(g["items"]),
+            "count": len(targets),
+            "targets": targets,
+            "greeting_suffix": no_reply_greeting_suffix(targets),
             "candidates": candidates_of(g["items"], None),
-            "message": build_no_reply_message(given, g["items"]),
+            "message": build_no_reply_message(given, targets),
         })
 
     return sorted(result, key=lambda x: (-x["count"], x["ops_team"]))
@@ -95,6 +131,7 @@ def group_capacity_unplanned(details: list[dict], hinted: bool | None = None) ->
     미계획(증설 일정 미등록) 대상을 '시스템 운영팀' 단위로 묶고 초안까지 생성.
     DR훈련의 group_unplanned_by_service와 동일한 방식(대표 담당자 다수결 선정)이지만,
     용량관리 엑셀엔 '서비스'(주업무명) 컬럼이 없어 시스템 운영팀 단위로 묶는다.
+    DATA/ARCH 두 시트 details를 합쳐서 넘기면, 같은 서버는 한 줄(초안 한 건)로 합쳐진다.
 
     hinted 필터:
     - None: 전체 미계획
@@ -113,17 +150,18 @@ def group_capacity_unplanned(details: list[dict], hinted: bool | None = None) ->
     result = []
     for g in raw_groups:
         top_raw, p, given = pick_representative(g)
+        targets = merge_same_server(g["items"])
         result.append({
             "owner": top_raw,
             "ops_team": g["key"],
             "name": p["name"],
             "team": p["team"],
             "given": given,
-            "count": len(g["items"]),
-            "targets": g["items"],
-            "greeting_suffix": capacity_greeting_suffix(g["items"], is_hinted),
+            "count": len(targets),
+            "targets": targets,
+            "greeting_suffix": capacity_greeting_suffix(targets, is_hinted),
             "candidates": candidates_of(g["items"], None),
-            "message": build_capacity_message(given, g["items"], is_hinted),
+            "message": build_capacity_message(given, targets, is_hinted),
         })
 
     return sorted(result, key=lambda x: (-x["count"], x["ops_team"]))
