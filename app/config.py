@@ -7,9 +7,13 @@ class Settings(BaseSettings):
 
     # JIRA
     jira_url: str                    # 예: https://jira.회사.com
-    jira_user: str                   # 로그인 ID
-    jira_password: str               # 비밀번호
+    jira_pat: str                    # Personal Access Token (Bearer 인증)
     jira_project: str = "IMDC"
+
+    # Confluence (EoS 차주 계획 - 별도 계획서 페이지 파싱용)
+    confluence_url: str = ""         # 예: https://confluence.회사.com
+    confluence_pat: str = ""         # Personal Access Token (Bearer 인증)
+    confluence_eos_parent_page_id: str = "486488355"   # 주간 작업계획 페이지들의 부모('YYYY年') 페이지
 
     # 완료 판정 필드
     planned_end_date_field: str = "customfield_11360"    # 변경 계획 완료일
