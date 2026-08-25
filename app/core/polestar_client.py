@@ -55,6 +55,36 @@ class PolestarClient:
         resp.raise_for_status()
         return resp.json().get("configuration", {})
 
+    def get_children(self, resource_id, recursive: bool = True) -> list[dict]:
+        """
+        하위 리소스. recursive=True면 손자까지(allChildren).
+        서버 아래에 server.FileSystem, oracle.ASMDiskGroup, oracle.Tablespace 등이 달린다.
+        """
+        path = "allChildren" if recursive else "children"
+        resp = self.session.get(f"{self.base_url}/rest/resource/{resource_id}/{path}", timeout=30)
+        resp.raise_for_status()
+        return resp.json().get("configuration", [])
+
+    def get_definition_names(self, resource_type: str) -> list[str]:
+        """해당 리소스 타입에서 수집 가능한 지표명 (예: oracle.ASMDiskGroup -> free_size/total_size/utilization)"""
+        resp = self.session.get(f"{self.base_url}/rest/measure/definitionName/{resource_type}", timeout=20)
+        resp.raise_for_status()
+        return resp.json().get("measurement", [])
+
+    def get_measures(self, resource_id, definitions: list[str]) -> dict[str, float]:
+        """
+        리소스의 최근 수집값. 반환은 {지표명(한글): 값}.
+        수집이 안 되는 리소스는 빈 dict (모니터링 미구성이거나 에이전트 중단).
+        """
+        resp = self.session.get(
+            f"{self.base_url}/rest/measure/custom",
+            params={"resourceId": resource_id, "definition": ",".join(definitions)},
+            timeout=30,
+        )
+        resp.raise_for_status()
+        rows = resp.json().get("data", {}).get("measurement", [])
+        return {r["definitionName"]: r["value"] for r in rows if "definitionName" in r}
+
     def search_by_ip(self, ips: list[str]) -> list[dict]:
         """IP로 리소스 검색 (여러 개면 콤마 구분)"""
         if not ips:

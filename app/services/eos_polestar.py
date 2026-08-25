@@ -92,6 +92,23 @@ def judge_pending(item: dict, index: dict) -> bool:
     )
 
 
+def confirmed_item_nos(items: list[dict], resources: list[dict] | None = None) -> set[str]:
+    """
+    Polestar에서 '_OLD'가 확인된 대상의 item_no 집합.
+    calc_eos_completion(..., polestar_confirmed=...)에 그대로 넘겨 쓴다.
+
+    Polestar 조회는 네트워크 호출이라 대상마다 부르지 않고 목록을 한 번만 받아 인덱싱한다.
+
+    ※ Polestar CI명에는 리네임 시각이 없어 "언제 전환됐는지"를 알 수 없다. 그래서 과거
+      시점(as_of)으로 조회하면 그 이후에 전환된 건까지 완료로 잡혀 약간 과대계상된다.
+      '오늘 기준' 집계에는 문제없고, 과거 소급 집계에는 JIRA CMDB 근거만 쓰는 게 정확하다.
+    """
+    if resources is None:
+        resources = polestar.list_resources()
+    index = build_index(resources)
+    return {i["item_no"] for i in items if judge_converted(i, index)[0]}
+
+
 def check_eos_conversion(items: list[dict], resources: list[dict] | None = None) -> dict:
     """
     EoS 대상들의 Polestar 기준 전환 현황.

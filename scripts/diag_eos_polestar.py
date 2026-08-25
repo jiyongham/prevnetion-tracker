@@ -24,7 +24,7 @@ def main():
     resources = polestar.list_resources()
     print(f"Polestar 리소스 {len(resources)}건 조회\n")
 
-    items, ticket_map = collect_eos(use_jira=True)
+    items, ticket_map, _ = collect_eos(use_jira=True, use_polestar=False)
 
     for track, fixed_total in (("OS", OS_TOTAL_FIXED), ("DB", DB_TOTAL_FIXED)):
         track_items = filter_track(items, track)
@@ -33,8 +33,8 @@ def main():
         conv = check_eos_conversion(targets, resources)
 
         print(f"[{track}] 대상 {len(targets)}대 (리포트 고정 모수 {fixed_total}대)")
-        print(f"  JIRA 티켓 기준 완료 : {jira_result['done']}대  (변경계획시작일 기준이라 실제 완료보다 많이 잡힘)")
-        print(f"  Polestar 전환 완료  : {len(conv['converted'])}대")
+        print(f"  JIRA CMDB '_OLD' 기준 완료 : {jira_result['done']}대  (Polestar 근거 제외)")
+        print(f"  Polestar '_OLD' 기준 완료  : {len(conv['converted'])}대")
         print(f"     - TO-BE(_NEW) 준비됨(미전환) : {len(conv['pending_new'])}대")
         print(f"     - 미착수                     : {len(conv['not_started'])}대")
         print(f"     - Polestar 미등록(수동 확인) : {len(conv['unlinked'])}대")
