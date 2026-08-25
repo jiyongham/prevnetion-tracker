@@ -202,6 +202,11 @@ tr.saved { animation: flash 1.2s; }
 .badge.warn { background: #fff4e5; color: #b26a00; }
 .badge.muted { background: #eceff1; color: #607d8b; }
 
+/* 관리자 전용 요소. 요소마다 JS로 display를 세팅하면 행이 수백 개일 때 입력할 때마다
+   버벅여서, body 클래스 하나만 토글하고 나머지는 CSS가 처리하게 한다.
+   :not()으로 감춰야 관리자일 때 각 요소의 원래 display(inline-block/table-cell 등)가 유지된다. */
+body:not(.is-admin) .admin-only { display: none !important; }
+
 /* 미계획 리마인드 미리보기 */
 .remind-layout { display: flex; gap: 16px; align-items: flex-start; }
 .remind-side { width: 220px; flex: 0 0 220px; }

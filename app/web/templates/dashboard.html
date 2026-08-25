@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>DR 모의훈련 진척 관리</title>
-  <link rel="stylesheet" href="/static/style.css?v=4">
+  <link rel="stylesheet" href="/static/style.css?v=5">
 </head>
 <body>
 <div class="container">
@@ -24,12 +24,12 @@
           <option value="H2" {% if half == 'H2' %}selected{% endif %}>하반기</option>
         </select>
       </form>
-      <form method="post" action="/send-report" class="inline-form admin-only" style="display:none">
+      <form method="post" action="/send-report" class="inline-form admin-only">
         <input type="hidden" name="half" value="{{ half }}">
         <button type="submit" class="btn-teams">📤 Teams 발송</button>
       </form>
-      <a href="/remind-preview?half={{ half }}" class="btn-remind admin-only" style="display:none">📣 미계획 리마인드</a>
-      <a href="/owner-check?half={{ half }}" class="btn-sm admin-only" style="display:none">🔍 담당자 확인</a>
+      <a href="/remind-preview?half={{ half }}" class="btn-remind admin-only">📣 미계획 리마인드</a>
+      <a href="/owner-check?half={{ half }}" class="btn-sm admin-only">🔍 담당자 확인</a>
     </div>
   </header>
 
@@ -287,10 +287,7 @@ function applyAdminState() {
     el.title = admin ? "" : "담당자 수정은 관리자만 가능합니다";
   });
 
-  // Teams 발송 / 미계획 리마인드 / 담당자 확인: 관리자만 노출
-  document.querySelectorAll(".admin-only").forEach(el => {
-    el.style.display = admin ? "" : "none";
-  });
+  document.body.classList.toggle("is-admin", admin);   // .admin-only 표시는 CSS가 처리
 }
 
 function showToast(msg, ok = true) {

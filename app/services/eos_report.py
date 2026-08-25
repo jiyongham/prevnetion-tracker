@@ -1,47 +1,25 @@
 # app/services/eos_report.py
 from datetime import date
 
-from app.config import settings
 from app.core.date_utils import week_ranges
-from app.core.eos_loader import load_eos_items_merged
-from app.core.jira_client import jira
 from app.core.teams_client import send_teams_message
-from app.services.eos import build_eos_ticket_summary, calc_eos_completion, eos_ticket_done_date, filter_track
-from app.services.eos_polestar import confirmed_item_nos
-from app.services.matcher import match_items_by_cmdb_key, match_items_by_ip, merge_ticket_maps
+from app.services.eos import calc_eos_completion, eos_ticket_done_date, filter_track
+from app.services.eos_data import get_eos_data
 
 # OS/DB 트랙 전체 대상 수는 프로젝트 착수 시점에 고정된 모수 (엑셀 행 수와 별개 - 지시에 따라 계산하지 않고 고정값 사용)
 OS_TOTAL_FIXED = 384
 DB_TOTAL_FIXED = 49
 
 
-def collect_eos(use_jira: bool = True, use_polestar: bool = True):
+def collect_eos(use_jira: bool = True):
     """
     반환: (items, ticket_map, polestar_confirmed)
-    polestar_confirmed는 Polestar에서 '_OLD'로 확인된 item_no 집합.
-    조회 실패 시 None - 그 경우 JIRA CMDB 근거만으로 완료를 판정한다(다소 적게 잡힘).
+    수집 자체는 대시보드와 공용(eos_data.get_eos_data) - 두 곳이 따로 구현해 숫자가
+    어긋나는 걸 막기 위함. 주간 리포트는 발송 시점의 최신값을 써야 하므로 캐시를 무시한다.
     """
-    items = load_eos_items_merged()
-    ticket_map = {}
-    if use_jira:
-        try:
-            issues = jira.get_eos_tickets()
-            tickets = build_eos_ticket_summary(issues, settings.planned_end_date_field)
-            targets = [i for i in items if i["is_target"]]
-            # 작업 완료(CMDB) 필드의 Insight Key로 우선 매칭, 그 필드가 없는 티켓은 IP/호스트명으로 보강
-            cmdb_map = match_items_by_cmdb_key(targets, tickets)
-            ip_map = match_items_by_ip(targets, tickets)["matched"]
-            ticket_map = merge_ticket_maps(cmdb_map, ip_map)
-        except Exception as e:
-            print(f"⚠️ EoS JIRA 조회 실패 (엑셀 기준으로 계속): {e}")
-
-    polestar_confirmed = None
-    if use_polestar:
-        try:
-            polestar_confirmed = confirmed_item_nos([i for i in items if i["is_target"]])
-        except Exception as e:
-            print(f"⚠️ Polestar 조회 실패 (JIRA CMDB 근거만으로 계속): {e}")
-
+    items, ticket_map, polestar_confirmed, _ = get_eos_data(
+        use_external=use_jira, force_refresh=True
+    )
     return items, ticket_map, polestar_confirmed
 
 

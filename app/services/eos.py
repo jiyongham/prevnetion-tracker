@@ -2,7 +2,7 @@
 from datetime import date
 
 from app.config import settings
-from app.core.date_utils import half_window, parse_schedule
+from app.core.date_utils import half_window
 from app.core.eos_loader import get_targets, parse_eos_schedule
 from app.services.completion import DONE_MARKS, build_ticket_summary
 
