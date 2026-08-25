@@ -1,0 +1,220 @@
+<!-- app/web/templates/eos_plan_chat.html -->
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EoS 차주 계획 입력</title>
+  <link rel="stylesheet" href="/static/style.css?v=4">
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <h1>💬 EoS 차주 계획 입력</h1>
+    <a href="/eos" class="btn-sm">← EoS</a>
+  </header>
+
+  <div class="alert" style="background:#eef4ff;color:#334">
+    JIRA/Confluence로 아직 취합이 안 되는 주(<strong>{{ week_start }} ~ {{ week_end }}</strong>)의
+    작업 예정을, 아는 대로 자유롭게 말씀해주세요. 예: <em>"다음주에 까사미아 SAP,
+    이마트 인시생산성시스템 예정이야"</em> — AI가 대상 시스템 후보를 찾아드리면,
+    맞는 것만 체크하고 저장하시면 됩니다.
+  </div>
+
+  <div class="user-input">
+    <strong>입력자명:</strong>
+    <input type="text" id="updatedBy" placeholder="이름 입력">
+    <span class="hint">※ 저장은 관리자만 가능합니다.</span>
+    <span id="adminHint" class="hint"></span>
+  </div>
+
+  <div class="panel">
+    <h2>대상 시스템 찾기</h2>
+    <div id="chatMsgs" class="chat-msgs" style="height:280px;border:1px solid #eee;border-radius:8px;margin-bottom:10px">
+      <div class="chat-msg bot">어떤 작업이 예정되어 있나요? 관계사/시스템명을 편하게 말씀해주세요.</div>
+    </div>
+    <form id="chatForm" class="chat-form" onsubmit="return sendChat(event)" style="border-top:none">
+      <input type="text" id="chatInput" placeholder="예: 까사미아 SAP, 이마트 인시생산성시스템 다음주 예정이야">
+      <button type="submit">전송</button>
+    </form>
+  </div>
+
+  <div class="panel" id="candidatePanel" style="display:none">
+    <div class="panel-head">
+      <h2>후보 확인 (체크된 것만 저장됩니다)</h2>
+      <button class="btn-sm" onclick="saveCandidates()">💾 선택 항목 저장</button>
+    </div>
+    <div id="candidateList"></div>
+  </div>
+
+  <div class="panel">
+    <h2>현재 등록된 차주 계획 대상 ({{ week_start }} ~ {{ week_end }}) — {{ saved_list|length }}건</h2>
+    <table>
+      <thead>
+        <tr><th>시스템명</th><th>입력자</th><th>입력시각</th><th style="width:60px"></th></tr>
+      </thead>
+      <tbody id="savedBody">
+      {% for s in saved_list %}
+        <tr data-item-no="{{ s.item_no }}">
+          <td class="strong">{{ s.label }}</td>
+          <td class="small">{{ s.input_by }}</td>
+          <td class="small">{{ s.input_at }}</td>
+          <td><button class="btn-sm" onclick="removeSaved(this)">삭제</button></td>
+        </tr>
+      {% endfor %}
+      {% if not saved_list %}
+        <tr id="savedEmptyRow"><td colspan="4" class="muted" style="text-align:center;padding:16px">아직 등록된 대상이 없습니다.</td></tr>
+      {% endif %}
+      </tbody>
+    </table>
+  </div>
+
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script>
+const ADMINS = {{ admins | tojson }};
+const WEEK_START = "{{ week_start }}";
+const WEEK_END = "{{ week_end }}";
+
+function isAdmin() {
+  const name = (document.getElementById("updatedBy").value || "").trim();
+  return name !== "" && ADMINS.includes(name);
+}
+
+function applyAdminState() {
+  const admin = isAdmin();
+  const hint = document.getElementById("adminHint");
+  hint.textContent = admin ? "🔓 관리자: 저장 가능" : "🔒 저장은 관리자만 가능";
+  hint.style.color = admin ? "#2e7d32" : "#b26a00";
+}
+
+function showToast(msg, ok = true) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.className = "toast show " + (ok ? "ok" : "err");
+  setTimeout(() => { t.className = "toast"; }, 2000);
+}
+
+function addChatMsg(text, who) {
+  const box = document.getElementById("chatMsgs");
+  const el = document.createElement("div");
+  el.className = "chat-msg " + who;
+  el.textContent = text;
+  box.appendChild(el);
+  box.scrollTop = box.scrollHeight;
+  return el;
+}
+
+async function sendChat(e) {
+  e.preventDefault();
+  const input = document.getElementById("chatInput");
+  const message = input.value.trim();
+  if (!message) return false;
+
+  addChatMsg(message, "me");
+  input.value = "";
+  const pending = addChatMsg("찾는 중...", "bot");
+
+  try {
+    const res = await fetch("/api/eos/plan-chat/parse", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message }),
+    });
+    const data = await res.json();
+    if (!data.ok) {
+      pending.textContent = "오류: " + (data.error || "요청 실패");
+      return false;
+    }
+    if (!data.candidates.length) {
+      pending.textContent = "일치하는 대상을 찾지 못했어요. 시스템명을 더 구체적으로 말씀해주시겠어요?";
+      return false;
+    }
+    pending.textContent = `${data.candidates.length}건 찾았어요. 아래에서 확인 후 저장해주세요.`;
+    renderCandidates(data.candidates);
+  } catch (err) {
+    pending.textContent = "오류: " + err.message;
+  }
+  return false;
+}
+
+function renderCandidates(candidates) {
+  const panel = document.getElementById("candidatePanel");
+  const list = document.getElementById("candidateList");
+  panel.style.display = "";
+  for (const c of candidates) {
+    if (list.querySelector(`[data-item-no="${c.item_no}"]`)) continue; // 중복 방지
+    const row = document.createElement("label");
+    row.className = "owner-item";
+    row.dataset.itemNo = c.item_no;
+    row.innerHTML = `<span><input type="checkbox" checked style="margin-right:8px">${c.label} <span class="muted small">(${c.ops_team || ''})</span></span>`;
+    list.appendChild(row);
+  }
+}
+
+async function saveCandidates() {
+  const name = (document.getElementById("updatedBy").value || "").trim();
+  if (name.length < 2) { showToast("입력자명을 2글자 이상 입력해주세요", false); return; }
+  if (!isAdmin()) { showToast("저장은 관리자만 가능합니다", false); return; }
+
+  const rows = Array.from(document.querySelectorAll("#candidateList .owner-item"));
+  const itemNos = rows.filter(r => r.querySelector("input").checked).map(r => r.dataset.itemNo);
+  if (!itemNos.length) { showToast("체크된 항목이 없습니다", false); return; }
+
+  try {
+    const res = await fetch("/api/eos/plan-chat/save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ item_nos: itemNos, week_start: WEEK_START, week_end: WEEK_END, updated_by: name }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      showToast(`${data.count}건 저장 완료`);
+      setTimeout(() => location.reload(), 700);
+    } else {
+      showToast("저장 실패: " + (data.error || ""), false);
+    }
+  } catch (e) {
+    showToast("오류: " + e.message, false);
+  }
+}
+
+async function removeSaved(btn) {
+  const name = (document.getElementById("updatedBy").value || "").trim();
+  if (name.length < 2) { showToast("입력자명을 2글자 이상 입력해주세요", false); return; }
+  const tr = btn.closest("tr");
+  const itemNo = tr.dataset.itemNo;
+  if (!confirm("이 대상을 차주 계획에서 삭제할까요?")) return;
+
+  try {
+    const res = await fetch("/api/eos/plan-chat/remove", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ item_no: itemNo, week_start: WEEK_START, updated_by: name }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      tr.remove();
+      showToast("삭제 완료");
+    } else {
+      showToast("삭제 실패: " + (data.error || ""), false);
+    }
+  } catch (e) {
+    showToast("오류: " + e.message, false);
+  }
+}
+
+const ub = document.getElementById("updatedBy");
+ub.value = localStorage.getItem("updatedBy") || "";
+ub.addEventListener("input", applyAdminState);
+ub.addEventListener("change", () => {
+  localStorage.setItem("updatedBy", ub.value);
+  applyAdminState();
+});
+applyAdminState();
+</script>
+</body>
+</html>
