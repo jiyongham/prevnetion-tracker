@@ -1,7 +1,6 @@
 # app/core/jira_client.py
 import requests
 from requests.adapters import HTTPAdapter
-from requests.auth import HTTPBasicAuth
 from app.config import settings
 
 
@@ -9,8 +8,10 @@ class JiraClient:
     def __init__(self):
         self.base_url = settings.jira_url.rstrip("/")
         self.session = requests.Session()
-        self.session.auth = HTTPBasicAuth(settings.jira_user, settings.jira_password)
-        self.session.headers.update({"Accept": "application/json"})
+        self.session.headers.update({
+            "Authorization": f"Bearer {settings.jira_pat}",
+            "Accept": "application/json",
+        })
         # CMDB(Insight) 병렬 조회(ThreadPoolExecutor)가 동시에 여러 연결을 쓰므로 풀을 넉넉히 잡는다
         adapter = HTTPAdapter(pool_connections=20, pool_maxsize=20)
         self.session.mount("https://", adapter)
@@ -92,10 +93,16 @@ class JiraClient:
         return self.search(jql, fields=fields)
 
     def get_eos_tickets(self):
-        """EoS(노후 OS/DB 전환) 티켓 조회 - 제목에 "예방1" """
+        """
+        EoS(노후 OS/DB 전환) 티켓 조회.
+        제목에 "예방1"이 없어도 IP전환 작업이면 대상에 포함 - 실제 EoS 대상 여부는
+        이후 매칭 단계(호스트명/IP/CMDB Key)에서 우리 대상 목록과 겹치는지로 걸러진다.
+        [예방1] 태그만 고집하면, 같은 작업이 다른 이유(예: 타 팀 작업에 묶여)로
+        예방1 태그 없이 등록된 경우를 놓친다.
+        """
         jql = (
             f'project = {settings.jira_project} '
-            f'AND summary ~ "예방1" '
+            f'AND (summary ~ "예방1" OR summary ~ "IP전환" OR summary ~ "IP 전환") '
             f'ORDER BY created DESC'
         )
         fields = [
