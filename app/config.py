@@ -15,6 +15,19 @@ class Settings(BaseSettings):
     confluence_pat: str = ""         # Personal Access Token (Bearer 인증)
     confluence_eos_parent_page_id: str = "486488355"   # 주간 작업계획 페이지들의 부모('YYYY年') 페이지
 
+    # Polestar (NKIA) - EoS 실제 전환 완료 판정용.
+    # 작업이 정상 완료되면 CI명에서 TO-BE의 '_NEW'가 빠지고 AS-IS에 '_OLD'가 붙는데,
+    # CMDB(Insight)는 작업자가 늦게 반영하는 경우가 있어 Polestar를 기준으로 삼는다.
+    polestar_url: str = ""
+    polestar_token: str = ""
+
+    # Polestar (NKIA) - EoS 실제 전환 완료 판정용.
+    # 작업이 정상 완료되면 CI명에서 TO-BE의 '_NEW'가 빠지고 AS-IS에 '_OLD'가 붙는데,
+    # CMDB(Insight)는 작업자가 늦게 반영하는 경우가 있어 Polestar를 기준으로 삼는다.
+    polestar_url: str = ""
+    polestar_user: str = ""
+    polestar_password: str = ""
+
     # 완료 판정 필드
     planned_end_date_field: str = "customfield_00003"    # 변경 계획 완료일
     planned_start_date_field: str = "customfield_00004"  # 변경 계획 시작일 (AI 매칭 진단용)
