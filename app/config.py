@@ -89,6 +89,10 @@ class Settings(BaseSettings):
     summary_agent_id: str = ""
     summary_agent_code: str = ""
 
+    # EoS 차주 계획 챗봇 전용 에이전트 (자유 텍스트에서 언급된 대상 시스템 추출)
+    eos_plan_agent_id: str = ""
+    eos_plan_agent_code: str = ""
+
     @property
     def admin_set(self) -> set[str]:
         return {a.strip() for a in self.admin_users.split(",") if a.strip()}
