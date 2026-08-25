@@ -7,17 +7,22 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from app.config import settings
+from app.core.date_utils import week_ranges
 from app.core.eos_loader import load_eos_items_merged
 from app.core.jira_client import jira
 from app.core.teams_client import send_teams_dm
 from app.models.db import (
+    add_eos_next_week_plan,
     get_eos_input,
+    get_eos_next_week_plan,
     get_eos_remind_log_summary,
     log_eos_remind,
+    remove_eos_next_week_plan,
     upsert_eos_input,
 )
 from app.services.completion import group_by
 from app.services.eos import build_eos_ticket_summary, build_no_reply_details, calc_eos_completion, filter_track
+from app.services.eos_plan_chat import build_candidates, parse_plan_message
 from app.services.eos_reminder import group_eos_no_reply, group_eos_unplanned
 from app.services.eos_report import send_eos_report
 from app.services.matcher import match_items_by_cmdb_key, match_items_by_ip, merge_ticket_maps
@@ -273,3 +278,91 @@ async def api_eos_save_owner(request: Request):
 def trigger_eos_report():
     send_eos_report()
     return RedirectResponse(url="/eos", status_code=303)
+
+
+# ─────────────────────────────────────────────
+# 차주 계획 챗봇 (JIRA/Confluence로 못 찾은 주에 관리자가 아는 대로 자유 텍스트 입력)
+# ─────────────────────────────────────────────
+@router.get("/eos/plan-chat", response_class=HTMLResponse)
+def eos_plan_chat_page(request: Request):
+    today = date.today()
+    perf_start, perf_end, plan_start, plan_end = week_ranges(today)
+
+    saved = get_eos_next_week_plan(plan_start.isoformat())
+    items = load_eos_items_merged()
+    by_no = {i["item_no"]: i for i in items}
+    saved_list = [
+        {
+            "item_no": item_no,
+            "label": (by_no.get(item_no) or {}).get("system_name", item_no),
+            "input_by": row.get("input_by", ""),
+            "input_at": row.get("input_at", ""),
+        }
+        for item_no, row in saved.items()
+    ]
+
+    return templates.TemplateResponse("eos_plan_chat.html", {
+        "request": request,
+        "week_start": plan_start,
+        "week_end": plan_end,
+        "saved_list": saved_list,
+        "admins": sorted(settings.eos_admin_set),
+    })
+
+
+@router.post("/api/eos/plan-chat/parse")
+async def api_eos_plan_chat_parse(request: Request):
+    """자유 텍스트 -> 언급된 것으로 보이는 EoS 대상 후보 목록"""
+    data = await request.json()
+    message = (data.get("message") or "").strip()
+    if not message:
+        return JSONResponse({"ok": False, "error": "메시지를 입력해주세요."}, status_code=400)
+
+    items = load_eos_items_merged()
+    candidates = build_candidates(items)
+    try:
+        matched = parse_plan_message(message, candidates)
+    except Exception as e:
+        logger.warning(f"EoS 차주 계획 챗봇 에이전트 호출 실패: {e}")
+        return JSONResponse({"ok": False, "error": f"에이전트 호출 실패: {e}"}, status_code=502)
+
+    return JSONResponse({"ok": True, "candidates": matched})
+
+
+@router.post("/api/eos/plan-chat/save")
+async def api_eos_plan_chat_save(request: Request):
+    """확인된 후보들을 그 주 차주 계획 대상으로 저장 (관리자만)"""
+    data = await request.json()
+    updated_by = require_updated_by(data.get("updated_by", ""))
+    if updated_by not in settings.eos_admin_set:
+        return JSONResponse(
+            {"ok": False, "error": "차주 계획 입력은 관리자만 가능합니다."}, status_code=403
+        )
+
+    item_nos = data.get("item_nos") or []
+    week_start = (data.get("week_start") or "").strip()
+    week_end = (data.get("week_end") or "").strip()
+    if not item_nos or not week_start or not week_end:
+        return JSONResponse({"ok": False, "error": "필수 값이 없습니다."}, status_code=400)
+
+    add_eos_next_week_plan(item_nos, week_start, week_end, updated_by)
+    return JSONResponse({"ok": True, "count": len(item_nos)})
+
+
+@router.post("/api/eos/plan-chat/remove")
+async def api_eos_plan_chat_remove(request: Request):
+    """잘못 추가된 항목 제거 (관리자만)"""
+    data = await request.json()
+    updated_by = require_updated_by(data.get("updated_by", ""))
+    if updated_by not in settings.eos_admin_set:
+        return JSONResponse(
+            {"ok": False, "error": "차주 계획 수정은 관리자만 가능합니다."}, status_code=403
+        )
+
+    item_no = (data.get("item_no") or "").strip()
+    week_start = (data.get("week_start") or "").strip()
+    if not item_no or not week_start:
+        return JSONResponse({"ok": False, "error": "필수 값이 없습니다."}, status_code=400)
+
+    remove_eos_next_week_plan(item_no, week_start)
+    return JSONResponse({"ok": True})

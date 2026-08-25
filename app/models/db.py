@@ -133,6 +133,18 @@ def init_db():
         );
 
         CREATE INDEX IF NOT EXISTS idx_eos_remind_log_team ON eos_remind_log(ops_team);
+
+        CREATE TABLE IF NOT EXISTS eos_next_week_plan (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            item_no     TEXT NOT NULL,
+            week_start  TEXT NOT NULL,   -- 'YYYY-MM-DD' (월요일) - JIRA/Confluence로 못 찾은 주의 수동 입력
+            week_end    TEXT NOT NULL,   -- 'YYYY-MM-DD' (금요일)
+            input_by    TEXT,
+            input_at    TEXT DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(item_no, week_start)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_eos_next_week_plan_week ON eos_next_week_plan(week_start);
         """)
 
         # 기존 DB에는 is_excluded 컬럼이 없을 수 있어 별도로 추가 (제외 버튼 기능용)
@@ -461,6 +473,37 @@ def log_eos_remind(
                 (ops_team, recipient_name, recipient_team, ok, error, sent_at)
             VALUES (?, ?, ?, ?, ?, datetime('now', 'localtime'))
         """, (ops_team, recipient_name, recipient_team, int(ok), error or ""))
+
+
+def get_eos_next_week_plan(week_start: str) -> dict[str, dict]:
+    """특정 주(월요일 기준) 수동 입력된 차주 계획 대상 -> {item_no: row}"""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM eos_next_week_plan WHERE week_start = ?", (week_start,)
+        ).fetchall()
+    return {r["item_no"]: dict(r) for r in rows}
+
+
+def add_eos_next_week_plan(item_nos: list[str], week_start: str, week_end: str, input_by: str):
+    """챗봇에서 확인된 항목들을 그 주 차주 계획 대상으로 추가 (이미 있으면 입력자/시각만 갱신)."""
+    with get_conn() as conn:
+        for item_no in item_nos:
+            conn.execute("""
+                INSERT INTO eos_next_week_plan (item_no, week_start, week_end, input_by, input_at)
+                VALUES (?, ?, ?, ?, datetime('now', 'localtime'))
+                ON CONFLICT(item_no, week_start) DO UPDATE SET
+                    input_by = excluded.input_by,
+                    input_at = datetime('now', 'localtime')
+            """, (item_no, week_start, week_end, input_by))
+
+
+def remove_eos_next_week_plan(item_no: str, week_start: str):
+    """잘못 추가된 항목 제거"""
+    with get_conn() as conn:
+        conn.execute(
+            "DELETE FROM eos_next_week_plan WHERE item_no = ? AND week_start = ?",
+            (item_no, week_start),
+        )
 
 
 def get_eos_remind_log_summary() -> dict[str, dict]:
