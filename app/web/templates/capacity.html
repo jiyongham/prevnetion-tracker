@@ -230,8 +230,17 @@ function isAdmin() {
   return name !== "" && ADMINS.includes(name);
 }
 
+let _lastAdminState = null;
+
 function applyAdminState() {
   const admin = isAdmin();
+  const hint = document.getElementById("adminHint");
+  hint.textContent = admin ? "🔓 관리자: 완료 체크/담당자 수정 가능" : "🔒 완료 체크/담당자 수정은 관리자만 가능";
+  hint.style.color = admin ? "#2e7d32" : "#b26a00";
+
+  if (admin === _lastAdminState) return; // 상태 변화 없으면 무거운 DOM 순회 생략 (입력할 때마다 랙 방지)
+  _lastAdminState = admin;
+
   document.querySelectorAll("input.cell.done").forEach(cb => {
     cb.disabled = !admin;
     cb.title = admin ? "" : "완료 처리는 관리자만 가능합니다";
@@ -240,9 +249,6 @@ function applyAdminState() {
     el.disabled = !admin;
     el.title = admin ? "" : "담당자 수정은 관리자만 가능합니다";
   });
-  const hint = document.getElementById("adminHint");
-  hint.textContent = admin ? "🔓 관리자: 완료 체크/담당자 수정 가능" : "🔒 완료 체크/담당자 수정은 관리자만 가능";
-  hint.style.color = admin ? "#2e7d32" : "#b26a00";
 
   document.querySelectorAll(".admin-only").forEach(el => {
     el.style.display = admin ? "" : "none";

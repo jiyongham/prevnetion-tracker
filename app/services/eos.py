@@ -85,9 +85,13 @@ def build_no_reply_details(items: list[dict], base_year: int) -> list[dict]:
     return result
 
 
+# 실제로 전환이 이뤄지지 않은(취소/보류) 티켓 - 완료 근거로 쓰면 안 됨
+_NOT_DONE_STATUSES = {"중단", "반려", "종료"}
+
+
 def eos_ticket_done_date(t: dict) -> date | None:
-    """완료로 볼 날짜: 변경계획시작일 (IP전환 작업만 인정, 생성은 참고만 하고 완료로 안 침)"""
-    if t.get("kind") == "IP전환":
+    """완료로 볼 날짜: 변경계획시작일 (IP전환 작업만 인정, 생성은 참고만 하고 완료로 안 침. 중단/반려/종료된 티켓은 제외)"""
+    if t.get("kind") == "IP전환" and t.get("status") not in _NOT_DONE_STATUSES:
         return t.get("planned_start_date")
     return None
 
@@ -97,20 +101,17 @@ def judge_eos(
 ) -> tuple[bool, str, dict | None]:
     """
     완료 판정. 엑셀엔 완료 컬럼이 없어 (1) 관리자가 웹에서 수동 완료 처리했거나
-    (2) 매칭된 [예방1] 티켓 중 "IP전환" 작업의 변경계획시작일이 하반기 종료 전 + 기준일 이전인 경우만 완료.
-
-    하반기 시작(7/1) 이전에 조기 완료한 건도 인정한다 (하한 없이 종료일만 체크) -
-    실제로 하반기 목표를 앞당겨 6월에 IP전환까지 끝내는 경우가 있어, 시작일 하한을
-    두면 이미 끝난 작업이 "미완료"로 오판된다.
+    (2) 매칭된 [예방1] 티켓 중 "IP전환" 작업의 변경계획시작일이 하반기 구간(시작~종료) 내 +
+    기준일 이전인 경우만 완료.
     """
     if (item.get("excel_done") or "").upper() in DONE_MARKS:
         return True, "완료표기", None
 
-    _, end = half_window(base_year, "H2")
+    start, end = half_window(base_year, "H2")
     tks = tickets or []
     in_window = [
         t for t in tks
-        if (d := eos_ticket_done_date(t)) and d <= end and d <= as_of
+        if (d := eos_ticket_done_date(t)) and start <= d <= end and d <= as_of
     ]
     if in_window:
         t = max(in_window, key=lambda x: x.get("created") or "")
