@@ -97,12 +97,26 @@ def eos_ticket_done_date(t: dict) -> date | None:
 
 
 def judge_eos(
-    item: dict, tickets: list[dict] | None, as_of: date, base_year: int
+    item: dict,
+    tickets: list[dict] | None,
+    as_of: date,
+    base_year: int,
+    polestar_confirmed: set[str] | None = None,
 ) -> tuple[bool, str, dict | None]:
     """
-    완료 판정. 엑셀엔 완료 컬럼이 없어 (1) 관리자가 웹에서 수동 완료 처리했거나
-    (2) 매칭된 [예방1] 티켓 중 "IP전환" 작업의 변경계획시작일이 하반기 구간(시작~종료) 내 +
-    기준일 이전인 경우만 완료.
+    완료 판정. 엑셀엔 완료 컬럼이 없어 아래 근거로만 완료로 본다.
+
+    1) 관리자가 웹에서 수동 완료 처리
+    2) 매칭된 IP전환 티켓의 '작업 완료(CMDB)'에 이 대상이 '_OLD'로 기록됨
+    3) Polestar CI가 '_OLD'로 리네임됨 (polestar_confirmed로 주입)
+
+    티켓이 매칭됐다는 것만으로는 완료로 보지 않는다. 변경계획시작일은 "작업을 시작하기로
+    한 날"일 뿐이라, 계획일만 지나고 실제 전환은 안 끝난 건까지 완료로 세어 실측치보다
+    높게 나왔다. 반대로 티켓 status='완료'만 세면 후속 단계(CMDB 업데이트/결과등록 대기)에
+    걸린 건이 빠져 낮게 나온다. 그래서 "실제로 AS-IS가 _OLD로 바뀌었는가"를 본다.
+
+    2)와 3)을 합집합으로 쓰는 이유: CMDB 필드가 비어 있는 티켓이 있고(작업자가 미기입),
+    Polestar는 CI명 드리프트로 매칭이 안 되는 경우가 있어 서로를 보완한다.
     """
     if (item.get("excel_done") or "").upper() in DONE_MARKS:
         return True, "완료표기", None
@@ -113,9 +127,14 @@ def judge_eos(
         t for t in tks
         if (d := eos_ticket_done_date(t)) and start <= d <= end and d <= as_of
     ]
-    if in_window:
-        t = max(in_window, key=lambda x: x.get("created") or "")
-        return True, f"JIRA {t['key']} IP전환완료 ({t['planned_start_date']})", t
+
+    for t in sorted(in_window, key=lambda x: x.get("created") or "", reverse=True):
+        if item["item_no"] in (t.get("cmdb_old_keys") or set()):
+            return True, f"JIRA {t['key']} CMDB 전환완료 ({t['planned_start_date']})", t
+
+    if polestar_confirmed and item["item_no"] in polestar_confirmed:
+        latest = max(in_window, key=lambda x: x.get("created") or "") if in_window else None
+        return True, "Polestar CI _OLD 확인", latest
 
     return False, "", None
 
@@ -125,8 +144,14 @@ def calc_eos_completion(
     ticket_map: dict[str, list[dict]],
     as_of: date,
     base_year: int | None = None,
+    polestar_confirmed: set[str] | None = None,
 ) -> dict:
-    """완료율 계산 (EOS 진행(target) 대상만 분모). ticket_map은 item_no(Insight Key) 기준."""
+    """
+    완료율 계산 (EOS 진행(target) 대상만 분모). ticket_map은 item_no(Insight Key) 기준.
+    polestar_confirmed: Polestar에서 '_OLD'로 확인된 item_no 집합
+    (app.services.eos_polestar.confirmed_item_nos()로 만든다. 조회 실패 시 None을 넘기면
+     JIRA CMDB 근거만으로 판정한다.)
+    """
     year = base_year or as_of.year
     targets = get_targets(items)
     _, w_end = half_window(year, "H2")
@@ -136,7 +161,7 @@ def calc_eos_completion(
 
     for item in targets:
         matched = ticket_map.get(item["item_no"]) or []
-        completed, reason, sel = judge_eos(item, matched, as_of, year)
+        completed, reason, sel = judge_eos(item, matched, as_of, year, polestar_confirmed)
         if completed:
             done += 1
 

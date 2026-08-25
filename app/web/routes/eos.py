@@ -23,6 +23,7 @@ from app.models.db import (
 from app.services.completion import group_by
 from app.services.eos import build_eos_ticket_summary, build_no_reply_details, calc_eos_completion, filter_track
 from app.services.eos_plan_chat import build_candidates, parse_plan_message
+from app.services.eos_polestar import confirmed_item_nos
 from app.services.eos_reminder import group_eos_no_reply, group_eos_unplanned
 from app.services.eos_report import send_eos_report
 from app.services.matcher import match_items_by_cmdb_key, match_items_by_ip, merge_ticket_maps
@@ -51,7 +52,17 @@ def get_eos_dashboard_data(as_of: date, use_jira: bool = True, track: str = "ALL
             jira_error = str(e)
             logger.warning(f"EoS JIRA 조회 실패: {e}")
 
-    result = calc_eos_completion(filter_track(items, track), ticket_map, as_of)
+    # Polestar CI명의 '_OLD' 리네임은 JIRA CMDB 필드가 비어있는 건을 보완해준다.
+    # 조회 실패해도 대시보드는 떠야 하므로 JIRA 근거만으로 계속 진행한다.
+    polestar_confirmed = None
+    try:
+        polestar_confirmed = confirmed_item_nos([i for i in items if i["is_target"]])
+    except Exception as e:
+        logger.warning(f"Polestar 조회 실패 (JIRA CMDB 근거만으로 계속): {e}")
+
+    result = calc_eos_completion(
+        filter_track(items, track), ticket_map, as_of, polestar_confirmed=polestar_confirmed
+    )
     return result, jira_error
 
 

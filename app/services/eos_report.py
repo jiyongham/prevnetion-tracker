@@ -7,6 +7,7 @@ from app.core.eos_loader import load_eos_items_merged
 from app.core.jira_client import jira
 from app.core.teams_client import send_teams_message
 from app.services.eos import build_eos_ticket_summary, calc_eos_completion, eos_ticket_done_date, filter_track
+from app.services.eos_polestar import confirmed_item_nos
 from app.services.matcher import match_items_by_cmdb_key, match_items_by_ip, merge_ticket_maps
 
 # OS/DB 트랙 전체 대상 수는 프로젝트 착수 시점에 고정된 모수 (엑셀 행 수와 별개 - 지시에 따라 계산하지 않고 고정값 사용)
@@ -14,7 +15,12 @@ OS_TOTAL_FIXED = 384
 DB_TOTAL_FIXED = 49
 
 
-def collect_eos(use_jira: bool = True):
+def collect_eos(use_jira: bool = True, use_polestar: bool = True):
+    """
+    반환: (items, ticket_map, polestar_confirmed)
+    polestar_confirmed는 Polestar에서 '_OLD'로 확인된 item_no 집합.
+    조회 실패 시 None - 그 경우 JIRA CMDB 근거만으로 완료를 판정한다(다소 적게 잡힘).
+    """
     items = load_eos_items_merged()
     ticket_map = {}
     if use_jira:
@@ -28,7 +34,15 @@ def collect_eos(use_jira: bool = True):
             ticket_map = merge_ticket_maps(cmdb_map, ip_map)
         except Exception as e:
             print(f"⚠️ EoS JIRA 조회 실패 (엑셀 기준으로 계속): {e}")
-    return items, ticket_map
+
+    polestar_confirmed = None
+    if use_polestar:
+        try:
+            polestar_confirmed = confirmed_item_nos([i for i in items if i["is_target"]])
+        except Exception as e:
+            print(f"⚠️ Polestar 조회 실패 (JIRA CMDB 근거만으로 계속): {e}")
+
+    return items, ticket_map, polestar_confirmed
 
 
 def _month_stats(details: list[dict], today: date) -> tuple[int, int]:
@@ -59,8 +73,9 @@ def _track_section(
     today: date,
     perf_start: date, perf_end: date,
     plan_start: date, plan_end: date,
+    polestar_confirmed: set[str] | None = None,
 ) -> list[str]:
-    result = calc_eos_completion(items, ticket_map, today)
+    result = calc_eos_completion(items, ticket_map, today, polestar_confirmed=polestar_confirmed)
     rate = round(result["done"] / fixed_total * 100) if fixed_total else 0
 
     month_target, month_done = _month_stats(result["details"], today)
@@ -86,13 +101,13 @@ def build_eos_report(use_jira: bool = True) -> str:
     today = date.today()
     perf_start, perf_end, plan_start, plan_end = week_ranges(today)
 
-    items, ticket_map = collect_eos(use_jira)
+    items, ticket_map, polestar_confirmed = collect_eos(use_jira)
     os_items = filter_track(items, "OS")
     db_items = filter_track(items, "DB")
 
     lines = ["[EoS]", ""]
-    lines += _track_section("OS", OS_TOTAL_FIXED, os_items, ticket_map, today, perf_start, perf_end, plan_start, plan_end)
-    lines += _track_section("DB", DB_TOTAL_FIXED, db_items, ticket_map, today, perf_start, perf_end, plan_start, plan_end)
+    lines += _track_section("OS", OS_TOTAL_FIXED, os_items, ticket_map, today, perf_start, perf_end, plan_start, plan_end, polestar_confirmed)
+    lines += _track_section("DB", DB_TOTAL_FIXED, db_items, ticket_map, today, perf_start, perf_end, plan_start, plan_end, polestar_confirmed)
 
     return "\n".join(lines)
 
