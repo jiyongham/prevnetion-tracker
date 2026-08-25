@@ -9,7 +9,6 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from app.config import settings
 from app.core.date_utils import week_ranges
 from app.core.eos_loader import load_eos_items_merged
-from app.core.jira_client import jira
 from app.core.teams_client import send_teams_dm
 from app.models.db import (
     add_eos_next_week_plan,
@@ -21,12 +20,11 @@ from app.models.db import (
     upsert_eos_input,
 )
 from app.services.completion import group_by
-from app.services.eos import build_eos_ticket_summary, build_no_reply_details, calc_eos_completion, filter_track
+from app.services.eos import build_no_reply_details, calc_eos_completion, filter_track
+from app.services.eos_data import get_eos_data
 from app.services.eos_plan_chat import build_candidates, parse_plan_message
-from app.services.eos_polestar import confirmed_item_nos
 from app.services.eos_reminder import group_eos_no_reply, group_eos_unplanned
 from app.services.eos_report import send_eos_report
-from app.services.matcher import match_items_by_cmdb_key, match_items_by_ip, merge_ticket_maps
 from app.services.owner_check import collect_eos_targets_with_tickets, find_owner_mismatches
 from app.web.deps import require_updated_by, resolve_owner, templates
 
@@ -36,30 +34,7 @@ router = APIRouter()
 
 
 def get_eos_dashboard_data(as_of: date, use_jira: bool = True, track: str = "ALL"):
-    items = load_eos_items_merged()
-    ticket_map = {}
-    jira_error = None
-
-    if use_jira:
-        try:
-            issues = jira.get_eos_tickets()
-            tickets = build_eos_ticket_summary(issues, settings.planned_end_date_field)
-            targets = [i for i in items if i["is_target"]]
-            cmdb_map = match_items_by_cmdb_key(targets, tickets)
-            ip_map = match_items_by_ip(targets, tickets)["matched"]
-            ticket_map = merge_ticket_maps(cmdb_map, ip_map)
-        except Exception as e:
-            jira_error = str(e)
-            logger.warning(f"EoS JIRA 조회 실패: {e}")
-
-    # Polestar CI명의 '_OLD' 리네임은 JIRA CMDB 필드가 비어있는 건을 보완해준다.
-    # 조회 실패해도 대시보드는 떠야 하므로 JIRA 근거만으로 계속 진행한다.
-    polestar_confirmed = None
-    try:
-        polestar_confirmed = confirmed_item_nos([i for i in items if i["is_target"]])
-    except Exception as e:
-        logger.warning(f"Polestar 조회 실패 (JIRA CMDB 근거만으로 계속): {e}")
-
+    items, ticket_map, polestar_confirmed, jira_error = get_eos_data(use_external=use_jira)
     result = calc_eos_completion(
         filter_track(items, track), ticket_map, as_of, polestar_confirmed=polestar_confirmed
     )

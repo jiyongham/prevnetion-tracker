@@ -97,11 +97,21 @@ def parse_eos_schedule(raw: str, base_year: int) -> date | None:
         return None
 
 
+# 엑셀 파싱은 요청당 약 3초라 페이지 로드마다 반복하면 체감이 크다.
+# 파일 수정시각이 바뀌면 자동으로 다시 읽으므로 엑셀 교체 시 재시작이 필요 없다.
+_items_cache: dict = {"key": None, "value": None}
+
+
 def load_eos_items(excel_path: str | None = None) -> list[dict]:
-    """EoS 대상 엑셀 로드"""
+    """EoS 대상 엑셀 로드 (파일 mtime 기준 캐시)"""
     path = Path(excel_path or settings.eos_excel_path)
     if not path.exists():
         raise FileNotFoundError(f"EoS 엑셀 없음: {path}")
+
+    cache_key = (str(path), path.stat().st_mtime_ns)
+    if _items_cache["key"] == cache_key:
+        # 호출부가 항목을 수정(DB 병합 등)하므로 캐시 원본이 오염되지 않게 사본을 준다
+        return [dict(i) for i in _items_cache["value"]]
 
     df = pd.read_excel(path, sheet_name="EOS대상(OS,DB)", dtype=str)
     product_table = load_eos_product_table(excel_path)
@@ -155,7 +165,10 @@ def load_eos_items(excel_path: str | None = None) -> list[dict]:
             "schedule_raw": _s(row, "조치계획 (OO월)"),
             "excel_done": "",  # 엑셀엔 완료 컬럼이 없음 - 완료는 순전히 JIRA 또는 관리자 수동체크로만 판단
         })
-    return items
+
+    _items_cache["key"] = cache_key
+    _items_cache["value"] = items
+    return [dict(i) for i in items]
 
 
 def get_targets(items: list[dict]) -> list[dict]:

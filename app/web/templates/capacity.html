@@ -5,7 +5,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>용량관리 진척 현황</title>
-  <link rel="stylesheet" href="/static/style.css?v=4">
+  <link rel="stylesheet" href="/static/style.css?v=5">
 </head>
 <body>
 <div class="container">
@@ -19,12 +19,12 @@
   <header>
     <h1>💾 용량관리 진척 현황 (ASM/파일시스템 증설)</h1>
     <div class="controls">
-      <form method="post" action="/capacity/send-report" class="inline-form admin-only" style="display:none">
+      <form method="post" action="/capacity/send-report" class="inline-form admin-only">
         <input type="hidden" name="sheet" value="{{ sheet }}">
         <button type="submit" class="btn-teams">📤 Teams 발송</button>
       </form>
-      <a href="/capacity/remind-preview" class="btn-remind admin-only" style="display:none">📣 미계획 리마인드</a>
-      <a href="/capacity/owner-check?sheet={{ sheet }}" class="btn-sm admin-only" style="display:none">🔍 담당자 확인</a>
+      <a href="/capacity/remind-preview" class="btn-remind admin-only">📣 미계획 리마인드</a>
+      <a href="/capacity/owner-check?sheet={{ sheet }}" class="btn-sm admin-only">🔍 담당자 확인</a>
     </div>
   </header>
 
@@ -120,7 +120,7 @@
           <th style="width:130px">증적 ✏️</th>
           <th style="width:130px">비고 ✏️</th>
           <th>JIRA</th><th>상태</th><th style="width:60px">저장</th>
-          <th class="admin-only" style="width:60px;display:none">제외</th>
+          <th class="admin-only" style="width:60px">제외</th>
         </tr>
       </thead>
       <tbody>
@@ -155,7 +155,7 @@
             {% else %}<span class="badge bad">미완료</span>{% endif %}
           </td>
           <td><button class="btn-save" onclick="saveRow(this)">저장</button></td>
-          <td class="admin-only" style="display:none">
+          <td class="admin-only">
             <button class="btn-sm btn-exclude" onclick="excludeRow(this)" title="증설 안 함으로 확정 - 제외 대상으로 이동">🚫 제외</button>
           </td>
         </tr>
@@ -171,7 +171,7 @@
     <div class="table-scroll">
     <table>
       <thead>
-        <tr><th>CI명</th><th>호스트명</th><th>운영팀</th><th>담당자</th><th>사유/처리자</th><th>상태</th><th class="admin-only" style="display:none">복귀</th></tr>
+        <tr><th>CI명</th><th>호스트명</th><th>운영팀</th><th>담당자</th><th>사유/처리자</th><th>상태</th><th class="admin-only">복귀</th></tr>
       </thead>
       <tbody>
       {% for d in excluded_items %}
@@ -188,7 +188,7 @@
             {% endif %}
           </td>
           <td><span class="badge muted">제외</span></td>
-          <td class="admin-only" style="display:none">
+          <td class="admin-only">
             {% if d.expand_flag != 'X' %}
             <button class="btn-sm" data-no="{{ d.item_no }}" data-sheet="{{ d.sheet }}" onclick="restoreRow(this)">↩️ 복귀</button>
             {% else %}
@@ -250,9 +250,7 @@ function applyAdminState() {
     el.title = admin ? "" : "담당자 수정은 관리자만 가능합니다";
   });
 
-  document.querySelectorAll(".admin-only").forEach(el => {
-    el.style.display = admin ? "" : "none";
-  });
+  document.body.classList.toggle("is-admin", admin);   // .admin-only 표시는 CSS가 처리
 }
 
 function showToast(msg, ok = true) {
