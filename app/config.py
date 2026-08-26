@@ -118,6 +118,10 @@ class Settings(BaseSettings):
     capacity_status_agent_id: str = ""   # 대상 진척(완료/일정/JIRA) 조회
     capacity_status_agent_code: str = ""
 
+    # 용량관리 주간 리포트 "이번 주 특이사항" 한 줄 요약 전용 에이전트
+    capacity_summary_agent_id: str = ""
+    capacity_summary_agent_code: str = ""
+
     @property
     def admin_set(self) -> set[str]:
         return {a.strip() for a in self.admin_users.split(",") if a.strip()}
