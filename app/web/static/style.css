@@ -302,6 +302,13 @@ footer a:hover { text-decoration: underline; }
   font-size: 14px; font-weight: 600;
 }
 .chat-close { background: none; border: none; color: #fff; cursor: pointer; font-size: 14px; }
+.chat-agent-select { display: flex; border-bottom: 1px solid #eee; }
+.chat-agent-btn {
+  flex: 1; border: none; background: #f7f7fb; color: #666; cursor: pointer;
+  padding: 8px 6px; font-size: 12px; font-weight: 600;
+  border-bottom: 2px solid transparent;
+}
+.chat-agent-btn.active { background: #fff; color: #5b5fc7; border-bottom-color: #5b5fc7; }
 .chat-msgs { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
 .chat-msg {
   max-width: 85%; padding: 8px 12px; border-radius: 10px;
