@@ -67,6 +67,12 @@ class Settings(BaseSettings):
     report_cron_day: str = "thu"      # 요일 (mon,tue,wed,thu,fri,sat,sun)
     report_cron_hour: int = 9         # 시
     report_cron_minute: int = 0       # 분
+
+    # EoS만 발송 시간이 다르다 - '금주 실적'을 Confluence 주간 작업계획 페이지에서 뽑는데,
+    # 그 페이지를 각 담당자가 목요일 중에 작성하므로 오전에 보내면 아직 비어 있다.
+    # 요일은 다른 리포트와 동일(report_cron_day).
+    eos_report_cron_hour: int = 17
+    eos_report_cron_minute: int = 0
     timezone: str = "Asia/Seoul"
 
     # 미계획 리마인드 발신자 (초안 서명) - 실명/부서명이라 기본값 없이 .env에서만 설정
