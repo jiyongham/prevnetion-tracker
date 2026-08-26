@@ -91,13 +91,14 @@ def start_scheduler():
         misfire_grace_time=3600,
     )
 
-    # EoS 주간 리포트 (DR훈련과 같은 요일/시간)
+    # EoS 주간 리포트 (같은 요일이지만 시간은 별도 - 담당자들이 Confluence 주간 작업계획을
+    # 목요일 중에 작성하므로, 그게 채워진 뒤인 오후에 발송해야 '금주 실적'이 집계된다)
     scheduler.add_job(
         job_weekly_eos_report,
         CronTrigger(
             day_of_week=settings.report_cron_day,
-            hour=settings.report_cron_hour,
-            minute=settings.report_cron_minute,
+            hour=settings.eos_report_cron_hour,
+            minute=settings.eos_report_cron_minute,
             timezone=seoul,
         ),
         id="weekly_eos_report",
