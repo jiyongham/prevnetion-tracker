@@ -22,6 +22,7 @@ from app.services.capacity import (
     calc_capacity_completion,
     filter_tickets_by_sheet,
 )
+from app.services import capacity_chatbot
 from app.services.capacity_reminder import group_capacity_no_reply, group_capacity_unplanned
 from app.services.capacity_report import send_capacity_report
 from app.services.completion import group_by
@@ -340,3 +341,32 @@ async def api_capacity_save_owner(request: Request):
         owner=owner,
     )
     return JSONResponse({"ok": True})
+
+
+# ─────────────────────────────────────────────
+# 챗봇 (사내 LLM Agent) - 산정 기준 설명 / 진척 조회 중 선택
+# ─────────────────────────────────────────────
+@router.post("/api/capacity/chat")
+async def api_capacity_chat(request: Request):
+    data = await request.json()
+    agent = (data.get("agent") or "").strip()
+    query = (data.get("query") or "").strip()
+    name = (data.get("name") or "").strip()
+
+    if not query:
+        return JSONResponse({"ok": False, "error": "질문을 입력해주세요"}, status_code=400)
+    if agent not in ("calc", "status"):
+        return JSONResponse({"ok": False, "error": "agent는 calc 또는 status여야 합니다"}, status_code=400)
+
+    try:
+        if agent == "status":
+            if len(name) < 2:
+                return JSONResponse(
+                    {"ok": False, "error": "이름(2글자 이상)이 필요합니다"}, status_code=400
+                )
+            reply = capacity_chatbot.answer_status(name, query)
+        else:
+            reply = capacity_chatbot.answer_calc(query)
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=502)
+    return JSONResponse({"ok": True, "reply": reply})
