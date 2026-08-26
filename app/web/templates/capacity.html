@@ -211,6 +211,25 @@
 
 <div id="toast" class="toast"></div>
 
+<!-- 조회/기준계산 챗봇 위젯 -->
+<button id="chatToggle" class="chat-toggle hidden" onclick="toggleChat()">💬</button>
+<div id="chatPanel" class="chat-panel">
+  <div class="chat-head">
+    <span id="chatTitle">💬 용량관리 챗봇</span>
+    <button class="chat-close" onclick="toggleChat()">✕</button>
+  </div>
+  <div id="chatModeSelect" class="chat-mode-select">
+    <p>무엇을 도와드릴까요?</p>
+    <button class="btn-sm" onclick="chooseChatMode('status')">📊 현황 조회</button>
+    <button class="btn-sm" onclick="chooseChatMode('criteria')">📐 서버별 기준 계산</button>
+  </div>
+  <div id="chatMsgs" class="chat-msgs hidden"></div>
+  <form id="chatForm" class="chat-form hidden" onsubmit="return sendCapacityChat(event)">
+    <input type="text" id="chatInput" placeholder="질문을 입력하세요" autocomplete="off">
+    <button type="submit">전송</button>
+  </form>
+</div>
+
 <script>
 const SHEET = "{{ sheet }}";
 const ADMINS = {{ admins | tojson }};
@@ -405,6 +424,78 @@ ub.addEventListener("change", () => {
   applyAdminState();
 });
 applyAdminState();
+
+// ── 조회/기준계산 챗봇 ──
+let chatMode = null;
+const CHAT_TITLE = { status: "📊 용량관리 현황 조회", criteria: "📐 용량관리 기준 계산" };
+
+function toggleChat() {
+  const panel = document.getElementById("chatPanel");
+  const toggle = document.getElementById("chatToggle");
+  const opening = panel.classList.contains("hidden");
+  panel.classList.toggle("hidden", !opening);
+  toggle.classList.toggle("hidden", opening);
+  if (opening) {
+    if (chatMode) {
+      document.getElementById("chatInput").focus();
+    }
+  }
+}
+
+function chooseChatMode(mode) {
+  chatMode = mode;
+  document.getElementById("chatTitle").textContent = CHAT_TITLE[mode];
+  document.getElementById("chatModeSelect").classList.add("hidden");
+  document.getElementById("chatMsgs").classList.remove("hidden");
+  document.getElementById("chatForm").classList.remove("hidden");
+  addChatMsg(
+    mode === "criteria"
+      ? "서버별 증설 기준/계산식을 알려드려요. 궁금한 서버명이나 질문을 입력해주세요."
+      : "현황(완료 여부·일정·JIRA 등)을 알려드려요. 궁금한 걸 입력해주세요.",
+    "bot"
+  );
+  document.getElementById("chatInput").focus();
+}
+
+function addChatMsg(text, who) {
+  const box = document.getElementById("chatMsgs");
+  const el = document.createElement("div");
+  el.className = "chat-msg " + who;
+  el.textContent = text;
+  box.appendChild(el);
+  box.scrollTop = box.scrollHeight;
+  return el;
+}
+
+async function sendCapacityChat(e) {
+  e.preventDefault();
+  const input = document.getElementById("chatInput");
+  const query = input.value.trim();
+  if (!query || !chatMode) return false;
+
+  const name = (document.getElementById("updatedBy").value || "").trim();
+  if (name.length < 2) {
+    addChatMsg("먼저 상단 '입력자명'을 2글자 이상 입력해주세요.", "bot");
+    return false;
+  }
+
+  addChatMsg(query, "me");
+  input.value = "";
+  const pending = addChatMsg("...", "bot");
+
+  try {
+    const res = await fetch("/api/capacity/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, query, mode: chatMode }),
+    });
+    const data = await res.json();
+    pending.textContent = data.ok ? data.reply : ("오류: " + (data.error || "응답 실패"));
+  } catch (err) {
+    pending.textContent = "오류: " + err.message;
+  }
+  return false;
+}
 </script>
 </body>
 </html>

@@ -22,6 +22,7 @@ from app.services.capacity import (
     calc_capacity_completion,
     filter_tickets_by_sheet,
 )
+from app.services import capacity_chatbot
 from app.services.capacity_reminder import group_capacity_no_reply, group_capacity_unplanned
 from app.services.capacity_report import send_capacity_report
 from app.services.completion import group_by
@@ -210,6 +211,48 @@ async def api_capacity_exclude(request: Request):
         excluded=excluded,
     )
     return JSONResponse({"ok": True})
+
+
+# ─────────────────────────────────────────────
+# 조회/기준계산 챗봇 (사내 LLM Agent)
+# ─────────────────────────────────────────────
+def _gather_all_capacity_details(today: date) -> list[dict]:
+    """
+    DATA/ARCH 두 시트 전체를 챗봇용으로 한 곳에 모은다 - 완료판정 대상(target) +
+    미응답(no_reply) + 제외(excluded)까지 다 포함해야 "우리 팀 제외된 거 뭐 있어?" 같은
+    질문에도 답할 수 있다.
+    """
+    all_details = []
+    for sheet in ("DATA", "ARCH"):
+        result, _ = get_capacity_dashboard_data(sheet, today)
+        all_details.extend(result["details"])
+
+        raw_items = load_capacity_items_merged(sheet=sheet)
+        no_reply_raw = [i for i in raw_items if i["status_kind"] == "no_reply"]
+        all_details.extend(build_no_reply_details(no_reply_raw, today.year))
+        all_details.extend([i for i in raw_items if i["status_kind"] == "excluded"])
+    return all_details
+
+
+@router.post("/api/capacity/chat")
+async def api_capacity_chat(request: Request):
+    """용량관리 챗봇. mode: 'status'(현황 조회, 기본값) | 'criteria'(서버별 기준 계산)"""
+    data = await request.json()
+    name = (data.get("name") or "").strip()
+    query = (data.get("query") or "").strip()
+    mode = (data.get("mode") or "status").strip()
+
+    if len(name) < 2 or not query:
+        return JSONResponse(
+            {"ok": False, "error": "이름(2글자 이상)과 질문이 필요합니다"}, status_code=400
+        )
+
+    all_details = _gather_all_capacity_details(date.today())
+    try:
+        reply = capacity_chatbot.answer(name, query, all_details, mode=mode)
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=502)
+    return JSONResponse({"ok": True, "reply": reply})
 
 
 # ─────────────────────────────────────────────

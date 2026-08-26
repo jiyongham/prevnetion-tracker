@@ -106,6 +106,12 @@ class Settings(BaseSettings):
     eos_plan_agent_id: str = ""
     eos_plan_agent_code: str = ""
 
+    # 용량관리 챗봇 전용 에이전트 (현황 조회 / 서버별 기준 계산 - 시스템 프롬프트가 달라 둘로 분리)
+    capacity_status_agent_id: str = ""
+    capacity_status_agent_code: str = ""
+    capacity_criteria_agent_id: str = ""
+    capacity_criteria_agent_code: str = ""
+
     @property
     def admin_set(self) -> set[str]:
         return {a.strip() for a in self.admin_users.split(",") if a.strip()}

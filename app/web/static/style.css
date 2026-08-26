@@ -316,6 +316,12 @@ footer a:hover { text-decoration: underline; }
 .chat-form button {
   border: none; background: #5b5fc7; color: #fff; padding: 0 16px; cursor: pointer; font-size: 13px;
 }
+.chat-mode-select {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 10px; padding: 16px; text-align: center;
+}
+.chat-mode-select p { margin: 0 0 4px; color: #555; font-size: 13px; }
+.chat-mode-select button { width: 80%; }
 
 /* AI 진단 버튼/모달 (매칭 미확인 사유, 담당자 불일치 판단 공용) */
 .btn-ai {
