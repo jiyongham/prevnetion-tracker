@@ -241,9 +241,11 @@
     <button type="button" class="chat-agent-btn active" data-agent="status" onclick="selectChatAgent('status')">📋 진척 조회</button>
     <button type="button" class="chat-agent-btn" data-agent="calc" onclick="selectChatAgent('calc')">🧮 산정 기준</button>
   </div>
-  <div id="chatMsgs" class="chat-msgs">
-    <div class="chat-msg bot">📋 진척 조회를 선택했어요. "내 대상 뭐 있어?", "OO서버 완료됐어?"처럼 물어보세요. (입력자명을 먼저 채워주세요)</div>
+  <div id="chatMsgs-status" class="chat-msgs">
+    <div class="chat-msg bot warn">‼️ 입력자명을 먼저 입력해주세요 ‼️</div>
+    <div class="chat-msg bot">📋 진척 조회를 선택했어요. "내 대상 뭐 있어?", "OO서버 완료됐어?"처럼 물어보세요.</div>
   </div>
+  <div id="chatMsgs-calc" class="chat-msgs hidden"></div>
   <form id="chatForm" class="chat-form" onsubmit="return sendChat(event)">
     <input type="text" id="chatInput" placeholder="질문을 입력하세요" autocomplete="off">
     <button type="submit">전송</button>
@@ -471,20 +473,29 @@ async function diagnoseUnmatched(btn, itemNo) {
 }
 
 // ── 챗봇 (산정 기준 설명 / 진척 조회) ──
+// 두 에이전트는 대화창 자체를 분리한다(각자 #chatMsgs-<agent> 컨테이너) - 안 그러면
+// 모드를 바꿔도 같은 말풍선 목록에 계속 쌓여서 두 대화가 한 채팅방처럼 섞여 보인다.
 let currentChatAgent = "status";
 
 const CHAT_GREETINGS = {
-  status: "📋 진척 조회를 선택했어요. \"내 대상 뭐 있어?\", \"OO서버 완료됐어?\"처럼 물어보세요. (입력자명을 먼저 채워주세요)",
+  status: "📋 진척 조회를 선택했어요. \"내 대상 뭐 있어?\", \"OO서버 완료됐어?\"처럼 물어보세요.",
   calc: "🧮 산정 기준 설명을 선택했어요. \"이 서버는 왜 증설 대상이야?\", \"80%가 진짜 기준이야?\"처럼 물어보세요.",
 };
 
 function selectChatAgent(agent) {
   if (agent === currentChatAgent) return;
+  document.getElementById(`chatMsgs-${currentChatAgent}`).classList.add("hidden");
   currentChatAgent = agent;
+  document.getElementById(`chatMsgs-${agent}`).classList.remove("hidden");
   document.querySelectorAll(".chat-agent-btn").forEach(b => {
     b.classList.toggle("active", b.dataset.agent === agent);
   });
-  addChatMsg(CHAT_GREETINGS[agent], "bot");
+  // 이 모드로 처음 들어왔을 때만 인사 메시지 (매번 전환할 때마다 다시 나오면 지저분함)
+  const box = document.getElementById(`chatMsgs-${agent}`);
+  if (!box.children.length) {
+    if (agent === "status") addChatMsg("‼️ 입력자명을 먼저 입력해주세요 ‼️", "bot warn");
+    addChatMsg(CHAT_GREETINGS[agent], "bot");
+  }
 }
 
 function toggleChat() {
@@ -497,7 +508,7 @@ function toggleChat() {
 }
 
 function addChatMsg(text, who) {
-  const box = document.getElementById("chatMsgs");
+  const box = document.getElementById(`chatMsgs-${currentChatAgent}`);
   const el = document.createElement("div");
   el.className = "chat-msg " + who;
   el.textContent = text;
