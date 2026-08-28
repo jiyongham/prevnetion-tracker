@@ -66,23 +66,40 @@ def _fmt_calc_row(d: dict) -> str:
     )
 
 
-def answer_calc(query: str) -> str:
+def answer_calc(name: str, query: str) -> str:
     """
     산정 기준 설명 - 완료/일정/JIRA 조회 없이 엑셀의 용량 수치만 필요해서 JIRA 호출이 없다.
+    입력자명 기준으로 본인 서버를 먼저 찾고(내 서버가 ASM인지 FS인지에 맞는 기준을 바로
+    설명할 수 있게), 질의에서 특정 CI명/호스트명이 언급됐으면 그것도 같이 찾는다
+    (다른 사람 서버를 대신 물어보는 경우도 커버 - answer_status와 동일한 방식).
     """
     rows = []
     for sheet in SHEETS:
         rows += load_capacity_items_merged(sheet=sheet)
 
-    matched = _find_by_system(rows, query)[:MAX_ITEMS_IN_CONTEXT]
-    if matched:
-        context = "[해당 서버 데이터]\n" + "\n".join(_fmt_calc_row(d) for d in matched)
+    mine = _find_by_name(rows, name)
+    matched = _find_by_system(rows, query)
+
+    seen: set[tuple] = set()
+    picked = []
+    for d in (mine + matched)[:MAX_ITEMS_IN_CONTEXT]:
+        key = (d.get("sheet"), d.get("item_no") or d.get("no"))
+        if key in seen:
+            continue
+        seen.add(key)
+        picked.append(d)
+
+    if picked:
+        context = f"[{name}님 관련 서버 데이터]\n" + "\n".join(_fmt_calc_row(d) for d in picked)
     else:
-        context = "[질의에서 특정 서버(CI명/호스트명)를 찾지 못함 - 일반 계산식 질문이면 서버 데이터 없이도 답변 가능]"
+        context = (
+            f"[{name}님 명의로 매칭된 서버 없음, 질의에서도 특정 서버(CI명/호스트명)를 "
+            "찾지 못함 - 일반 계산식 질문이면 서버 데이터 없이도 답변 가능]"
+        )
 
     full_query = f"{context}\n\n[사용자 질문]\n{query}"
     result = agent_chat(
-        user_id="capacity-calc-chat",
+        user_id=name,
         query=full_query,
         agent_id=settings.capacity_calc_agent_id,
         agent_code=settings.capacity_calc_agent_code,
