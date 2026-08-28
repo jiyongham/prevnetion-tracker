@@ -195,6 +195,40 @@ def _resolve_is_done(item_no: str, half: str, requested: bool, updated_by: str) 
     return bool(existing["is_done"]) if existing else False
 
 
+@router.post("/api/exclude")
+async def api_exclude(request: Request):
+    """
+    제외 처리/해제 (관리자만). 일정 칸에 "X"를 넣는 기존 방식을 버튼으로 바꾼 것 -
+    판정 로직(대시보드의 excluded_nos)은 그대로 두고 입력 수단만 추가한다.
+    excluded:false로 부르면 일정을 비워 대상 목록으로 복귀시킨다.
+    """
+    data = await request.json()
+    item_no = (data.get("item_no") or "").strip()
+    half = (data.get("half") or "").strip()
+    updated_by = (data.get("updated_by") or "").strip()
+    excluded = bool(data.get("excluded", True))
+
+    if not item_no or not half:
+        return JSONResponse({"ok": False, "error": "필수 값이 없습니다."}, status_code=400)
+    if updated_by not in settings.admin_set:
+        return JSONResponse(
+            {"ok": False, "error": "제외 처리는 관리자만 가능합니다."}, status_code=403
+        )
+
+    existing = get_input(item_no, half) or {}
+    upsert_input(
+        item_no=item_no,
+        half=half,
+        schedule="X" if excluded else "",
+        mode=existing.get("mode") or "",
+        is_done=bool(existing.get("is_done")),
+        evidence=existing.get("evidence") or "",
+        note=existing.get("note") or "",
+        updated_by=updated_by,
+    )
+    return JSONResponse({"ok": True})
+
+
 @router.post("/api/save")
 async def api_save(request: Request):
     """AJAX 인라인 저장"""
