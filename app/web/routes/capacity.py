@@ -405,16 +405,17 @@ async def api_capacity_chat(request: Request):
         return JSONResponse({"ok": False, "error": "질문을 입력해주세요"}, status_code=400)
     if agent not in ("calc", "status"):
         return JSONResponse({"ok": False, "error": "agent는 calc 또는 status여야 합니다"}, status_code=400)
+    # 산정 기준 설명도 입력자명 기준으로 본인 서버(ASM/FS)를 먼저 찾아 맞춤 설명하므로 필요
+    if len(name) < 2:
+        return JSONResponse(
+            {"ok": False, "error": "이름(2글자 이상)이 필요합니다"}, status_code=400
+        )
 
     try:
         if agent == "status":
-            if len(name) < 2:
-                return JSONResponse(
-                    {"ok": False, "error": "이름(2글자 이상)이 필요합니다"}, status_code=400
-                )
             reply = capacity_chatbot.answer_status(name, query)
         else:
-            reply = capacity_chatbot.answer_calc(query)
+            reply = capacity_chatbot.answer_calc(name, query)
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=502)
     return JSONResponse({"ok": True, "reply": reply})
