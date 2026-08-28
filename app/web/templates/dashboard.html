@@ -132,6 +132,7 @@
           <th style="width:130px">증적 ✏️</th>
           <th style="width:130px">비고 ✏️</th>
           <th>JIRA</th><th>상태</th><th style="width:60px">저장</th>
+          <th class="admin-only" style="width:50px">X</th>
         </tr>
       </thead>
       <tbody>
@@ -175,6 +176,10 @@
             {% else %}<span class="badge bad">미완료</span>{% endif %}
           </td>
           <td><button class="btn-save" onclick="saveRow(this)">저장</button></td>
+          <td class="admin-only">
+            <button class="btn-sm btn-exclude" onclick="excludeRow(this)"
+                    title="수행 안 함으로 확정 - 일정에 X 처리하고 제외 대상으로 이동">X</button>
+          </td>
         </tr>
       {% endfor %}
       </tbody>
@@ -188,7 +193,7 @@
     <div class="table-scroll">
     <table>
       <thead>
-        <tr><th>시스템명</th><th>호스트명</th><th>운영팀</th><th>담당자</th><th>처리자</th></tr>
+        <tr><th>시스템명</th><th>호스트명</th><th>운영팀</th><th>담당자</th><th>처리자</th><th class="admin-only">복귀</th></tr>
       </thead>
       <tbody>
       {% for d in excluded_items %}
@@ -198,6 +203,9 @@
           <td class="small">{{ d.ops_team }}</td>
           <td class="small">{{ d.owner }}</td>
           <td class="small">{{ d.updated_by }}</td>
+          <td class="admin-only">
+            <button class="btn-sm" data-no="{{ d.no }}" onclick="restoreRow(this)">↩️ 복귀</button>
+          </td>
         </tr>
       {% endfor %}
       </tbody>
@@ -301,6 +309,54 @@ function applyAdminState() {
   });
 
   document.body.classList.toggle("is-admin", admin);   // .admin-only 표시는 CSS가 처리
+}
+
+async function excludeRow(btn) {
+  const name = requireName();
+  if (!name) return;
+  const tr = btn.closest("tr");
+  const sys = tr.querySelector("td.strong").textContent;
+  if (!confirm(`${sys} 을(를) 수행 안 함(X)으로 확정해 제외 대상으로 옮깁니다. 계속할까요?`)) return;
+
+  btn.disabled = true;
+  try {
+    const res = await fetch("/api/exclude", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ item_no: tr.dataset.no, half: HALF, updated_by: name, excluded: true }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      showToast("X 처리 완료");
+      setTimeout(() => location.reload(), 500);
+    } else {
+      showToast("실패: " + (data.error || ""), false);
+      btn.disabled = false;
+    }
+  } catch (e) { showToast("오류: " + e.message, false); btn.disabled = false; }
+}
+
+async function restoreRow(btn) {
+  const name = requireName();
+  if (!name) return;
+  if (!confirm("X를 해제하고 다시 대상 목록으로 복귀시킬까요?")) return;
+
+  btn.disabled = true;
+  try {
+    const res = await fetch("/api/exclude", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ item_no: btn.dataset.no, half: HALF, updated_by: name, excluded: false }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      showToast("복귀 완료");
+      setTimeout(() => location.reload(), 500);
+    } else {
+      showToast("실패: " + (data.error || ""), false);
+      btn.disabled = false;
+    }
+  } catch (e) { showToast("오류: " + e.message, false); btn.disabled = false; }
 }
 
 function showToast(msg, ok = true) {
