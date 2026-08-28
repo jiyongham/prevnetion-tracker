@@ -245,7 +245,10 @@
     <div class="chat-msg bot warn">‼️ 입력자명을 먼저 입력해주세요 ‼️</div>
     <div class="chat-msg bot">📋 진척 조회를 선택했어요. "내 대상 뭐 있어?", "OO서버 완료됐어?"처럼 물어보세요.</div>
   </div>
-  <div id="chatMsgs-calc" class="chat-msgs hidden"></div>
+  <div id="chatMsgs-calc" class="chat-msgs hidden">
+    <div class="chat-msg bot warn">‼️ 입력자명을 먼저 입력해주세요 ‼️</div>
+    <div class="chat-msg bot">🧮 산정 기준 설명을 선택했어요. "이 서버는 왜 증설 대상이야?", "80%가 진짜 기준이야?"처럼 물어보세요.</div>
+  </div>
   <form id="chatForm" class="chat-form" onsubmit="return sendChat(event)">
     <input type="text" id="chatInput" placeholder="질문을 입력하세요" autocomplete="off">
     <button type="submit">전송</button>
@@ -490,10 +493,12 @@ function selectChatAgent(agent) {
   document.querySelectorAll(".chat-agent-btn").forEach(b => {
     b.classList.toggle("active", b.dataset.agent === agent);
   });
-  // 이 모드로 처음 들어왔을 때만 인사 메시지 (매번 전환할 때마다 다시 나오면 지저분함)
+  // 이 모드로 처음 들어왔을 때만 인사 메시지 (매번 전환할 때마다 다시 나오면 지저분함).
+  // 두 모드 다 정적 HTML에 이미 안내/인사말이 들어있어 평소엔 안 타지만, 혹시 비어있는
+  // 경우(향후 대화 초기화 기능 등)를 대비한 폴백.
   const box = document.getElementById(`chatMsgs-${agent}`);
   if (!box.children.length) {
-    if (agent === "status") addChatMsg("‼️ 입력자명을 먼저 입력해주세요 ‼️", "bot warn");
+    addChatMsg("‼️ 입력자명을 먼저 입력해주세요 ‼️", "bot warn");
     addChatMsg(CHAT_GREETINGS[agent], "bot");
   }
 }
@@ -524,7 +529,7 @@ async function sendChat(e) {
   if (!query) return false;
 
   const name = (document.getElementById("updatedBy").value || "").trim();
-  if (currentChatAgent === "status" && name.length < 2) {
+  if (name.length < 2) {
     addChatMsg("먼저 상단 '입력자명'을 2글자 이상 입력해주세요.", "bot");
     return false;
   }
