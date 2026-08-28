@@ -25,6 +25,11 @@ def _s(row, col: str) -> str:
     return str(val).strip()
 
 
+def norm_mode(value: str) -> str:
+    """수행방식 표기 정규화. 엑셀/웹에 '실 전환'과 '실전환'이 섞여 있어 공백을 없앤다."""
+    return (value or "").replace(" ", "").strip()
+
+
 def load_dr_items(excel_path: str | None = None, half: str = "H2") -> list[dict]:
     """DR 모의훈련 대상 엑셀 로드 (half: H1/H2)"""
     path = Path(excel_path or settings.excel_path)
@@ -62,7 +67,7 @@ def load_dr_items(excel_path: str | None = None, half: str = "H2") -> list[dict]
             # 반기별
             "half": half,
             "schedule_raw": _s(row, cols["schedule"]),
-            "mode": _s(row, cols["mode"]),
+            "mode": norm_mode(_s(row, cols["mode"])),
             "excel_done": _s(row, cols["done"]),
             "prevention_type": "예방3",
         })
@@ -78,7 +83,7 @@ def get_targets(items: list[dict]) -> list[dict]:
 def get_h1_nonstop_target_nos(excel_path: str | None = None) -> set[str]:
     """
     상반기 무중단으로 수행한 대상 NO 집합.
-    하반기 DR 모의훈련은 이 대상(174대)에 한해 수행하므로 완료율 분모로 사용.
+    하반기 DR 모의훈련은 이 대상에 한해 수행하므로 완료율 분모로 사용.
     """
     h1 = load_dr_items(excel_path=excel_path, half="H1")
     return {
@@ -111,7 +116,7 @@ def load_dr_items_merged(half: str = "H2", excel_path: str | None = None) -> lis
                 item["schedule_raw"] = db["schedule"]
                 item["input_source"] = "web"
             if db.get("mode"):
-                item["mode"] = db["mode"]
+                item["mode"] = norm_mode(db["mode"])
             if db.get("is_done"):
                 item["excel_done"] = "O"
                 item["input_source"] = "web"

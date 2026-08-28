@@ -2,6 +2,7 @@
 """용량관리(ASM/파일시스템 증설 - [예방4]) 관련 라우트"""
 import logging
 from datetime import date
+from urllib.parse import quote
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -22,7 +23,7 @@ from app.services.capacity import (
     calc_capacity_completion,
     filter_tickets_by_sheet,
 )
-from app.services import capacity_chatbot
+from app.services import ai_diagnose, capacity_chatbot
 from app.services.capacity_reminder import group_capacity_no_reply, group_capacity_unplanned
 from app.services.capacity_report import send_capacity_report
 from app.services.completion import group_by
@@ -63,6 +64,7 @@ def capacity_dashboard(
     team: str | None = None,
     status: str | None = None,
     q: str | None = None,
+    report_warning: str | None = None,
 ):
     if sheet not in ("DATA", "ARCH"):
         sheet = "DATA"
@@ -113,6 +115,7 @@ def capacity_dashboard(
         "excluded_items": excluded_items,
         "excluded_cnt": excluded_cnt,
         "by_team": dict(sorted(by_team.items(), key=lambda x: x[1]["rate"])),
+        "report_warning": report_warning,
         "sheet": sheet,
         "sheet_label": "DATA (ASM/파일시스템)" if sheet == "DATA" else "ARCH (아카이브)",
         "as_of": today,
@@ -288,8 +291,12 @@ async def api_capacity_remind_dm(request: Request):
 # ─────────────────────────────────────────────
 @router.post("/capacity/send-report")
 def trigger_capacity_report(sheet: str = Form("DATA")):
-    send_capacity_report()
-    return RedirectResponse(url=f"/capacity?sheet={sheet}", status_code=303)
+    # 발송은 하되, 지난주 대비 이상 징후가 있으면 화면에 띄워 확인하게 한다
+    warning = send_capacity_report()
+    url = f"/capacity?sheet={sheet}"
+    if warning:
+        url += f"&report_warning={quote(warning)}"
+    return RedirectResponse(url=url, status_code=303)
 
 
 # ─────────────────────────────────────────────
@@ -341,6 +348,47 @@ async def api_capacity_save_owner(request: Request):
         owner=owner,
     )
     return JSONResponse({"ok": True})
+
+
+@router.post("/api/capacity/diagnose-unmatched")
+async def api_capacity_diagnose_unmatched(request: Request):
+    """
+    JIRA 매칭이 안 된 용량관리 대상 하나를 버튼 클릭 시에만 AI 진단 (자동/일괄 실행 없음).
+
+    용량관리는 IP 매칭 성공 후에도 변경작업내용으로 DATA/ARCH 소속을 한 번 더 거르므로,
+    '티켓이 아예 없는 경우'와 '시트 분류에서 빠진 경우'를 나눠서 에이전트에 넘긴다.
+    """
+    data = await request.json()
+    item_no = (data.get("item_no") or "").strip()
+    sheet = (data.get("sheet") or "DATA").strip()
+    if sheet not in ("DATA", "ARCH"):
+        return JSONResponse({"ok": False, "error": "sheet가 올바르지 않습니다"}, status_code=400)
+
+    result, _ = get_capacity_dashboard_data(sheet, date.today())
+    item = next((d for d in result["details"] if d["item_no"] == item_no), None)
+    if not item:
+        return JSONResponse({"ok": False, "error": "대상을 찾을 수 없습니다"}, status_code=404)
+
+    try:
+        issues = jira.get_capacity_tickets()
+        tickets = build_capacity_ticket_summary(issues, settings.planned_end_date_field)
+
+        # 시트 필터 적용 전/후를 비교해, 이 서버에 걸렸다가 시트 분류에서 빠진 티켓을 가려낸다
+        raw_matched = match_items_by_ip([item], tickets)["matched"].get(item["no"]) or []
+        kept_keys = {
+            t["key"]
+            for t in (filter_tickets_by_sheet({item["no"]: raw_matched}, sheet).get(item["no"]) or [])
+        }
+        sheet_filtered = [t for t in raw_matched if t["key"] not in kept_keys]
+
+        candidates = [
+            c for c in ai_diagnose.find_candidate_tickets(item, tickets)
+            if c["key"] not in {t["key"] for t in raw_matched}
+        ]
+        reply = ai_diagnose.diagnose_capacity_unmatched(item, sheet, candidates, sheet_filtered)
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=502)
+    return JSONResponse({"ok": True, "reply": reply})
 
 
 # ─────────────────────────────────────────────
