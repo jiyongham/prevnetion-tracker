@@ -33,6 +33,10 @@
     <a href="/capacity?sheet=ARCH" class="tab {% if sheet == 'ARCH' %}active{% endif %}">ARCH (아카이브)</a>
   </div>
 
+  {% if report_warning %}
+  <div class="alert" style="background:#fff4e5;color:#7a4a00;white-space:pre-wrap">{{ report_warning }}</div>
+  {% endif %}
+
   {% if jira_error %}
   <div class="alert">⚠️ JIRA 연동 실패 (엑셀 기준 표시): {{ jira_error[:100] }}</div>
   {% endif %}
@@ -146,7 +150,11 @@
           <td>
             {% if d.jira_key %}
             <a href="{{ jira_base }}/browse/{{ d.jira_key }}" target="_blank" class="link small">{{ d.jira_key }}</a>
-            {% else %}<span class="muted">-</span>{% endif %}
+            {% elif d.no_reply %}<span class="muted">-</span>
+            {% else %}
+            <button class="btn-ai" title="왜 매칭이 안 됐는지 AI로 진단"
+                    onclick="diagnoseUnmatched(this, '{{ d.item_no }}')">🤖</button>
+            {% endif %}
           </td>
           <td>
             {% if d.no_reply %}<span class="badge muted">미응답</span>
@@ -210,6 +218,17 @@
 </div>
 
 <div id="toast" class="toast"></div>
+
+<!-- AI 진단 결과 모달 (매칭 미확인 원인) -->
+<div id="aiModal" class="ai-modal hidden" onclick="if(event.target===this) closeAiModal()">
+  <div class="ai-modal-box">
+    <div class="ai-modal-head">
+      <span>🤖 AI 진단</span>
+      <button class="chat-close" onclick="closeAiModal()">✕</button>
+    </div>
+    <div id="aiModalBody" class="ai-modal-body">...</div>
+  </div>
+</div>
 
 <!-- 챗봇 위젯: 산정 기준 설명 / 진척 조회 중 선택 -->
 <button id="chatToggle" class="chat-toggle hidden" onclick="toggleChat()">💬</button>
@@ -425,6 +444,31 @@ ub.addEventListener("change", () => {
   applyAdminState();
 });
 applyAdminState();
+
+// ── AI 진단 (매칭 미확인 사유) ──
+function showAiModal(text) {
+  document.getElementById("aiModalBody").textContent = text;
+  document.getElementById("aiModal").classList.remove("hidden");
+}
+function closeAiModal() {
+  document.getElementById("aiModal").classList.add("hidden");
+}
+
+async function diagnoseUnmatched(btn, itemNo) {
+  btn.disabled = true;
+  showAiModal("진단 중...");
+  try {
+    const res = await fetch("/api/capacity/diagnose-unmatched", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ item_no: itemNo, sheet: SHEET }),
+    });
+    const data = await res.json();
+    document.getElementById("aiModalBody").textContent = data.ok ? data.reply : ("오류: " + (data.error || ""));
+  } catch (e) {
+    document.getElementById("aiModalBody").textContent = "오류: " + e.message;
+  } finally { btn.disabled = false; }
+}
 
 // ── 챗봇 (산정 기준 설명 / 진척 조회) ──
 let currentChatAgent = "status";

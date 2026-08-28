@@ -145,6 +145,22 @@ def init_db():
         );
 
         CREATE INDEX IF NOT EXISTS idx_eos_next_week_plan_week ON eos_next_week_plan(week_start);
+
+        -- 리포트 발송 시점의 집계 스냅샷. 지난 발송분과 비교해 이상(완료 대수 감소 등)을
+        -- 감지하는 데 쓴다. 이게 없으면 매 발송이 과거와 단절돼 "이 0대가 맞나"를 알 수 없다.
+        CREATE TABLE IF NOT EXISTS report_snapshot (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            domain      TEXT NOT NULL,     -- 'dr' | 'capacity'
+            sent_at     TEXT DEFAULT CURRENT_TIMESTAMP,
+            total       INTEGER,
+            done        INTEGER,
+            rate        REAL,
+            no_schedule INTEGER,
+            perf_cnt    INTEGER,           -- 금주 실적 (없는 도메인은 NULL)
+            plan_cnt    INTEGER            -- 차주 계획 (없는 도메인은 NULL)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_report_snapshot_domain ON report_snapshot(domain, sent_at);
         """)
 
         # 기존 DB에는 is_excluded 컬럼이 없을 수 있어 별도로 추가 (제외 버튼 기능용)
@@ -524,3 +540,26 @@ def get_eos_remind_log_summary() -> dict[str, dict]:
         s["recipient_name"] = d["recipient_name"]
         s["recipient_team"] = d["recipient_team"]
     return summary
+
+
+def get_last_report_snapshot(domain: str) -> dict | None:
+    """해당 도메인의 가장 최근 발송 스냅샷 (없으면 None - 첫 발송)"""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM report_snapshot WHERE domain = ? ORDER BY sent_at DESC, id DESC LIMIT 1",
+            (domain,),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def save_report_snapshot(domain: str, metrics: dict):
+    """발송 시점 집계 저장 (다음 발송 때 비교 기준이 된다)"""
+    with get_conn() as conn:
+        conn.execute("""
+            INSERT INTO report_snapshot (domain, sent_at, total, done, rate, no_schedule, perf_cnt, plan_cnt)
+            VALUES (?, datetime('now', 'localtime'), ?, ?, ?, ?, ?, ?)
+        """, (
+            domain,
+            metrics.get("total"), metrics.get("done"), metrics.get("rate"),
+            metrics.get("no_schedule"), metrics.get("perf_cnt"), metrics.get("plan_cnt"),
+        ))

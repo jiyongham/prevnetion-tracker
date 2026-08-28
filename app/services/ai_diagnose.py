@@ -74,6 +74,54 @@ def diagnose_unmatched(item: dict, candidates: list[dict]) -> str:
     return _diagnose_chat(query)
 
 
+def diagnose_capacity_unmatched(
+    item: dict, sheet: str, candidates: list[dict], sheet_filtered: list[dict]
+) -> str:
+    """
+    용량관리 매칭 미확인 진단.
+
+    DR훈련과 달리 IP/호스트명 매칭에 성공한 뒤에도 변경작업내용으로 DATA/ARCH 소속을
+    한 번 더 거르기 때문에(classify_capacity_sheet), '티켓이 아예 없는 것'과 '티켓은
+    이 서버에 걸렸는데 다른 시트 작업으로 분류돼 빠진 것'은 원인도 조치도 다르다.
+    후자는 sheet_filtered로 넘겨서 진단문에 명시한다.
+
+    sheet_filtered: IP/호스트명으로는 이 서버에 매칭됐지만 이번 시트 소속이 아니라고
+                    분류돼 제외된 티켓들
+    """
+    sheet_label = "DATA(일반 ASM/파일시스템)" if sheet == "DATA" else "ARCH(아카이브)"
+    target_line = (
+        f"대상: {item.get('ci_name', '')} / 호스트명 {item.get('hostname', '')} / "
+        f"IP {item.get('ip', '')} / 조회 시트: {sheet_label}"
+    )
+
+    parts = [target_line]
+    if sheet_filtered:
+        lines = [f"- {c['key']}: {c['summary']}" for c in sheet_filtered]
+        parts.append(
+            "이 서버에 IP/호스트명으로 매칭된 티켓은 있지만, 변경작업내용상 이번 시트"
+            f"({sheet_label}) 작업이 아니라고 분류돼 제외됐습니다:\n" + "\n".join(lines)
+        )
+    if candidates:
+        lines = [f"- {c['key']}: {c['summary']}" for c in candidates]
+        parts.append(
+            "호스트명 일부가 겹치는 다른 티켓들:\n" + "\n".join(lines)
+        )
+    if not sheet_filtered and not candidates:
+        parts.append("이 호스트명과 조금이라도 겹치는 [예방4] 티켓이 전혀 없습니다.")
+
+    query = (
+        "당신은 용량관리(디스크 증설) 진척 관리 시스템의 매칭 진단 도우미입니다. "
+        "아래 대상이 왜 JIRA 티켓과 자동 매칭이 안 됐는지 1~2문장으로 진단해주세요.\n"
+        "판단 시 다음 두 경우를 반드시 구분하세요:\n"
+        "(가) 티켓 자체가 아직 없거나 호스트명/IP가 달라 매칭 실패\n"
+        "(나) 티켓은 이 서버에 있는데 변경작업내용에 이번 시트(DATA=/oradata·DATA 디스크그룹, "
+        "ARCH=/arch·RECO 디스크그룹) 표기가 없어 다른 시트 작업으로 분류됨 "
+        "- 이 경우 티켓 키를 짚고 '변경작업내용 표기 때문에 이 시트에서 빠졌다'고 알려주세요.\n"
+        "근거 없이 단정짓지 말고, 모르면 모른다고 답하세요.\n\n" + "\n\n".join(parts)
+    )
+    return _diagnose_chat(query)
+
+
 def diagnose_mismatch(row: dict) -> str:
     query = (
         "당신은 담당자 정보 정확도를 점검하는 도우미입니다. 아래는 한 시스템의 담당자 관련 데이터입니다:\n"
