@@ -242,7 +242,8 @@
     <button type="button" class="chat-agent-btn" data-agent="calc" onclick="selectChatAgent('calc')">🧮 산정 기준</button>
   </div>
   <div id="chatMsgs-status" class="chat-msgs">
-    <div class="chat-msg bot">📋 진척 조회를 선택했어요. "내 대상 뭐 있어?", "OO서버 완료됐어?"처럼 물어보세요. (입력자명을 먼저 채워주세요)</div>
+    <div class="chat-msg bot warn">‼️ 입력자명을 먼저 입력해주세요 ‼️</div>
+    <div class="chat-msg bot">📋 진척 조회를 선택했어요. "내 대상 뭐 있어?", "OO서버 완료됐어?"처럼 물어보세요.</div>
   </div>
   <div id="chatMsgs-calc" class="chat-msgs hidden"></div>
   <form id="chatForm" class="chat-form" onsubmit="return sendChat(event)">
@@ -477,7 +478,7 @@ async function diagnoseUnmatched(btn, itemNo) {
 let currentChatAgent = "status";
 
 const CHAT_GREETINGS = {
-  status: "📋 진척 조회를 선택했어요. \"내 대상 뭐 있어?\", \"OO서버 완료됐어?\"처럼 물어보세요. (입력자명을 먼저 채워주세요)",
+  status: "📋 진척 조회를 선택했어요. \"내 대상 뭐 있어?\", \"OO서버 완료됐어?\"처럼 물어보세요.",
   calc: "🧮 산정 기준 설명을 선택했어요. \"이 서버는 왜 증설 대상이야?\", \"80%가 진짜 기준이야?\"처럼 물어보세요.",
 };
 
@@ -491,7 +492,10 @@ function selectChatAgent(agent) {
   });
   // 이 모드로 처음 들어왔을 때만 인사 메시지 (매번 전환할 때마다 다시 나오면 지저분함)
   const box = document.getElementById(`chatMsgs-${agent}`);
-  if (!box.children.length) addChatMsg(CHAT_GREETINGS[agent], "bot");
+  if (!box.children.length) {
+    if (agent === "status") addChatMsg("‼️ 입력자명을 먼저 입력해주세요 ‼️", "bot warn");
+    addChatMsg(CHAT_GREETINGS[agent], "bot");
+  }
 }
 
 function toggleChat() {
