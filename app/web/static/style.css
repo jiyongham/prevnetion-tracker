@@ -310,6 +310,7 @@ footer a:hover { text-decoration: underline; }
 }
 .chat-agent-btn.active { background: #fff; color: #5b5fc7; border-bottom-color: #5b5fc7; }
 .chat-msgs { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.chat-msgs.hidden { display: none; }
 .chat-msg {
   max-width: 85%; padding: 8px 12px; border-radius: 10px;
   font-size: 13px; line-height: 1.5; white-space: pre-wrap; word-break: break-word;
