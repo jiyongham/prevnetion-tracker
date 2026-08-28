@@ -1,4 +1,5 @@
 # app/services/eos_report.py
+import re
 from datetime import date
 
 from app.config import settings
@@ -27,18 +28,32 @@ def collect_eos(use_jira: bool = True):
     return items, ticket_map, polestar_confirmed
 
 
-def _month_stats(details: list[dict], today: date) -> tuple[int, int]:
-    """이번 달을 목표로 하는 대상 수 / 그 중 완료 수"""
+_MONTHS_RE = re.compile(r"(\d{1,2})\s*월")
+
+
+def _moved_in(schedule_raw: str, month: int) -> bool:
+    """
+    '10월 → 8월'처럼 다른 달에서 이번 달로 옮겨온 대상인지.
+    '8월  -->> 완료예정'은 화살표가 있어도 앞쪽이 같은 달이라 일정 변경이 아니다.
+    """
+    months = [int(m) for m in _MONTHS_RE.findall(schedule_raw or "")]
+    return len(set(months)) > 1 and months[-1] == month
+
+
+def _month_stats(details: list[dict], today: date) -> tuple[int, int, int]:
+    """이번 달 목표 대상 수 / 그 중 완료 수 / 일정 변경으로 이번 달에 들어온 수"""
     this_month = [
         d for d in details
         if d["schedule"] and d["schedule"].year == today.year and d["schedule"].month == today.month
     ]
     done = sum(1 for d in this_month if d["completed"])
-    return len(this_month), done
+    moved = sum(1 for d in this_month if _moved_in(d.get("schedule_raw", ""), today.month))
+    return len(this_month), done, moved
 
 
 def _track_section(
     title: str,
+    section_no: int,
     fixed_total: int,
     items: list[dict],
     ticket_map: dict,
@@ -52,7 +67,7 @@ def _track_section(
     result = calc_eos_completion(items, ticket_map, today, polestar_confirmed=polestar_confirmed)
     rate = round(result["done"] / fixed_total * 100) if fixed_total else 0
 
-    month_target, month_done = _month_stats(result["details"], today)
+    month_target, month_done, month_moved = _month_stats(result["details"], today)
     month_rate = round(month_done / month_target * 100) if month_target else 0
 
     # perf_matched/plan_saved는 전체 대상 기준으로 한 번만 조회된 것 - 이 트랙(OS/DB)
@@ -61,17 +76,25 @@ def _track_section(
     perf_cnt = len(track_item_nos & (perf_matched or {}).keys())
     plan_cnt = len(track_item_nos & (plan_saved or {}).keys())
 
-    return [
+    lines = [
         f"[{title}]",
-        "2. `26년 하반기 EoS 버전 업그레이드 진행",
+        f"{section_no}. `26년 하반기 EoS 버전 업그레이드 진행",
         f"   1) 총 {fixed_total}대 中 {result['done']}대 완료 (진행률 {rate}%)",
         "   2) 월별 목표",
         f"       - {today.month}월 목표 {month_target}대 中 {month_done}대 완료 (진행률 {month_rate}%)",
+    ]
+    if month_moved:
+        lines.append(
+            f"         ※ 일정 변경으로 {today.month}월 목표 추가 {month_moved}대 "
+            f"(기존 {month_target - month_moved}대)"
+        )
+    lines += [
         "   3) 실적",
         f"    - 금주 실적 ({perf_start:%m/%d} ~ {perf_end:%m/%d}) : {perf_cnt}대",
         f"    - 차주 계획 ({plan_start:%m/%d} ~ {plan_end:%m/%d}) : {plan_cnt}대",
         "",
     ]
+    return lines
 
 
 def build_eos_report(use_jira: bool = True) -> str:
@@ -100,11 +123,11 @@ def build_eos_report(use_jira: bool = True) -> str:
 
     lines = ["[EoS]", ""]
     lines += _track_section(
-        "OS", OS_TOTAL_FIXED, os_items, ticket_map, today, perf_start, perf_end,
+        "OS", 1, OS_TOTAL_FIXED, os_items, ticket_map, today, perf_start, perf_end,
         plan_start, plan_end, polestar_confirmed, perf_matched, plan_saved,
     )
     lines += _track_section(
-        "DB", DB_TOTAL_FIXED, db_items, ticket_map, today, perf_start, perf_end,
+        "DB", 2, DB_TOTAL_FIXED, db_items, ticket_map, today, perf_start, perf_end,
         plan_start, plan_end, polestar_confirmed, perf_matched, plan_saved,
     )
 

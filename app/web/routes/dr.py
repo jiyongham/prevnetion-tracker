@@ -41,11 +41,24 @@ router = APIRouter()
 # ─────────────────────────────────────────────
 # 데이터 수집
 # ─────────────────────────────────────────────
-def get_dashboard_data(half: str, as_of: date, use_jira: bool = True):
+# 수행방식 탭 (URL은 ASCII로, 엑셀 값은 한글)
+MODE_TABS = {"real": "실전환", "nonstop": "무중단"}
+
+
+def filter_by_mode(items: list[dict], mode: str | None) -> list[dict]:
+    """수행방식(실전환/무중단)으로 대상을 좁힌다. mode가 없으면 전체."""
+    label = MODE_TABS.get(mode or "")
+    if not label:
+        return items
+    return [i for i in items if label in (i.get("mode") or "")]
+
+
+def get_dashboard_data(half: str, as_of: date, use_jira: bool = True, mode: str | None = None):
     items = load_dr_items_merged(half=half)
-    # 하반기는 상반기 무중단 대상(174대)에 한해 수행 → 분모/상세목록 한정
+    # 하반기는 상반기 무중단 대상에 한해 수행 → 분모/상세목록 한정
     if half == "H2":
         items = scope_h2_targets(items)
+    items = filter_by_mode(items, mode)
     ticket_map = {}
     jira_error = None
 
@@ -74,12 +87,26 @@ def dashboard(
     team: str | None = None,
     status: str | None = None,
     q: str | None = None,
+    mode: str | None = None,
+    report_warning: str | None = None,
 ):
     half = half or get_current_half()
     today = date.today()
+    if mode not in MODE_TABS:
+        mode = None
 
-    result, jira_error = get_dashboard_data(half, today)
+    result, jira_error = get_dashboard_data(half, today, mode=mode)
     by_team = group_by(result, "ops_team")
+
+    # 탭에 표시할 방식별 대수 (필터 적용 전 기준)
+    scope_items = load_dr_items_merged(half=half)
+    if half == "H2":
+        scope_items = scope_h2_targets(scope_items)
+    scope_targets = get_dr_targets(scope_items)
+    mode_counts = {
+        "": len(scope_targets),
+        **{k: len(filter_by_mode(scope_targets, k)) for k in MODE_TABS},
+    }
 
     # 대상 여부(O,X)에서 X로 제외된 건수. Teams 리포트 "1. 전체 대상"과 같은 기준으로,
     # 상반기 무중단 174대로 좁히기 전 그 반기 엑셀 전체를 기준으로 센다 (좁힌 뒤로 세면
@@ -133,8 +160,13 @@ def dashboard(
         "excluded_items": excluded_items,
         "excluded_cnt": excluded_cnt,
         "by_team": dict(sorted(by_team.items(), key=lambda x: x[1]["rate"])),
+        "report_warning": report_warning,
         "half": half,
         "half_label": "상반기" if half == "H1" else "하반기",
+        "mode": mode or "",
+        "mode_label": MODE_TABS.get(mode or "", "전체"),
+        "mode_counts": mode_counts,
+        "mode_qs": f"&mode={mode}" if mode else "",
         "as_of": today,
         "next_week": today + timedelta(days=7),
         "today": today,
@@ -447,8 +479,12 @@ async def api_diagnose_mismatch(request: Request):
 # ─────────────────────────────────────────────
 @router.post("/send-report")
 def trigger_report(half: str = Form(...)):
-    send_report(half=half)
-    return RedirectResponse(url=f"/?half={half}", status_code=303)
+    # 발송은 하되, 지난주 대비 이상 징후가 있으면 화면에 띄워 확인하게 한다
+    warning = send_report(half=half)
+    url = f"/?half={half}"
+    if warning:
+        url += f"&report_warning={quote(warning)}"
+    return RedirectResponse(url=url, status_code=303)
 
 
 # ─────────────────────────────────────────────

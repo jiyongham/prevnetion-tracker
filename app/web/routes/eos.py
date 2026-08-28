@@ -21,6 +21,7 @@ from app.models.db import (
 )
 from app.services.completion import group_by
 from app.services.eos import build_no_reply_details, calc_eos_completion, filter_track
+from app.services import eos_chatbot
 from app.services.eos_data import get_eos_data
 from app.services.eos_plan_chat import build_candidates, parse_plan_message
 from app.services.eos_reminder import group_eos_no_reply, group_eos_unplanned
@@ -352,3 +353,23 @@ async def api_eos_plan_chat_remove(request: Request):
 
     remove_eos_next_week_plan(item_no, week_start)
     return JSONResponse({"ok": True})
+
+
+# ─────────────────────────────────────────────
+# 진척 조회 챗봇 (사내 LLM Agent)
+# ─────────────────────────────────────────────
+@router.post("/api/eos/chat")
+async def api_eos_chat(request: Request):
+    data = await request.json()
+    query = (data.get("query") or "").strip()
+    name = (data.get("name") or "").strip()
+
+    if not query:
+        return JSONResponse({"ok": False, "error": "질문을 입력해주세요"}, status_code=400)
+
+    try:
+        reply = eos_chatbot.answer(name, query)
+    except Exception as e:
+        logger.warning(f"EoS 챗봇 실패: {e}")
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=502)
+    return JSONResponse({"ok": True, "reply": reply})

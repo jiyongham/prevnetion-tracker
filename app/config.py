@@ -111,6 +111,28 @@ class Settings(BaseSettings):
     # EoS 차주 계획 챗봇 전용 에이전트 (자유 텍스트에서 언급된 대상 시스템 추출)
     eos_plan_agent_id: str = ""
     eos_plan_agent_code: str = ""
+    eos_status_agent_id: str = ""        # EoS 대상 진척(완료/조치계획/JIRA) 조회
+    eos_status_agent_code: str = ""
+
+    # 리포트 고정 문구/수치 - 반기가 바뀌거나 공지 일정이 확정될 때마다 값이 달라지는데
+    # 코드에 박아두면 그때마다 배포가 필요해서 설정으로 뺐다.
+    dr_excluded_reason: str = "미사용 VM 폐기 예정"      # DR훈련 제외 사유 문구
+    # 상반기(종료된 반기) 확정값. 미설정이면 엑셀에서 매번 집계한다.
+    # 여기 넣은 값이 매주 스케줄러로 팀즈에 그대로 나가므로 증적과 일치해야 한다.
+    dr_h1_done: int | None = None                       # 상반기 완료 대수
+    dr_h1_real: int | None = None                       # 상반기 실전환 대수
+    dr_h1_nonstop: int | None = None                    # 상반기 무중단 대수
+    capacity_purpose: str = "'26년 하반기 그룹사 용량관리 기준 임계치 초과 DB서버 디스크 용량 증설"
+    capacity_total_fixed: int = 86                      # 용량관리 전체 모수(선별 공지 시점 고정값)
+    capacity_step1_label: str = "'26년 상반기 용량관리 대상 선별 및 공지"
+    capacity_step1_date: str = "7/16"
+    capacity_step2_label: str = "작업 일정 취합 및 진행 협의"
+    capacity_step2_date: str = "7/31"
+
+    # 리포트 발송 전 이상 감지 - 지난주 스냅샷과 비교해 이상이 보이면 판단해주는 에이전트.
+    # 미설정이면 규칙 기반 경고만 나가고 판단 문장은 생략된다.
+    report_check_agent_id: str = ""
+    report_check_agent_code: str = ""
 
     # 용량관리 챗봇 - 목적이 달라 에이전트를 2개로 분리 (시스템 프롬프트가 서로 배타적)
     capacity_calc_agent_id: str = ""     # 증설 산정 기준/계산식 설명

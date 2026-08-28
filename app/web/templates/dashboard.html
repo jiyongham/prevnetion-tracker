@@ -19,6 +19,7 @@
     <h1>🔄 DR 모의훈련 진척 현황</h1>
     <div class="controls">
       <form method="get" class="inline-form">
+        {% if mode %}<input type="hidden" name="mode" value="{{ mode }}">{% endif %}
         <select name="half" onchange="this.form.submit()">
           <option value="H1" {% if half == 'H1' %}selected{% endif %}>상반기</option>
           <option value="H2" {% if half == 'H2' %}selected{% endif %}>하반기</option>
@@ -33,14 +34,25 @@
     </div>
   </header>
 
+  {% if report_warning %}
+  <div class="alert" style="background:#fff4e5;color:#7a4a00;white-space:pre-wrap">{{ report_warning }}</div>
+  {% endif %}
+
   {% if jira_error %}
   <div class="alert">⚠️ JIRA 연동 실패 (엑셀 기준 표시): {{ jira_error[:100] }}</div>
   {% endif %}
 
+  <!-- 수행방식 탭 -->
+  <div class="tabs">
+    <a href="/?half={{ half }}" class="tab {% if not mode %}active{% endif %}">전체 {{ mode_counts[''] }}대</a>
+    <a href="/?half={{ half }}&mode=real" class="tab {% if mode == 'real' %}active{% endif %}">실전환 {{ mode_counts['real'] }}대</a>
+    <a href="/?half={{ half }}&mode=nonstop" class="tab {% if mode == 'nonstop' %}active{% endif %}">무중단 {{ mode_counts['nonstop'] }}대</a>
+  </div>
+
   <!-- 요약 카드 -->
   <section class="cards">
     <div class="card big">
-      <div class="label">전체 완료율 ({{ half_label }})</div>
+      <div class="label">완료율 ({{ half_label }} · {{ mode_label }})</div>
       <div class="rate">{{ result.rate }}%</div>
       <div class="sub">{{ result.done }} / {{ result.total }}건</div>
       <div class="progress"><div class="bar" style="width: {{ result.rate }}%"></div></div>
@@ -85,14 +97,15 @@
       <div class="head-right">
         <form method="get" class="inline-form">
           <input type="hidden" name="half" value="{{ half }}">
+          {% if mode %}<input type="hidden" name="mode" value="{{ mode }}">{% endif %}
           <input type="text" name="q" value="{{ q }}" placeholder="팀/시스템/호스트/IP 검색" class="search">
           <button type="submit" class="btn-sm">검색</button>
         </form>
         <div class="filters">
-          <a href="/?half={{ half }}" class="chip {% if not filter_status and not filter_team %}active{% endif %}">전체</a>
-          <a href="/?half={{ half }}&status=pending" class="chip {% if filter_status == 'pending' %}active{% endif %}">미완료</a>
-          <a href="/?half={{ half }}&status=unplanned" class="chip {% if filter_status == 'unplanned' %}active{% endif %}">미계획</a>
-          <a href="/?half={{ half }}&status=done" class="chip {% if filter_status == 'done' %}active{% endif %}">완료</a>
+          <a href="/?half={{ half }}{{ mode_qs }}" class="chip {% if not filter_status and not filter_team %}active{% endif %}">전체</a>
+          <a href="/?half={{ half }}{{ mode_qs }}&status=pending" class="chip {% if filter_status == 'pending' %}active{% endif %}">미완료</a>
+          <a href="/?half={{ half }}{{ mode_qs }}&status=unplanned" class="chip {% if filter_status == 'unplanned' %}active{% endif %}">미계획</a>
+          <a href="/?half={{ half }}{{ mode_qs }}&status=done" class="chip {% if filter_status == 'done' %}active{% endif %}">완료</a>
         </div>
       </div>
     </div>
@@ -138,7 +151,7 @@
           <td>
             <select class="cell mode">
               <option value="" {% if not d.mode %}selected{% endif %}>-</option>
-              <option value="실 전환" {% if '실' in d.mode %}selected{% endif %}>실 전환</option>
+              <option value="실전환" {% if '실' in d.mode %}selected{% endif %}>실전환</option>
               <option value="무중단" {% if '무중단' in d.mode %}selected{% endif %}>무중단</option>
             </select>
           </td>

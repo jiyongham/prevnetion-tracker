@@ -12,8 +12,10 @@ from app.services.capacity import (
     capacity_ticket_done_date,
     filter_tickets_by_sheet,
 )
-from app.services.completion import fmt_rate
+from app.services.ai_summary import generate_weekly_summary
+from app.services.completion import fmt_rate, group_by
 from app.services.matcher import match_items_by_ip
+from app.services.report_check import check_report, record_sent
 
 
 def _projected_done(result: dict, ticket_map: dict, today: date, cutoff: date) -> int:
@@ -52,7 +54,8 @@ def collect_capacity(sheet: str, use_jira: bool = True):
     return items, ticket_map
 
 
-def build_capacity_report(use_jira: bool = True) -> str:
+def _build(use_jira: bool = True) -> tuple[str, dict]:
+    """리포트 본문과 발송 전 점검/스냅샷용 집계를 함께 만든다"""
     today = date.today()
 
     data_items, data_tmap = collect_capacity("DATA", use_jira)
@@ -80,25 +83,67 @@ def build_capacity_report(use_jira: bool = True) -> str:
     lines = [
         "[용량 관리]",
         "",
-        "1. 목적 : '26년 하반기 그룹사 용량관리 기준 임계치 초과 DB서버 디스크 용량 증설",
+        f"1. 목적 : {settings.capacity_purpose}",
         "",
         "2. 내용",
         "   1) 데이터 저장 공간 사용률 80% 초과 시스템 디스크 증설",
         "   2) 변경 데이터 공간(Archive) 1일 변경량의 3배 확보",
         "",
         "3. 진행사항",
-        "   1) '26년 상반기 용량관리 대상 선별 및 공지 : 7/16 (완료)",
-        "   2) 작업 일정 취합 및 진행 협의 : 7/31 (완료)",
-        f"      - 디스크증설 86대 中 {planned_cnt}대 증설 예정",
+        f"   1) {settings.capacity_step1_label} : {settings.capacity_step1_date} (완료)",
+        f"   2) {settings.capacity_step2_label} : {settings.capacity_step2_date} (완료)",
+        f"      - 디스크증설 {settings.capacity_total_fixed}대 中 {planned_cnt}대 증설 예정",
         f"            ※ 프로젝트 진행 및 폐기 예정 등 {excluded_cnt}대 제외, 미회신 {no_reply_cnt}대",
         "   3) 디스크 증설 수행",
         f"       - 디스크 {total_target}대 中 {total_done}대 완료 (진행률 {fmt_rate(rate)}%)",
     ]
-    return "\n".join(lines)
+
+    # 특이사항 한 줄 (DR훈련 리포트와 같은 에이전트 공용).
+    # 완료 판정은 위 total_done(차주 말까지 예정분 포함)과 달리 '오늘 기준 완료'만 보는
+    # calc 결과를 그대로 쓴다 - 팀별 비교엔 예정분을 섞지 않는 게 맞다.
+    merged = {
+        "done": data_result["done"] + arch_result["done"],
+        "total": total_target,
+        "rate": round(
+            (data_result["done"] + arch_result["done"]) / total_target * 100, 1
+        ) if total_target else 0.0,
+        "no_schedule": data_result["no_schedule"] + arch_result["no_schedule"],
+    }
+    by_team = group_by(
+        {"details": data_result["details"] + arch_result["details"]}, "ops_team"
+    )
+    summary = generate_weekly_summary(
+        "'26년 하반기 용량관리(DB 디스크 증설) 진척 현황", merged, by_team, unit="대"
+    )
+    if summary:
+        lines += ["", "4. 이번 주 특이사항", f"   {summary}"]
+
+    metrics = {
+        "total": total_target,
+        "done": total_done,
+        "rate": rate,
+        "no_schedule": merged["no_schedule"],
+    }
+    return "\n".join(lines), metrics
 
 
-def send_capacity_report(use_jira: bool = True):
-    text = build_capacity_report(use_jira=use_jira)
+def build_capacity_report(use_jira: bool = True) -> str:
+    return _build(use_jira=use_jira)[0]
+
+
+def send_capacity_report(use_jira: bool = True) -> str | None:
+    """
+    리포트 발송. 발송 전 지난주 대비 이상 징후를 점검하고, 이상이 있어도 정기 보고라
+    발송 자체는 막지 않고 경고만 반환한다 (호출부에서 로그/화면으로 알린다).
+    """
+    text, metrics = _build(use_jira=use_jira)
+    warning = check_report("capacity", metrics)
+
     print(text)
+    if warning:
+        print(warning)
     print("-" * 60)
+
     send_teams_message(text)
+    record_sent("capacity", metrics)
+    return warning

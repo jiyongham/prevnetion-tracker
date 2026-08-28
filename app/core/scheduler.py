@@ -20,7 +20,9 @@ def job_weekly_report():
     """주간 진척 리포트 (DR훈련)"""
     logger.info("[스케줄] 주간 리포트 실행")
     try:
-        send_report()
+        warning = send_report()
+        if warning:
+            logger.warning(f"[스케줄] 주간 리포트 이상 징후\n{warning}")
         logger.info("[스케줄] 주간 리포트 완료")
     except Exception as e:
         logger.exception(f"[스케줄] 주간 리포트 실패: {e}")
@@ -30,7 +32,9 @@ def job_weekly_capacity_report():
     """주간 용량관리 현황 리포트"""
     logger.info("[스케줄] 용량관리 리포트 실행")
     try:
-        send_capacity_report()
+        warning = send_capacity_report()
+        if warning:
+            logger.warning(f"[스케줄] 용량관리 리포트 이상 징후\n{warning}")
         logger.info("[스케줄] 용량관리 리포트 완료")
     except Exception as e:
         logger.exception(f"[스케줄] 용량관리 리포트 실패: {e}")
