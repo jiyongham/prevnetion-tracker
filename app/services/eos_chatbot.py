@@ -121,28 +121,29 @@ def get_status_rows(as_of: date) -> list[dict]:
     return rows
 
 
-MAX_OWNERS_SHOWN = 3
-
-
-def _fmt_owner(raw: str) -> str:
-    """담당자가 팀 전원(8명)으로 들어있는 대상이 많아, 컨텍스트가 터지지 않게 줄인다."""
-    names = [n.strip() for n in (raw or "").split("||") if n.strip()]
-    if len(names) <= MAX_OWNERS_SHOWN:
-        return ", ".join(names)
-    return ", ".join(names[:MAX_OWNERS_SHOWN]) + f" 외 {len(names) - MAX_OWNERS_SHOWN}명"
-
-
 # ─────────────────────────────────────────────
 # 컨텍스트 조립
 # ─────────────────────────────────────────────
+def _status_of(d: dict) -> str:
+    kind = d.get("status_kind")
+    if kind == "no_reply":
+        return "미응답"
+    if kind == "excluded":
+        return "제외"
+    if d.get("completed"):
+        return "완료"
+    return "미계획" if not d.get("planned") else "미완료"
+
+
 def _fmt_row(d: dict) -> str:
+    """DR훈련 챗봇(chatbot.py)과 같은 한 줄 압축형. 필드명을 늘어놓는 대신 사람이 읽는
+    순서로 붙여야 에이전트도 짧고 자연스럽게 되받는다."""
+    track = f" [{d['track']}]" if d.get("track") else ""
+    jira = f" (JIRA {d['jira_key']})" if d.get("jira_key") else ""
     return (
-        f"- 시스템명: {d.get('system_name', '')} / 호스트명: {d.get('hostname', '')} / "
-        f"IP: {d.get('ip', '')} / 트랙: {d.get('track') or '미상'} / "
-        f"운영팀: {d.get('ops_team', '')} / 담당자: {_fmt_owner(d.get('owner', ''))} / "
-        f"status_kind: {d.get('status_kind', '')} / completed: {d.get('completed')} / "
-        f"planned: {d.get('planned')} / 조치계획: {d.get('schedule_disp') or '없음'} / "
-        f"jira_key: {d.get('jira_key') or '없음'} / reason: {d.get('reason') or '없음'}"
+        f"- {d.get('system_name', '')}{track} / {d.get('hostname', '')} / {d.get('ip', '')} / "
+        f"{d.get('ops_team', '')} / 조치계획 {d.get('schedule_disp') or '없음'} / "
+        f"{_status_of(d)}{jira}"
     )
 
 
