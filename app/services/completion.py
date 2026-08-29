@@ -15,7 +15,7 @@ _CMDB_OLD_PATTERN = re.compile(r"_OLD\s*$", re.IGNORECASE)
 
 
 def _extract_cmdb_keys(raw: list | None) -> set[str]:
-    """'작업 완료(CMDB)' 필드(예: '[시스템명]_OLD (SINCASN-00000)') -> {Insight Key, ...}"""
+    """'작업 완료(CMDB)' 필드(예: '[시스템명]_OLD (ASSET-00000)') -> {Insight Key, ...}"""
     if not raw:
         return set()
     keys = set()
@@ -31,7 +31,7 @@ def _extract_cmdb_old_keys(raw: list | None) -> set[str]:
     '작업 완료(CMDB)' 필드 중 이름이 '_OLD'로 끝나는 항목의 Insight Key만.
 
     전환이 실제로 끝나면 AS-IS 자산명에 '_OLD'가 붙는데, 이 필드는 그 이름을 Key와
-    함께 담고 있어(예: '[까,Nu] SAP PRD AP #1 (Active)_old (SINCASN-00000)') 이름
+    함께 담고 있어(예: '[관계사,인프라] 서비스명 AP #1 (Active)_old (ASSET-00000)') 이름
     매칭 없이 "이 대상은 전환이 끝났다"를 정확히 알 수 있다. 같은 티켓 안에 전환 후
     신규 자산(접미사 없음)도 같이 들어있어 '_OLD'인 것만 골라야 한다.
     """

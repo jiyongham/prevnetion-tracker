@@ -37,7 +37,7 @@ class PolestarClient:
     def list_resources(self, resource_type: str = "all") -> list[dict]:
         """
         전체 리소스(CI) 목록. 항목 예:
-        {"name": "[아,Nu] 클라우드 POS AD #1_OLD", "ipAddress": "10.0.0.1",
+        {"name": "[관계사,인프라] 서비스명 AP #1_OLD", "ipAddress": "10.0.0.1",
          "id": 1885231313, "resourceStatus": "UNMANAGED", "availability": "DISABLED",
          "resourceType": "server.Server", "parentId": ...}
         """

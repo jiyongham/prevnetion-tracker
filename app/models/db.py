@@ -102,7 +102,7 @@ def init_db():
 
         CREATE TABLE IF NOT EXISTS eos_input (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            item_no     TEXT NOT NULL UNIQUE,   -- Insight Key (예: SINCASN-00000)
+            item_no     TEXT NOT NULL UNIQUE,   -- Insight Key (예: ASSET-00000)
             schedule    TEXT,
             is_done     INTEGER DEFAULT 0,
             evidence    TEXT,

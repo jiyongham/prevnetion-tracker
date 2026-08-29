@@ -87,7 +87,7 @@ def extract_eos_rows(page_id: str) -> list[dict]:
 
 
 def _name_tokens(system_name: str) -> list[str]:
-    """'[DR,A][이,Nu] 전자저울 개발 #2' -> ['전자저울','개발']  (대괄호 접두어 전부/번호·짧은 토큰 제거)"""
+    """'[DR,A][관계사,인프라] 서비스명 개발 #2' -> ['서비스명','개발']  (대괄호 접두어 전부/번호·짧은 토큰 제거)"""
     name = system_name or ""
     while True:
         stripped = _LEADING_TAG_RE.sub("", name)
@@ -183,7 +183,7 @@ def extract_hostnames_from_pdf(pdf_bytes: bytes) -> set[str]:
                 for row in table[1:]:
                     if idx < len(row) and row[idx]:
                         # 셀 안에서 줄바꿈된 긴 호스트명은 pdfplumber가 '\n'을 그대로 남긴다
-                        # (예: 'scmat-iscal-\ndev2' -> 'scmat-iscal-dev2')
+                        # (예: 'hostname-svc-\ndev2' -> 'hostname-svc-dev2')
                         cleaned = re.sub(r"\s+", "", row[idx])
                         if cleaned:
                             hostnames.add(cleaned)
