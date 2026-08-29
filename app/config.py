@@ -42,7 +42,7 @@ class Settings(BaseSettings):
     dr_work_type_field: str = "customfield_19529"
 
     # 작업 완료(CMDB) - EoS 티켓에서 실제로 전환 완료된 CMDB 대상(Insight Key 포함)을 담는 필드.
-    # "[시스템명]_OLD (SINCASN-xxxxx)" 형태 - 변경작업내용 텍스트에 호스트명/IP가 없어도 이 필드로 정확히 매칭 가능
+    # "[시스템명]_OLD (ASSET-xxxxx)" 형태 - 변경작업내용 텍스트에 호스트명/IP가 없어도 이 필드로 정확히 매칭 가능
     eos_cmdb_done_field: str = "customfield_14615"
 
     @property
