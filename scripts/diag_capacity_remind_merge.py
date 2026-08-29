@@ -10,7 +10,7 @@ merge_same_server()는 (1) 병합 키(CI명, 없으면 호스트명/IP)가 같�
 그 세 가지를 시트별로 나란히 보여준다 (repr로 찍어서 안 보이는 공백/문자 차이도 드러냄).
 
 사용법:
-  python -m scripts.diag_capacity_remind_merge "스타벅스 SAP ERP DB#1"
+  python -m scripts.diag_capacity_remind_merge "관계사 SAP ERP DB#1"
 """
 import sys
 

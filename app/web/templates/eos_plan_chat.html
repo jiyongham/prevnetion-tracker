@@ -17,8 +17,8 @@
 
   <div class="alert" style="background:#eef4ff;color:#334">
     JIRA/Confluence로 아직 취합이 안 되는 주(<strong>{{ week_start }} ~ {{ week_end }}</strong>)의
-    작업 예정을, 아는 대로 자유롭게 말씀해주세요. 예: <em>"다음주에 까사미아 SAP,
-    이마트 인시생산성시스템 예정이야"</em> — AI가 대상 시스템 후보를 찾아드리면,
+    작업 예정을, 아는 대로 자유롭게 말씀해주세요. 예: <em>"다음주에 A사 SAP,
+    B사 생산성시스템 예정이야"</em> — AI가 대상 시스템 후보를 찾아드리면,
     맞는 것만 체크하고 저장하시면 됩니다.
   </div>
 
@@ -35,7 +35,7 @@
       <div class="chat-msg bot">어떤 작업이 예정되어 있나요? 관계사/시스템명을 편하게 말씀해주세요.</div>
     </div>
     <form id="chatForm" class="chat-form" onsubmit="return sendChat(event)" style="border-top:none">
-      <input type="text" id="chatInput" placeholder="예: 까사미아 SAP, 이마트 인시생산성시스템 다음주 예정이야">
+      <input type="text" id="chatInput" placeholder="예: A사 SAP, B사 생산성시스템 다음주 예정이야">
       <button type="submit">전송</button>
     </form>
   </div>
