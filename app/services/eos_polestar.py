@@ -61,15 +61,26 @@ def build_index(resources: list[dict]) -> dict:
 def judge_converted(item: dict, index: dict) -> tuple[bool, str]:
     """
     한 EoS 대상의 전환 완료 여부. 반환: (완료여부, 근거)
-    근거는 어느 키로 확인했는지 화면/진단에서 보여주기 위한 것.
+
+    판정하는 건 'Polestar에 _OLD가 있다'가 아니라 **'_OLD가 아니었던 게 _OLD가 됐다'**는
+    변화다. 엑셀은 대상 선정 시점의 이름이고 Polestar는 현재 이름이라, 두 시점을 비교해야
+    그 사이에 전환이 일어났다고 말할 수 있다. 현재 상태만 보면 "원래 그 이름이었던 것"과
+    구분되지 않는다.
+
+    근거 문자열은 어느 키로 확인했는지 화면/진단에서 보여주기 위한 것.
     """
     by_name, by_ip = index["by_name"], index["by_ip"]
     system_name = item.get("system_name", "")
 
-    # 엑셀 이름 자체가 이미 _OLD면 전환이 끝나 리네임된 것
+    # 비교 기준점이 없는 경우: 엑셀 이름이 이미 '_OLD'면 '바뀌었다'를 말할 수 없다.
+    # Polestar에도 같은 '_OLD'가 있겠지만 그건 변화가 아니라 처음부터 같은 상태다.
+    # 실제로 조치계획이 12월인 면세점 계열 14대가 이 때문에 완료로 잡혀 과대계상됐다
+    # (신규 서버를 미리 만들면서 기존 이름에 _OLD를 먼저 붙여둔 것으로 보임).
+    # 이 대상들은 JIRA '작업 완료(CMDB)' 근거나 담당자 완료표기로만 완료 판정한다.
     if _suffix(system_name) == "OLD":
-        return True, "엑셀 CI명 _OLD"
+        return False, ""
 
+    # 엑셀엔 접미사가 없었는데 Polestar엔 같은 기준명의 '_OLD'가 있다 = 그 사이 전환됨
     if "OLD" in by_name.get(_basename(system_name), {}):
         return True, "Polestar CI명 매칭"
 

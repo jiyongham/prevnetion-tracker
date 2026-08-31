@@ -1,9 +1,10 @@
 # app/services/eos.py
+import re
 from datetime import date
 
 from app.config import settings
 from app.core.date_utils import half_window
-from app.core.eos_loader import get_targets, parse_eos_schedule
+from app.core.eos_loader import _effective, get_targets, parse_eos_schedule
 from app.services.completion import DONE_MARKS, build_ticket_summary
 
 
@@ -97,6 +98,21 @@ def eos_ticket_done_date(t: dict) -> date | None:
     return None
 
 
+def schedule_marks_done(raw: str) -> bool:
+    """
+    조치계획란에 담당자가 직접 적은 완료 표기인지.
+    EoS 엑셀엔 완료 컬럼이 없어서 담당자가 조치계획란에 '7월 완료 (추가)',
+    '9월 → 8월 (완료)'처럼 적는다. 티켓이 매칭 안 되는 추가 대상들이 여기 걸린다.
+
+    - '→'가 있으면 최종값만 본다 (앞쪽 값이 번복된 것을 완료로 읽지 않기 위함)
+    - '완료 예정'/'완료예정'은 아직 안 끝난 것이므로 제외
+    """
+    eff = _effective(raw or "")
+    if "완료" not in eff:
+        return False
+    return not re.search(r"완료\s*예정", eff)
+
+
 def judge_eos(
     item: dict,
     tickets: list[dict] | None,
@@ -105,11 +121,16 @@ def judge_eos(
     polestar_confirmed: set[str] | None = None,
 ) -> tuple[bool, str, dict | None]:
     """
-    완료 판정. 엑셀엔 완료 컬럼이 없어 아래 근거로만 완료로 본다.
+    완료 판정. 아래 근거만 인정하며, 위에서부터 먼저 걸리는 것을 채택한다.
 
-    1) 관리자가 웹에서 수동 완료 처리
+    1) 관리자가 웹에서 수동 완료 처리          → "완료표기"
     2) 매칭된 IP전환 티켓의 '작업 완료(CMDB)'에 이 대상이 '_OLD'로 기록됨
     3) Polestar CI가 '_OLD'로 리네임됨 (polestar_confirmed로 주입)
+    4) 담당자가 조치계획란에 '완료'라고 적음 (엑셀에 완료 컬럼이 없어 여기 적는다)
+
+    순서는 근거의 강도 순이다. 2)는 Insight Key로 대상이 특정돼 가장 정확하고, 3)은
+    이름/IP 매칭이라 드리프트 여지가 있으며, 4)는 사람이 적은 텍스트라 마지막에 본다.
+    앞선 근거가 있으면 화면에 근거 티켓까지 같이 보여줄 수 있는 이점도 있다.
 
     티켓이 매칭됐다는 것만으로는 완료로 보지 않는다. 변경계획시작일은 "작업을 시작하기로
     한 날"일 뿐이라, 계획일만 지나고 실제 전환은 안 끝난 건까지 완료로 세어 실측치보다
@@ -118,6 +139,8 @@ def judge_eos(
 
     2)와 3)을 합집합으로 쓰는 이유: CMDB 필드가 비어 있는 티켓이 있고(작업자가 미기입),
     Polestar는 CI명 드리프트로 매칭이 안 되는 경우가 있어 서로를 보완한다.
+    ※ 엑셀 시스템명이 이미 '_OLD'로 끝나는 대상은 3)의 판정 대상에서 빠진다
+      (eos_polestar.judge_converted 참고 - 리네임 결과인지 원래 이름인지 구분 불가).
     """
     if (item.get("excel_done") or "").upper() in DONE_MARKS:
         return True, "완료표기", None
@@ -136,6 +159,11 @@ def judge_eos(
     if polestar_confirmed and item["item_no"] in polestar_confirmed:
         latest = max(in_window, key=lambda x: x.get("created") or "") if in_window else None
         return True, "Polestar CI _OLD 확인", latest
+
+    # 최후 수단. 시스템 근거(JIRA/Polestar)가 우선이고, 그게 없을 때만 담당자 표기를 믿는다
+    # - 표기보다 실제 자산 상태가 정확하고, 화면에 근거 티켓도 같이 보여줄 수 있기 때문.
+    if schedule_marks_done(item.get("schedule_raw")):
+        return True, f"조치계획란 완료표기 ({item.get('schedule_raw')})", None
 
     return False, "", None
 
