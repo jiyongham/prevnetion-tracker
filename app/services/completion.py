@@ -243,6 +243,8 @@ def calc_completion(
             "updated_at": item.get("updated_at", ""),
             "evidence": item.get("evidence", ""),
             "note": item.get("note", ""),
+            "exclude_reason": item.get("exclude_reason", ""),        # 엑셀 원본 사유
+            "web_exclude_reason": item.get("web_exclude_reason", ""),  # 웹 제외 처리 사유
         })
 
     total = len(targets)
