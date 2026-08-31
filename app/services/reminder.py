@@ -179,9 +179,15 @@ def pick_representative(g: dict) -> tuple[str, dict, str]:
 
 
 def is_upcoming(item: dict, as_of: date, days: int) -> bool:
-    """작업 예정일이 오늘~N일 뒤 사이인 대상 (완료된 건 제외)"""
+    """
+    작업 예정일이 오늘~N일 뒤 사이라 사전 안내가 필요한 대상.
+
+    이 리마인드의 목적은 '변경 티켓(JSM)을 미리 내달라'는 것이므로, 이미 티켓이
+    매칭된 대상은 제외한다 - 낸 사람에게 또 내라고 보내면 안내가 아니라 잡음이 된다.
+    완료된 대상도 당연히 제외.
+    """
     sched = item.get("schedule")
-    if not sched or item.get("completed"):
+    if not sched or item.get("completed") or item.get("jira_matched"):
         return False
     return as_of <= sched <= as_of + timedelta(days=days)
 
