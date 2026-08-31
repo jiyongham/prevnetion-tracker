@@ -5,7 +5,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>EoS 진척 현황</title>
-  <link rel="stylesheet" href="/static/style.css?v=7">
+  <link rel="stylesheet" href="/static/style.css?v=9">
 </head>
 <body>
 <div class="container">
@@ -121,6 +121,7 @@
           <th style="width:130px">증적 ✏️</th>
           <th style="width:130px">비고 ✏️</th>
           <th>JIRA</th><th>상태</th><th style="width:60px">저장</th>
+          <th class="admin-only" style="width:60px">제외</th>
         </tr>
       </thead>
       <tbody>
@@ -140,7 +141,10 @@
 
           <td><input type="text" class="cell sched {{ 'edited' if d.input_source == 'web' else '' }}" value="{{ d.schedule_disp }}" placeholder="OO월"></td>
           <td class="center"><input type="checkbox" class="cell done" {% if d.completed %}checked{% endif %}></td>
-          <td><input type="text" class="cell evidence" value="{{ d.evidence }}" placeholder="증적"></td>
+          <td class="evidence-cell">
+            <input type="text" class="cell evidence {{ 'ev-' ~ d.evidence_level if d.evidence_level }}" value="{{ d.evidence }}" placeholder="증적">
+            {% if d.evidence_level %}<span class="ev-flag {{ d.evidence_level }}" title="{{ d.evidence_note }}">{{ '⛔' if d.evidence_level == 'bad' else '⚠️' }}</span>{% endif %}
+          </td>
           <td><input type="text" class="cell note" value="{{ d.note }}" placeholder="비고"></td>
 
           <td>
@@ -155,12 +159,44 @@
             {% else %}<span class="badge bad">미완료</span>{% endif %}
           </td>
           <td><button class="btn-save" onclick="saveRow(this)">저장</button></td>
+          <td class="admin-only">
+            <button class="btn-sm btn-exclude" onclick="excludeRow(this)"
+                    title="EoS 전환 대상에서 제외 - 사유를 남깁니다">X</button>
+          </td>
         </tr>
       {% endfor %}
       </tbody>
     </table>
     </div>
   </section>
+
+  {% if web_excluded %}
+  <section class="panel">
+    <h2>🚫 제외 대상 ({{ web_excluded|length }}건) <span class="muted small">— 관리자가 사유와 함께 제외한 대상</span></h2>
+    <div class="table-scroll">
+    <table>
+      <thead>
+        <tr><th>시스템명</th><th>호스트명</th><th>운영팀</th><th>담당자</th><th>제외 사유</th><th>처리자</th><th class="admin-only">복귀</th></tr>
+      </thead>
+      <tbody>
+      {% for d in web_excluded %}
+        <tr>
+          <td class="strong">{{ d.system_name }}</td>
+          <td class="mono small">{{ d.hostname }}</td>
+          <td class="small">{{ d.ops_team }}</td>
+          <td class="small">{{ d.owner }}</td>
+          <td class="small">{{ d.web_exclude_reason or "(미기재)" }}</td>
+          <td class="small">{{ d.updated_by }}</td>
+          <td class="admin-only">
+            <button class="btn-sm" data-no="{{ d.item_no }}" onclick="restoreRow(this)">↩️ 복귀</button>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </section>
+  {% endif %}
 
   <footer>
     <span>기준일 {{ as_of }}</span>
@@ -333,6 +369,37 @@ applyAdminState();
 </div>
 
 <script>
+async function excludeRow(btn) {
+  const name = (document.getElementById("updatedBy").value || "").trim();
+  if (name.length < 2) { alert("먼저 입력자명을 입력해주세요."); return; }
+  const tr = btn.closest("tr");
+  const sys = tr.querySelector("td.strong").textContent;
+  const reason = (prompt(`${sys}\n\nEoS 전환 대상에서 제외합니다.\n제외 사유를 입력해주세요. (예: 폐기 예정, 내년 이관)`) || "").trim();
+  if (!reason) return;
+  await postExclude(btn, { item_no: tr.dataset.no, updated_by: name, excluded: true, reason });
+}
+
+async function restoreRow(btn) {
+  const name = (document.getElementById("updatedBy").value || "").trim();
+  if (name.length < 2) { alert("먼저 입력자명을 입력해주세요."); return; }
+  if (!confirm("제외를 해제하고 다시 대상 목록으로 복귀시킬까요?")) return;
+  await postExclude(btn, { item_no: btn.dataset.no, updated_by: name, excluded: false });
+}
+
+async function postExclude(btn, body) {
+  btn.disabled = true;
+  try {
+    const res = await fetch("/api/eos/exclude", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (data.ok) { setTimeout(() => location.reload(), 300); }
+    else { alert("실패: " + (data.error || "")); btn.disabled = false; }
+  } catch (e) { alert("오류: " + e.message); btn.disabled = false; }
+}
+
 function toggleChat() {
   const panel = document.getElementById("chatPanel");
   const toggle = document.getElementById("chatToggle");
