@@ -123,6 +123,9 @@ def _build(use_jira: bool = True) -> tuple[str, dict]:
         "done": total_done,
         "rate": rate,
         "no_schedule": merged["no_schedule"],
+        # 미회신→증설예정 전환은 정상 진척이라 구성에 안 넣는다. 엑셀 행 수만 본다
+        # (행이 늘거나 줄었다 = 원본이 교체됐다는 뜻).
+        "composition": {"엑셀 행 수": {"DATA": len(data_items), "ARCH": len(arch_items)}},
     }
     return "\n".join(lines), metrics
 

@@ -1,5 +1,6 @@
 # app/services/reminder.py
 import re
+from datetime import date, timedelta
 
 from app.config import settings
 
@@ -55,31 +56,45 @@ def build_body(items: list[dict], show_raw: bool = False) -> str:
     for d in items:
         line = f"{d.get('system_name', '')} / {d.get('hostname', '')} / {d.get('ip', '')}"
         if show_raw and d.get("schedule_raw"):
-            line += f" (현재 등록: {d['schedule_raw']})"
+            # 예정 안내는 정규화된 M/D로, 미기입 재확인은 담당자가 적은 원문 그대로 보여준다
+            if d.get("status_label") == "예정":
+                line += f" (예정: {d.get('schedule_disp') or d['schedule_raw']})"
+            else:
+                line += f" (현재 등록: {d['schedule_raw']})"
         lines.append(line)
     return "\n\n".join(lines) if lines else "(대상 없음)"
 
 
-def greeting_suffix(items: list[dict], hinted: bool = False) -> str:
+def greeting_suffix(items: list[dict], kind: str = "blank") -> str:
     """
     인사말에서 '이름' 뒤에 붙는 고정 문구 + 대상 목록 (이름만 바꿔치기 가능하도록 분리).
-    hinted=True면 '11월 예정'처럼 대략적인 일정만 등록된 경우 - 정확한 날짜를 재요청하는 문구.
+    - blank   : 일정칸이 비어 있음 - 일정을 물어본다
+    - hinted  : '11월 예정'처럼 대략적인 일정만 있음 - 정확한 날짜를 재요청한다
+    - upcoming: 작업이 코앞 - 변경 티켓 발행을 미리 알린다 (독촉이 아니라 사전 안내)
     """
-    if hinted:
+    if kind == "hinted":
         ask = "다름아니라 공지드린 하반기 DR 훈련 하기 대략적인 일정만 등록되어 있어, 정확한 날짜로 확정해서 알려주실 수 있을까요?"
+        closing = f"DR 모의훈련 진척 현황({settings.dashboard_url})에 기입 요청드립니다."
+    elif kind == "upcoming":
+        ask = (
+            f"다름아니라 하기 DR 훈련 작업 일정이 {settings.pre_work_remind_days}일 이내로 다가와 "
+            "미리 안내드립니다. 변경 티켓 발행이 아직이시라면 사전 승인 기간을 고려해 준비 부탁드립니다."
+        )
+        closing = f"진행 상황은 DR 모의훈련 진척 현황({settings.dashboard_url})에서 확인하실 수 있습니다."
     else:
         ask = "다름아니라 공지드린 하반기 DR 훈련 하기 계획된 일정 알 수 있을까요?"
+        closing = f"DR 모의훈련 진척 현황({settings.dashboard_url})에 기입 요청드립니다."
     return (
         f"님. {settings.sender_team} {settings.sender_name}입니다.\n\n\n"
         f"{ask}\n\n"
-        f"{build_body(items, show_raw=hinted)}\n\n\n"
-        f"DR 모의훈련 진척 현황({settings.dashboard_url})에 기입 요청드립니다."
+        f"{build_body(items, show_raw=kind != 'blank')}\n\n\n"
+        f"{closing}"
     )
 
 
-def build_message(given: str, items: list[dict], hinted: bool = False) -> str:
-    """담당자 1인에게 보낼 미계획 리마인드 초안 (전체 문자열)"""
-    return f"안녕하세요, {given}{greeting_suffix(items, hinted)}"
+def build_message(given: str, items: list[dict], kind: str = "blank") -> str:
+    """담당자 1인에게 보낼 리마인드 초안 (전체 문자열)"""
+    return f"안녕하세요, {given}{greeting_suffix(items, kind)}"
 
 
 def team_via_cmdb(name: str, items: list[dict], cmdb_map: dict | None, fallback: str) -> str:
@@ -163,8 +178,20 @@ def pick_representative(g: dict) -> tuple[str, dict, str]:
     return top_raw, p, given
 
 
+def is_upcoming(item: dict, as_of: date, days: int) -> bool:
+    """작업 예정일이 오늘~N일 뒤 사이인 대상 (완료된 건 제외)"""
+    sched = item.get("schedule")
+    if not sched or item.get("completed"):
+        return False
+    return as_of <= sched <= as_of + timedelta(days=days)
+
+
 def group_unplanned_by_service(
-    details: list[dict], cmdb_map: dict | None = None, hinted: bool | None = None
+    details: list[dict],
+    cmdb_map: dict | None = None,
+    hinted: bool | None = None,
+    kind: str = "blank",
+    as_of: date | None = None,
 ) -> list[dict]:
     """
     미계획(일정 미등록) 대상을 '서비스'(주업무명) 단위로 묶고 초안까지 생성.
@@ -183,13 +210,22 @@ def group_unplanned_by_service(
     cmdb_map(item_no -> CMDB 자산)이 주어지면, DM 발송 대상 팀명을 CMDB 기준으로 보정한다.
     반환: [{owner, service, name, team, given, count, targets, message}, ...] (대상 많은 순)
     """
+    if kind == "upcoming":
+        # 사전 안내는 '미계획'이 아니라 '일정이 코앞인 대상'이 모수다
+        today = as_of or date.today()
+        include_fn = lambda d: is_upcoming(d, today, settings.pre_work_remind_days)  # noqa: E731
+    else:
+        include_fn = lambda d: (  # noqa: E731
+            not d.get("planned") and (hinted is None or has_schedule_hint(d) == hinted)
+        )
+
     raw_groups = group_and_vote(
         details,
         key_fn=lambda d: d.get("business_name") or d.get("system_name"),
-        include_fn=lambda d: not d.get("planned") and (hinted is None or has_schedule_hint(d) == hinted),
+        include_fn=include_fn,
     )
 
-    is_hinted = bool(hinted)
+    msg_kind = kind if kind == "upcoming" else ("hinted" if hinted else "blank")
     result = []
     for g in raw_groups:
         top_raw, p, given = pick_representative(g)
@@ -202,9 +238,9 @@ def group_unplanned_by_service(
             "given": given,
             "count": len(g["items"]),
             "targets": g["items"],     # 'items'는 Jinja에서 dict.items()와 충돌 → targets
-            "greeting_suffix": greeting_suffix(g["items"], is_hinted),  # 이름 뒤 고정 문구+대상
+            "greeting_suffix": greeting_suffix(g["items"], msg_kind),  # 이름 뒤 고정 문구+대상
             "candidates": candidates_of(g["items"], cmdb_map),  # 받는 담당자 후보
-            "message": build_message(given, g["items"], is_hinted),
+            "message": build_message(given, g["items"], msg_kind),
         })
 
     return sorted(result, key=lambda x: (-x["count"], x["service"]))

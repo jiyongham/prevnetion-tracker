@@ -1,4 +1,5 @@
 # app/models/db.py
+import json
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
@@ -167,6 +168,12 @@ def init_db():
         cap_cols = {row["name"] for row in conn.execute("PRAGMA table_info(capacity_input)")}
         if "is_excluded" not in cap_cols:
             conn.execute("ALTER TABLE capacity_input ADD COLUMN is_excluded INTEGER DEFAULT 0")
+
+        # 대상 구성(방식별/팀별 대수) 스냅샷. 총계만 봐서는 "실전환 -6, 무중단 +6"처럼
+        # 합계는 그대로인데 구성만 바뀐 엑셀 변경을 놓친다.
+        snap_cols = {row["name"] for row in conn.execute("PRAGMA table_info(report_snapshot)")}
+        if "composition" not in snap_cols:
+            conn.execute("ALTER TABLE report_snapshot ADD COLUMN composition TEXT")
 
 
 @contextmanager
@@ -549,17 +556,27 @@ def get_last_report_snapshot(domain: str) -> dict | None:
             "SELECT * FROM report_snapshot WHERE domain = ? ORDER BY sent_at DESC, id DESC LIMIT 1",
             (domain,),
         ).fetchone()
-    return dict(row) if row else None
+    if not row:
+        return None
+    snap = dict(row)
+    try:
+        snap["composition"] = json.loads(snap["composition"]) if snap.get("composition") else None
+    except (TypeError, ValueError):
+        snap["composition"] = None
+    return snap
 
 
 def save_report_snapshot(domain: str, metrics: dict):
     """발송 시점 집계 저장 (다음 발송 때 비교 기준이 된다)"""
     with get_conn() as conn:
+        comp = metrics.get("composition")
         conn.execute("""
-            INSERT INTO report_snapshot (domain, sent_at, total, done, rate, no_schedule, perf_cnt, plan_cnt)
-            VALUES (?, datetime('now', 'localtime'), ?, ?, ?, ?, ?, ?)
+            INSERT INTO report_snapshot
+                (domain, sent_at, total, done, rate, no_schedule, perf_cnt, plan_cnt, composition)
+            VALUES (?, datetime('now', 'localtime'), ?, ?, ?, ?, ?, ?, ?)
         """, (
             domain,
             metrics.get("total"), metrics.get("done"), metrics.get("rate"),
             metrics.get("no_schedule"), metrics.get("perf_cnt"), metrics.get("plan_cnt"),
+            json.dumps(comp, ensure_ascii=False) if comp else None,
         ))

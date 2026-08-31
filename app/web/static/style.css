@@ -363,3 +363,9 @@ footer a:hover { text-decoration: underline; }
 .ai-tag-org { background: #fdecea; color: #c0392b; }
 .ai-tag-typo { background: #fff8e1; color: #a06a00; }
 .ai-tag-unknown { background: #f0f1f3; color: #666; }
+/* 증적 티켓 상태 경고 (반려/미종결 티켓이 증적으로 적힌 경우) */
+.evidence-cell { position: relative; white-space: nowrap; }
+.cell.ev-warn { border-color: #f0a030; background: #fffaf0; }
+.cell.ev-bad  { border-color: #d9534f; background: #fdf3f3; }
+.ev-flag { margin-left: 2px; cursor: help; font-size: 11px; }
+.warn-text { color: #b26a00; font-weight: 600; }

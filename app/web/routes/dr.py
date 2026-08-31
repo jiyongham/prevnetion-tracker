@@ -21,7 +21,7 @@ from app.core.jira_client import jira
 from app.core.scheduler import get_jobs_info
 from app.core.teams_client import send_teams_dm, send_teams_message
 from app.models.db import get_input, get_logs, get_remind_log_summary, log_remind, upsert_input
-from app.services import ai_diagnose, chatbot
+from app.services import ai_diagnose, chatbot, evidence_check
 from app.services.completion import build_ticket_summary, calc_completion, group_by
 from app.services.matcher import match_items_by_ip
 from app.services.owner_check import (
@@ -154,12 +154,17 @@ def dashboard(
     # 일정 오름차순 (일정 없는 미계획 대상은 뒤로)
     details = sorted(details, key=lambda d: (d["schedule"] is None, d["schedule"]))
 
+    # 증적란에 적힌 JIRA 키의 실제 상태(반려/미종결)를 표시용으로 붙인다
+    evidence_check.annotate(details)
+    evidence_warn_cnt = sum(1 for d in details if d.get("evidence_level"))
+
     return templates.TemplateResponse("dashboard.html", {
         "request": request,
         "result": result,
         "details": details,
         "excluded_items": excluded_items,
         "excluded_cnt": excluded_cnt,
+        "evidence_warn_cnt": evidence_warn_cnt,
         "by_team": dict(sorted(by_team.items(), key=lambda x: x[1]["rate"])),
         "report_warning": report_warning,
         "half": half,
@@ -338,11 +343,13 @@ def remind_preview(
     # 같은 '미계획'이라도 완전 미기입 / 대략적 일정만(예: '11월 예정') 있는 경우를 분리
     blank_groups = group_unplanned_by_service(result["details"], cmdb_map, hinted=False)
     hinted_groups = group_unplanned_by_service(result["details"], cmdb_map, hinted=True)
-    groups = hinted_groups if kind == "hinted" else blank_groups
+    # 작업이 코앞인 대상은 '미계획'이 아니어서 위 두 목록에 안 잡힌다 (별도 모수)
+    upcoming_groups = group_unplanned_by_service(result["details"], cmdb_map, kind="upcoming")
+    groups = {"hinted": hinted_groups, "upcoming": upcoming_groups}.get(kind, blank_groups)
 
     # 서비스별 발송 이력(1회라도 보냈으면 표시)
     log_summary = get_remind_log_summary(half)
-    for g in blank_groups + hinted_groups:
+    for g in blank_groups + hinted_groups + upcoming_groups:
         g["sent"] = log_summary.get(g["service"])
 
     selected = None
@@ -359,6 +366,8 @@ def remind_preview(
         "total_unplanned": sum(g["count"] for g in groups),
         "blank_total": sum(g["count"] for g in blank_groups),
         "hinted_total": sum(g["count"] for g in hinted_groups),
+        "upcoming_total": sum(g["count"] for g in upcoming_groups),
+        "pre_work_days": settings.pre_work_remind_days,
         "sender_team": settings.sender_team,
         "sender_name": settings.sender_name,
         "teams_enabled": bool(settings.teams_webhook),

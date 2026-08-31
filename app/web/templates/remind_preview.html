@@ -21,11 +21,14 @@
   </div>
 
   <div class="tabs">
-    <a href="/remind-preview?half={{ half }}&kind=blank" class="tab {% if kind != 'hinted' %}active{% endif %}">
+    <a href="/remind-preview?half={{ half }}&kind=blank" class="tab {% if kind not in ['hinted', 'upcoming'] %}active{% endif %}">
       🈳 완전 미기입 <span class="cnt">{{ blank_total }}</span>
     </a>
     <a href="/remind-preview?half={{ half }}&kind=hinted" class="tab {% if kind == 'hinted' %}active{% endif %}">
       🕓 대략적 일정만 있음 <span class="cnt">{{ hinted_total }}</span>
+    </a>
+    <a href="/remind-preview?half={{ half }}&kind=upcoming" class="tab {% if kind == 'upcoming' %}active{% endif %}">
+      📅 작업 {{ pre_work_days }}일 이내 <span class="cnt">{{ upcoming_total }}</span>
     </a>
   </div>
   {% if dm_enabled and not selected and groups %}
