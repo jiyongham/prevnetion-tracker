@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>DR 모의훈련 진척 관리</title>
-  <link rel="stylesheet" href="/static/style.css?v=8">
+  <link rel="stylesheet" href="/static/style.css?v=9">
 </head>
 <body>
 <div class="container">
@@ -65,7 +65,7 @@
     <div class="card">
       <div class="label">미완료</div>
       <div class="value warn">{{ result.total - result.done }}건</div>
-      <div class="sub">예정 {{ result.scheduled }} · 지연 {{ result.overdue }} · 미계획 {{ result.unplanned }} · 제외 {{ excluded_cnt }}</div>
+      <div class="sub">예정 {{ result.scheduled }} · 지연 {{ result.overdue }} · 미계획 {{ result.unplanned }} · 제외 {{ excluded_cnt }}{% if evidence_warn_cnt %} · <span class="warn-text" title="증적란의 JIRA 티켓이 반려됐거나 아직 종결되지 않음">증적확인 {{ evidence_warn_cnt }}</span>{% endif %}</div>
     </div>
   </section>
 
@@ -159,7 +159,10 @@
             </select>
           </td>
           <td class="center"><input type="checkbox" class="cell done" {% if d.completed %}checked{% endif %}></td>
-          <td><input type="text" class="cell evidence" value="{{ d.evidence }}" placeholder="증적"></td>
+          <td class="evidence-cell">
+            <input type="text" class="cell evidence {{ 'ev-' ~ d.evidence_level if d.evidence_level }}" value="{{ d.evidence }}" placeholder="증적">
+            {% if d.evidence_level %}<span class="ev-flag {{ d.evidence_level }}" title="{{ d.evidence_note }}">{{ '⛔' if d.evidence_level == 'bad' else '⚠️' }}</span>{% endif %}
+          </td>
           <td><input type="text" class="cell note" value="{{ d.note }}" placeholder="비고"></td>
 
           <td>

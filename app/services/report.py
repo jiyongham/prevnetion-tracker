@@ -149,6 +149,13 @@ def _build(half: str | None = None, use_jira: bool = True) -> tuple[str, dict]:
     if summary:
         lines += ["4. 이번 주 특이사항", f"   {summary}", ""]
 
+    # 구성 스냅샷: 주차별로 '변하면 안 되는' 값만 담는다. 진척(완료 대수 등)을 넣으면
+    # 매주 정상적으로 움직여서 경고가 무의미해진다. 여기 값이 바뀌었다 = 원본 엑셀이 수정됐다.
+    composition = {
+        "상반기 수행방식": {"실전환": h1_real, "무중단": h1_nonstop},
+        "전체 대상": {"대상": target_cnt, "제외": excluded},
+    }
+
     metrics = {
         "total": h2_result["total"],
         "done": projected_done,
@@ -156,6 +163,7 @@ def _build(half: str | None = None, use_jira: bool = True) -> tuple[str, dict]:
         "no_schedule": h2_result["no_schedule"],
         "perf_cnt": perf_cnt,
         "plan_cnt": plan_cnt,
+        "composition": composition,
     }
     return "\n".join(lines), metrics
 

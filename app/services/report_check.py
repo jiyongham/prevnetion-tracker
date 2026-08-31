@@ -65,6 +65,31 @@ def detect_anomalies(metrics: dict, prev: dict | None) -> list[str]:
         if cur == 0 and (before or 0) > 0:
             issues.append(f"{label}이 지난주 {before}대에서 0대가 됐습니다.")
 
+    issues += detect_composition_drift(metrics.get("composition"), prev.get("composition"))
+    return issues
+
+
+def detect_composition_drift(cur: dict | None, prev: dict | None) -> list[str]:
+    """
+    대상 '구성'이 바뀐 걸 잡아낸다. 총계 비교만으로는 실전환 6대가 무중단으로 재분류되는
+    식의 변경(합계는 그대로)을 놓치는데, 그게 원본 엑셀이 조용히 수정됐다는 신호다.
+    구성은 {"그룹명": {"항목": 대수}} 형태 (예: {"수행방식": {"실전환": 139, "무중단": 33}}).
+    """
+    if not cur or not prev:
+        return []
+
+    issues = []
+    for group, cur_counts in cur.items():
+        prev_counts = prev.get(group)
+        if not isinstance(cur_counts, dict) or not isinstance(prev_counts, dict):
+            continue
+        moves = []
+        for key in sorted(set(cur_counts) | set(prev_counts)):
+            before, after = prev_counts.get(key, 0), cur_counts.get(key, 0)
+            if before != after:
+                moves.append(f"{key} {before}→{after}")
+        if moves:
+            issues.append(f"{group} 구성이 바뀌었습니다 ({', '.join(moves)}) - 원본 엑셀 수정 여부 확인 필요.")
     return issues
 
 
