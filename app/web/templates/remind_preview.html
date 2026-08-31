@@ -53,7 +53,7 @@
       {% for g in groups %}
       <a href="/remind-preview?half={{ half }}&kind={{ kind }}&service={{ g.service | urlencode }}"
          class="owner-item {% if selected and selected.service == g.service %}active{% endif %}">
-        <span>{% if g.sent %}✅ {% endif %}{{ g.service }} <span class="muted">{{ g.name }}·{{ g.team }}</span></span>
+        <span>{% if g.sent %}✅ {% endif %}{{ g.service }} <span class="muted">{{ g.name }}{% if g.candidates|length > 1 %} 외 {{ g.candidates|length - 1 }}{% endif %}·{{ g.team }}</span></span>
         <span class="cnt">{{ g.count }}</span>
       </a>
       {% endfor %}
@@ -68,7 +68,7 @@
       {% for g in show %}
       <div class="panel draft" data-owner="{{ g.owner }}" data-half="{{ half }}" data-service="{{ g.service }}">
         <div class="panel-head">
-          <h2>{{ g.service }} <span class="muted">{{ g.name }}·{{ g.team }} · {{ g.count }}건</span>
+          <h2>{{ g.service }} <span class="muted">{{ g.name }}·{{ g.team }}{% if g.candidates|length > 1 %} 외 {{ g.candidates|length - 1 }}명{% endif %} · {{ g.count }}건</span>
             <span class="send-status">
               {% if g.sent %}✅ 발송 이력 있음 ({{ g.sent.sent_at }}, {{ g.sent.recipient_name }}){% endif %}
             </span>
@@ -96,7 +96,7 @@
         <pre class="msg">안녕하세요, <span class="greet-name">{{ g.given }}</span>{{ g.greeting_suffix }}</pre>
         <table class="editable">
           <thead>
-            <tr><th>NO</th><th>시스템명</th><th>호스트명</th><th>IP</th><th>운영팀</th></tr>
+            <tr><th>NO</th><th>시스템명</th><th>호스트명</th><th>IP</th><th>운영팀</th><th>담당자</th></tr>
           </thead>
           <tbody>
           {% for d in g.targets %}
@@ -106,6 +106,7 @@
               <td class="mono small">{{ d.hostname }}</td>
               <td class="mono small">{{ d.ip }}</td>
               <td class="small">{{ d.ops_team }}</td>
+              <td class="small">{{ d.owner | replace("||", ", ") }}</td>
             </tr>
           {% endfor %}
           </tbody>

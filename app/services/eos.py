@@ -80,6 +80,7 @@ def build_no_reply_details(items: list[dict], base_year: int) -> list[dict]:
             "evidence": item.get("evidence", ""),
             "note": item.get("note", ""),
             "exclude_reason": item.get("exclude_reason", ""),
+            "web_exclude_reason": item.get("web_exclude_reason", ""),
             "no_reply": True,
         })
     return result
