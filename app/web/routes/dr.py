@@ -113,9 +113,12 @@ def dashboard(
         details = [d for d in details if d["completed"]]
     elif status == "pending":
         details = [d for d in details if not d["completed"]]
-    elif status in ("scheduled", "overdue", "unplanned"):
-        # 화면 4분류(완료/예정/지연/미계획) 기준 필터
-        label = {"scheduled": "예정", "overdue": "지연", "unplanned": "미계획"}[status]
+    elif status in ("scheduled", "overdue", "approximate", "unplanned"):
+        # 화면 5분류(완료/예정/지연/대략/미계획) 기준 필터
+        label = {
+            "scheduled": "예정", "overdue": "지연",
+            "approximate": "대략", "unplanned": "미계획",
+        }[status]
         details = [d for d in details if d["status_label"] == label]
     if q:
         kw = q.lower()

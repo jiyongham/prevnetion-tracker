@@ -199,13 +199,15 @@ def calc_completion(
         overdue_unfulfilled = bool(sched) and sched < as_of and not completed
         planned = bool(sched) and not overdue_unfulfilled
 
-        # 화면 표시용 4분류. planned 하나로는 '아직 안 온 일정(예정)'과 '놓친 일정(지연)',
-        # '일정 자체가 없음(미계획)'이 구분되지 않아 별도 라벨을 둔다.
+        # 화면 표시용 5분류. planned 하나로는 '아직 안 온 일정(예정)', '놓친 일정(지연)',
+        # "'12월'처럼 월만 적힌 대략적 일정(대략)", '아무것도 없음(미계획)'이 구분되지 않는다.
         # planned/no_schedule의 의미는 그대로 둔다 - 리마인드 대상 산정이 그 값을 쓴다.
+        # ('대략'도 확정 날짜가 필요하므로 리마인드 대상에는 계속 포함된다)
         if completed:
             status_label = "완료"
         elif not sched:
-            status_label = "미계획"
+            # 날짜로 못 읽었지만 텍스트라도 적혀 있으면 '아무 계획 없음'과는 다르다
+            status_label = "대략" if (item.get("schedule_raw") or "").strip() else "미계획"
         elif overdue_unfulfilled:
             status_label = "지연"
         else:
@@ -231,7 +233,7 @@ def calc_completion(
             # 표시용 일정: M/D로 통일 (엑셀 날짜형/텍스트형 혼재 정규화)
             "schedule_disp": f"{sched.month}/{sched.day}" if sched else (item["schedule_raw"] or ""),
             "planned": planned,  # 일정 없거나, 계획일 경과 후 미완료면 미계획
-            "status_label": status_label,  # 완료 / 예정 / 지연 / 미계획
+            "status_label": status_label,  # 완료 / 예정 / 지연 / 대략 / 미계획
             "mode": item["mode"],
             "jira_key": display_ticket["key"] if display_ticket else "",
             "jira_keys": [t["key"] for t in in_window],
@@ -257,6 +259,7 @@ def calc_completion(
         "no_schedule": len([d for d in details if not d["planned"]]),
         "scheduled": len([d for d in details if d["status_label"] == "예정"]),
         "overdue": len([d for d in details if d["status_label"] == "지연"]),
+        "approximate": len([d for d in details if d["status_label"] == "대략"]),
         "unplanned": len([d for d in details if d["status_label"] == "미계획"]),
         "details": details,
     }
