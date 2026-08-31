@@ -369,3 +369,5 @@ footer a:hover { text-decoration: underline; }
 .cell.ev-bad  { border-color: #d9534f; background: #fdf3f3; }
 .ev-flag { margin-left: 2px; cursor: help; font-size: 11px; }
 .warn-text { color: #b26a00; font-weight: 600; }
+/* 대략적 일정만 등록된 상태 (미계획과 구분) */
+.badge.soft { background: #f3eefb; color: #6b4fa0; }
