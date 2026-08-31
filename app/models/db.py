@@ -175,6 +175,19 @@ def init_db():
         if "composition" not in snap_cols:
             conn.execute("ALTER TABLE report_snapshot ADD COLUMN composition TEXT")
 
+        # 리마인드 종류(미기입/대략적 일정/사전 안내)별로 발송 이력을 따로 본다.
+        # 같은 서비스라도 종류가 다르면 별개의 발송이라 한쪽을 보냈다고 다른 쪽까지
+        # '발송함'으로 표시되면 안 된다. 기존 행은 전부 미기입 리마인드였다.
+        # 제외 처리 시 관리자가 남기는 사유 (비고 note와 별개 - note는 일반 메모칸이라
+        # 섞이면 왜 제외됐는지 나중에 구분이 안 된다)
+        if "exclude_reason" not in cols:
+            conn.execute("ALTER TABLE schedule_input ADD COLUMN exclude_reason TEXT")
+
+        rl_cols = {row["name"] for row in conn.execute("PRAGMA table_info(remind_log)")}
+        if "kind" not in rl_cols:
+            conn.execute("ALTER TABLE remind_log ADD COLUMN kind TEXT DEFAULT 'blank'")
+            conn.execute("UPDATE remind_log SET kind = 'blank' WHERE kind IS NULL")
+
 
 @contextmanager
 def get_conn():
@@ -215,29 +228,33 @@ def upsert_input(
     note: str = "",
     updated_by: str = "",
     owner: str | None = None,
+    exclude_reason: str | None = None,
 ):
     """
     일정 입력/수정 (변경 이력 기록).
-    owner는 명시적으로 넘겼을 때만 갱신한다 (None이면 기존 담당자 override 유지) —
-    안 그러면 일반 일정 저장(대시보드)이 매번 담당자 수정 내용을 지워버리게 된다.
+    owner/exclude_reason은 명시적으로 넘겼을 때만 갱신한다 (None이면 기존 값 유지) —
+    안 그러면 일반 일정 저장(대시보드)이 매번 담당자 수정이나 제외 사유를 지워버리게 된다.
     """
     before = get_input(item_no, half)
 
     with get_conn() as conn:
         conn.execute("""
             INSERT INTO schedule_input
-                (item_no, half, schedule, mode, is_done, evidence, note, updated_by, owner, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
+                (item_no, half, schedule, mode, is_done, evidence, note, updated_by, owner,
+                 exclude_reason, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
             ON CONFLICT(item_no, half) DO UPDATE SET
-                schedule   = excluded.schedule,
-                mode       = excluded.mode,
-                is_done    = excluded.is_done,
-                evidence   = excluded.evidence,
-                note       = excluded.note,
-                updated_by = excluded.updated_by,
-                owner      = COALESCE(excluded.owner, schedule_input.owner),
-                updated_at = datetime('now', 'localtime')
-        """, (item_no, half, schedule, mode, int(is_done), evidence, note, updated_by, owner))
+                schedule       = excluded.schedule,
+                mode           = excluded.mode,
+                is_done        = excluded.is_done,
+                evidence       = excluded.evidence,
+                note           = excluded.note,
+                updated_by     = excluded.updated_by,
+                owner          = COALESCE(excluded.owner, schedule_input.owner),
+                exclude_reason = COALESCE(excluded.exclude_reason, schedule_input.exclude_reason),
+                updated_at     = datetime('now', 'localtime')
+        """, (item_no, half, schedule, mode, int(is_done), evidence, note, updated_by, owner,
+              exclude_reason))
 
         # 변경 이력
         new_vals = {
@@ -246,6 +263,8 @@ def upsert_input(
         }
         if owner is not None:
             new_vals["owner"] = owner
+        if exclude_reason is not None:
+            new_vals["exclude_reason"] = exclude_reason
         for field, new_v in new_vals.items():
             old_v = str(before.get(field, "")) if before else ""
             if old_v != str(new_v):
@@ -351,23 +370,29 @@ def log_remind(
     recipient_team: str,
     ok: bool,
     error: str = "",
+    kind: str = "blank",
 ):
-    """미계획 리마인드 DM 발송 시도 기록 (성공/실패 모두)"""
+    """리마인드 DM 발송 시도 기록 (성공/실패 모두). kind: blank/hinted/upcoming"""
     with get_conn() as conn:
         conn.execute("""
             INSERT INTO remind_log
-                (half, service, recipient_name, recipient_team, ok, error, sent_at)
-            VALUES (?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
-        """, (half, service, recipient_name, recipient_team, int(ok), error or ""))
+                (half, service, kind, recipient_name, recipient_team, ok, error, sent_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
+        """, (half, service, kind, recipient_name, recipient_team, int(ok), error or ""))
 
 
-def get_remind_log_summary(half: str) -> dict[str, dict]:
-    """서비스별 가장 최근 발송 이력 -> {service: {sent_at, ok, recipient_name, recipient_team, count}}"""
+def get_remind_log_summary(half: str, kind: str = "blank") -> dict[str, dict]:
+    """
+    해당 종류(kind)의 서비스별 가장 최근 발송 이력
+    -> {service: {sent_at, ok, recipient_name, recipient_team, count}}
+    """
     with get_conn() as conn:
         rows = conn.execute("""
             SELECT service, recipient_name, recipient_team, ok, sent_at
-            FROM remind_log WHERE half = ? ORDER BY sent_at ASC
-        """, (half,)).fetchall()
+            FROM remind_log
+            WHERE half = ? AND COALESCE(kind, 'blank') = ?
+            ORDER BY sent_at ASC
+        """, (half, kind)).fetchall()
 
     summary: dict[str, dict] = {}
     for r in rows:

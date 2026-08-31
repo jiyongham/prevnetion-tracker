@@ -29,8 +29,8 @@
         <input type="hidden" name="half" value="{{ half }}">
         <button type="submit" class="btn-teams">📤 Teams 발송</button>
       </form>
-      <a href="/remind-preview?half={{ half }}" class="btn-remind admin-only">📣 미계획 리마인드</a>
-      <a href="/owner-check?half={{ half }}" class="btn-sm admin-only">🔍 담당자 확인</a>
+      <a href="/remind-preview?half={{ half }}" class="btn-remind admin-only" onclick="markNavigating(this)">📣 리마인드</a>
+      <a href="/owner-check?half={{ half }}" class="btn-sm admin-only" onclick="markNavigating(this)">🔍 담당자 확인</a>
     </div>
   </header>
 
@@ -195,11 +195,11 @@
 
   {% if excluded_items %}
   <section class="panel">
-    <h2>🚫 제외 대상 ({{ excluded_items|length }}건) <span class="muted small">— 관리자가 일정에 "X" 처리함</span></h2>
+    <h2>🚫 제외 대상 ({{ excluded_items|length }}건) <span class="muted small">— 관리자가 사유와 함께 X 처리한 대상</span></h2>
     <div class="table-scroll">
     <table>
       <thead>
-        <tr><th>시스템명</th><th>호스트명</th><th>운영팀</th><th>담당자</th><th>처리자</th><th class="admin-only">복귀</th></tr>
+        <tr><th>시스템명</th><th>호스트명</th><th>운영팀</th><th>담당자</th><th>제외 사유</th><th>처리자</th><th class="admin-only">복귀</th></tr>
       </thead>
       <tbody>
       {% for d in excluded_items %}
@@ -208,6 +208,7 @@
           <td class="mono small">{{ d.hostname }}</td>
           <td class="small">{{ d.ops_team }}</td>
           <td class="small">{{ d.owner }}</td>
+          <td class="small">{{ d.web_exclude_reason or d.exclude_reason or "(미기재)" }}</td>
           <td class="small">{{ d.updated_by }}</td>
           <td class="admin-only">
             <button class="btn-sm" data-no="{{ d.no }}" onclick="restoreRow(this)">↩️ 복귀</button>
@@ -322,14 +323,15 @@ async function excludeRow(btn) {
   if (!name) return;
   const tr = btn.closest("tr");
   const sys = tr.querySelector("td.strong").textContent;
-  if (!confirm(`${sys} 을(를) 수행 안 함(X)으로 확정해 제외 대상으로 옮깁니다. 계속할까요?`)) return;
+  const reason = (prompt(`${sys}\n\n수행 안 함(X)으로 확정해 제외 대상으로 옮깁니다.\n제외 사유를 입력해주세요. (예: 폐기 예정, 무중단 대체)`) || "").trim();
+  if (!reason) return;
 
   btn.disabled = true;
   try {
     const res = await fetch("/api/exclude", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ item_no: tr.dataset.no, half: HALF, updated_by: name, excluded: true }),
+      body: JSON.stringify({ item_no: tr.dataset.no, half: HALF, updated_by: name, excluded: true, reason }),
     });
     const data = await res.json();
     if (data.ok) {
@@ -482,6 +484,19 @@ ub.addEventListener("change", () => {
 applyAdminState();
 
 // ── 조회 챗봇 ──
+// 외부 조회가 붙은 화면은 이동에 수 초가 걸린다. 아무 반응이 없으면 사용자가 다시
+// 누르거나 다른 곳(바로 아래 운영팀 표는 행 전체가 클릭 가능)을 눌러 엉뚱한 화면으로 가버려서,
+// 클릭 즉시 진행 중임을 표시하고 그동안 다른 클릭을 막는다.
+function markNavigating(el) {
+  el.textContent = "⏳ 불러오는 중...";
+  el.style.pointerEvents = "none";
+  document.body.style.cursor = "progress";
+  document.querySelectorAll("tr.clickable").forEach(tr => {
+    tr.onclick = null;
+    tr.style.cursor = "default";
+  });
+}
+
 function toggleChat() {
   const panel = document.getElementById("chatPanel");
   const toggle = document.getElementById("chatToggle");

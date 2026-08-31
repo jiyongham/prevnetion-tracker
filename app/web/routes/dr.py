@@ -16,14 +16,13 @@ from fastapi.responses import (
 
 from app.config import settings
 from app.core.excel_loader import get_targets as get_dr_targets
-from app.core.excel_loader import load_dr_items_merged, scope_h2_targets
+from app.core.excel_loader import load_dr_items_merged
 from app.core.jira_client import jira
 from app.core.scheduler import get_jobs_info
 from app.core.teams_client import send_teams_dm, send_teams_message
 from app.models.db import get_input, get_logs, get_remind_log_summary, log_remind, upsert_input
-from app.services import ai_diagnose, chatbot, evidence_check
+from app.services import ai_diagnose, chatbot, dr_data, evidence_check
 from app.services.completion import build_ticket_summary, calc_completion, group_by
-from app.services.matcher import match_items_by_ip
 from app.services.owner_check import (
     collect_targets_with_tickets,
     find_owner_mismatches,
@@ -54,26 +53,10 @@ def filter_by_mode(items: list[dict], mode: str | None) -> list[dict]:
 
 
 def get_dashboard_data(half: str, as_of: date, use_jira: bool = True, mode: str | None = None):
-    items = load_dr_items_merged(half=half)
-    # 하반기는 상반기 무중단 대상에 한해 수행 → 분모/상세목록 한정
-    if half == "H2":
-        items = scope_h2_targets(items)
-    items = filter_by_mode(items, mode)
-    ticket_map = {}
-    jira_error = None
-
-    if use_jira:
-        try:
-            issues = jira.get_dr_tickets()
-            tickets = build_ticket_summary(issues, settings.planned_end_date_field)
-            targets = [i for i in items if i["is_target"]]
-            match_result = match_items_by_ip(targets, tickets)
-            ticket_map = match_result["matched"]
-        except Exception as e:
-            jira_error = str(e)
-            logger.warning(f"JIRA 조회 실패: {e}")
-
-    result = calc_completion(items, ticket_map, as_of)
+    # ticket_map은 모드 필터 전 전체 대상으로 만들어 캐시한다 (dr_data 참고)
+    items = dr_data.load_items(half)
+    ticket_map, jira_error = dr_data.get_ticket_map(half, items, use_jira)
+    result = calc_completion(filter_by_mode(items, mode), ticket_map, as_of)
     return result, jira_error
 
 
@@ -99,10 +82,7 @@ def dashboard(
     by_team = group_by(result, "ops_team")
 
     # 탭에 표시할 방식별 대수 (필터 적용 전 기준)
-    scope_items = load_dr_items_merged(half=half)
-    if half == "H2":
-        scope_items = scope_h2_targets(scope_items)
-    scope_targets = get_dr_targets(scope_items)
+    scope_targets = get_dr_targets(dr_data.load_items(half))
     mode_counts = {
         "": len(scope_targets),
         **{k: len(filter_by_mode(scope_targets, k)) for k in MODE_TABS},
@@ -213,6 +193,7 @@ async def api_exclude(request: Request):
     half = (data.get("half") or "").strip()
     updated_by = (data.get("updated_by") or "").strip()
     excluded = bool(data.get("excluded", True))
+    reason = (data.get("reason") or "").strip()
 
     if not item_no or not half:
         return JSONResponse({"ok": False, "error": "필수 값이 없습니다."}, status_code=400)
@@ -220,6 +201,9 @@ async def api_exclude(request: Request):
         return JSONResponse(
             {"ok": False, "error": "제외 처리는 관리자만 가능합니다."}, status_code=403
         )
+    # 왜 뺐는지가 안 남으면 나중에 아무도 되짚을 수 없다 (제외는 분모를 바꾸는 처리)
+    if excluded and not reason:
+        return JSONResponse({"ok": False, "error": "제외 사유를 입력해주세요."}, status_code=400)
 
     existing = get_input(item_no, half) or {}
     upsert_input(
@@ -231,6 +215,7 @@ async def api_exclude(request: Request):
         evidence=existing.get("evidence") or "",
         note=existing.get("note") or "",
         updated_by=updated_by,
+        exclude_reason=reason if excluded else "",  # 복귀 시엔 사유를 지운다
     )
     return JSONResponse({"ok": True})
 
@@ -326,7 +311,7 @@ def view_logs(request: Request, item_no: str | None = None):
 
 
 # ─────────────────────────────────────────────
-# 미계획 리마인드 미리보기 (담당자별 초안, 발송 없음)
+# 리마인드 미리보기 (담당자별 초안, 발송 없음) - 미기입/대략적 일정/사전 안내 3종
 # ─────────────────────────────────────────────
 @router.get("/remind-preview", response_class=HTMLResponse)
 def remind_preview(
@@ -347,10 +332,14 @@ def remind_preview(
     upcoming_groups = group_unplanned_by_service(result["details"], cmdb_map, kind="upcoming")
     groups = {"hinted": hinted_groups, "upcoming": upcoming_groups}.get(kind, blank_groups)
 
-    # 서비스별 발송 이력(1회라도 보냈으면 표시)
-    log_summary = get_remind_log_summary(half)
-    for g in blank_groups + hinted_groups + upcoming_groups:
-        g["sent"] = log_summary.get(g["service"])
+    # 서비스별 발송 이력. 종류별로 따로 조회해야 한다 - 미기입 리마인드를 보냈다고
+    # 사전 안내까지 '발송함'으로 표시되면 실제로 안 보낸 건을 보냈다고 착각하게 된다.
+    for groups_of_kind, kind_key in (
+        (blank_groups, "blank"), (hinted_groups, "hinted"), (upcoming_groups, "upcoming")
+    ):
+        log_summary = get_remind_log_summary(half, kind_key)
+        for g in groups_of_kind:
+            g["sent"] = log_summary.get(g["service"])
 
     selected = None
     if service:
@@ -378,7 +367,7 @@ def remind_preview(
 
 @router.post("/api/remind-test")
 async def api_remind_test(request: Request):
-    """미계획 리마인드 초안을 Teams 웹훅으로 테스트 발송 (설정된 채널로 전송)"""
+    """리마인드 초안을 Teams 웹훅으로 테스트 발송 (설정된 채널로 전송)"""
     data = await request.json()
     message = (data.get("message") or "").strip()
     if not message:
@@ -393,20 +382,24 @@ async def api_remind_test(request: Request):
 
 @router.post("/api/remind-dm")
 async def api_remind_dm(request: Request):
-    """미계획 리마인드 초안을 담당자에게 개인 DM 발송 (Power Automate 경유). 발송 이력은 성공/실패 모두 기록."""
+    """리마인드 초안을 담당자에게 개인 DM 발송 (Power Automate 경유). 발송 이력은 성공/실패 모두 기록."""
     data = await request.json()
     name = (data.get("name") or "").strip()
     team = (data.get("team") or "").strip()
     message = (data.get("message") or "").strip()
     half = (data.get("half") or "").strip()
     service = (data.get("service") or "").strip()
+    # 종류별로 이력을 따로 남긴다 (미기입/대략적 일정/사전 안내는 각각 별개의 발송)
+    kind = (data.get("kind") or "blank").strip()
+    if kind not in ("blank", "hinted", "upcoming"):
+        kind = "blank"
     if not name or not message:
         return JSONResponse(
             {"ok": False, "error": "이름과 메시지가 필요합니다."}, status_code=400
         )
     ok, err = send_teams_dm(name, team, message)
     if half and service:
-        log_remind(half, service, name, team, ok, err)
+        log_remind(half, service, name, team, ok, err, kind=kind)
     return JSONResponse({"ok": ok, "error": err})
 
 

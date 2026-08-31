@@ -126,10 +126,14 @@ def load_dr_items_merged(half: str = "H2", excel_path: str | None = None) -> lis
                 item["owner"] = db["owner"]
                 item["input_source"] = "web"
 
+            # 웹에서 제외 처리하며 남긴 사유. 엑셀 원본의 '기타 (제외 사유)'와는 별개라
+            # 덮어쓰지 않고 별도 필드로 둔다 (원본은 반기 계획 수립 시의 사유).
+            item["web_exclude_reason"] = db.get("exclude_reason") or ""
             item["note"] = db.get("note", "")
             item["updated_by"] = db.get("updated_by", "")
             item["updated_at"] = db.get("updated_at", "")
         else:
+            item["web_exclude_reason"] = ""
             item["note"] = ""
             item["updated_by"] = ""
             item["updated_at"] = ""
