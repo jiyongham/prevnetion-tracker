@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>DR 모의훈련 진척 관리</title>
-  <link rel="stylesheet" href="/static/style.css?v=10">
+  <link rel="stylesheet" href="/static/style.css?v=11">
 </head>
 <body>
 <div class="container">
@@ -256,8 +256,11 @@
     <span>💬 DR훈련 조회 챗봇</span>
     <button class="chat-close" onclick="toggleChat()">✕</button>
   </div>
+  <div class="chat-name-row">
+    <input type="text" id="chatName" placeholder="입력자명 (대상 목록과 자동 연동)" autocomplete="off">
+  </div>
   <div id="chatMsgs" class="chat-msgs">
-    <div class="chat-msg bot">안녕하세요! 입력자명(위 상단)을 채운 뒤, "내 대상 뭐 있어?", "OO시스템 완료됐어?" 처럼 물어보세요.</div>
+    <div class="chat-msg bot">안녕하세요! 위 입력자명을 채운 뒤, "내 대상 뭐 있어?", "OO시스템 완료됐어?" 처럼 물어보세요.</div>
   </div>
   <form id="chatForm" class="chat-form" onsubmit="return sendChat(event)">
     <input type="text" id="chatInput" placeholder="질문을 입력하세요" autocomplete="off">
@@ -485,6 +488,22 @@ ub.addEventListener("change", () => {
 });
 applyAdminState();
 
+// 대상 목록 입력자명 ↔ 챗봇 입력자명 실시간 연동 - 챗봇 열자마자 바로 물어볼 수 있게
+// (대상 목록까지 스크롤해서 이름 치고 다시 챗봇 여는 게 번거롭다는 피드백으로 추가).
+// 위 updatedBy input 리스너와 별개로 걸어서 두 input 모두 서로를 갱신한다.
+const chatNameInput = document.getElementById("chatName");
+chatNameInput.value = ub.value;
+chatNameInput.addEventListener("input", () => {
+  if (ub.value === chatNameInput.value) return;
+  ub.value = chatNameInput.value;
+  localStorage.setItem("updatedBy", ub.value);
+  applyAdminState();
+});
+ub.addEventListener("input", () => {
+  if (chatNameInput.value === ub.value) return;
+  chatNameInput.value = ub.value;
+});
+
 // ── 조회 챗봇 ──
 // 외부 조회가 붙은 화면은 이동에 수 초가 걸린다. 아무 반응이 없으면 사용자가 다시
 // 누르거나 다른 곳(바로 아래 운영팀 표는 행 전체가 클릭 가능)을 눌러 엉뚱한 화면으로 가버려서,
@@ -505,7 +524,10 @@ function toggleChat() {
   const opening = panel.classList.contains("hidden");
   panel.classList.toggle("hidden", !opening);
   toggle.classList.toggle("hidden", opening);
-  if (opening) document.getElementById("chatInput").focus();
+  if (opening) {
+    const name = document.getElementById("chatName").value.trim();
+    document.getElementById(name.length < 2 ? "chatName" : "chatInput").focus();
+  }
 }
 
 function addChatMsg(text, who) {
@@ -524,9 +546,10 @@ async function sendChat(e) {
   const query = input.value.trim();
   if (!query) return false;
 
-  const name = (document.getElementById("updatedBy").value || "").trim();
+  const name = (document.getElementById("chatName").value || "").trim();
   if (name.length < 2) {
-    addChatMsg("먼저 상단 '입력자명'을 2글자 이상 입력해주세요.", "bot");
+    addChatMsg("먼저 위 '입력자명'을 2글자 이상 입력해주세요.", "bot");
+    document.getElementById("chatName").focus();
     return false;
   }
 
