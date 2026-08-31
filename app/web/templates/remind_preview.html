@@ -27,7 +27,8 @@
     <a href="/remind-preview?half={{ half }}&kind=hinted" class="tab {% if kind == 'hinted' %}active{% endif %}">
       🕓 대략적 일정만 있음 <span class="cnt">{{ hinted_total }}</span>
     </a>
-    <a href="/remind-preview?half={{ half }}&kind=upcoming" class="tab {% if kind == 'upcoming' %}active{% endif %}">
+    <a href="/remind-preview?half={{ half }}&kind=upcoming" class="tab {% if kind == 'upcoming' %}active{% endif %}"
+       title="작업 예정일이 {{ pre_work_days }}일 이내인데 아직 JIRA 티켓이 매칭되지 않은 대상">
       📅 작업 {{ pre_work_days }}일 이내 <span class="cnt">{{ upcoming_total }}</span>
     </a>
   </div>
