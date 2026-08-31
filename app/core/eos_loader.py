@@ -199,10 +199,20 @@ def load_eos_items_merged(excel_path: str | None = None) -> list[dict]:
                 item["owner"] = db["owner"]
                 item["input_source"] = "web"
 
+            # 관리자가 웹에서 제외 처리한 경우 - 엑셀의 'EOS 진행/제외' 컬럼과 별개다
+            # (엑셀은 착수 시점 판정, 웹은 운영 중 확정). 대상에서 빼고 사유를 남긴다.
+            if db.get("is_excluded"):
+                item["is_target"] = False
+                item["os_eos_target"] = False
+                item["db_eos_target"] = False
+                item["status"] = "excluded"
+                item["input_source"] = "web"
+            item["web_exclude_reason"] = db.get("exclude_reason") or ""
             item["note"] = db.get("note", "")
             item["updated_by"] = db.get("updated_by", "")
             item["updated_at"] = db.get("updated_at", "")
         else:
+            item["web_exclude_reason"] = ""
             item["note"] = ""
             item["updated_by"] = ""
             item["updated_at"] = ""

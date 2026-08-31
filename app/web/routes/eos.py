@@ -21,8 +21,8 @@ from app.models.db import (
 )
 from app.services.completion import group_by
 from app.services.eos import build_no_reply_details, calc_eos_completion, filter_track
-from app.services import eos_chatbot
-from app.services.eos_data import get_eos_data
+from app.services import eos_chatbot, evidence_check
+from app.services.eos_data import get_eos_data, invalidate_cache as invalidate_eos_cache
 from app.services.eos_plan_chat import build_candidates, parse_plan_message
 from app.services.eos_reminder import group_eos_no_reply, group_eos_unplanned
 from app.services.eos_report import send_eos_report
@@ -86,11 +86,23 @@ def eos_dashboard(
 
     details = sorted(details, key=lambda d: (d["schedule"] is None, d["schedule"]))
 
+    # 증적란에 적힌 JIRA 키의 실제 상태(반려/미종결)를 표시용으로 붙인다
+    evidence_check.annotate(details)
+    evidence_warn_cnt = sum(1 for d in details if d.get("evidence_level"))
+
+    # 관리자가 웹에서 제외 처리한 대상 (엑셀 원본 제외와 구분해 사유·처리자를 보여준다)
+    web_excluded = [
+        i for i in all_items
+        if i["status"] == "excluded" and i.get("input_source") == "web"
+    ]
+
     return templates.TemplateResponse("eos.html", {
         "request": request,
         "result": result,
         "details": details,
         "excluded_cnt": excluded_cnt,
+        "evidence_warn_cnt": evidence_warn_cnt,
+        "web_excluded": web_excluded,
         "by_team": dict(sorted(by_team.items(), key=lambda x: x[1]["rate"])),
         "as_of": today,
         "track": track,
@@ -373,3 +385,44 @@ async def api_eos_chat(request: Request):
         logger.warning(f"EoS 챗봇 실패: {e}")
         return JSONResponse({"ok": False, "error": str(e)}, status_code=502)
     return JSONResponse({"ok": True, "reply": reply})
+
+
+# ─────────────────────────────────────────────
+# 제외 처리 (관리자만) - 사유 필수
+# ─────────────────────────────────────────────
+@router.post("/api/eos/exclude")
+async def api_eos_exclude(request: Request):
+    """
+    EoS 대상 제외/해제. 엑셀의 'EOS 진행/제외' 컬럼(착수 시점 판정)과 별개로,
+    운영 중 확정된 제외를 사유와 함께 남긴다. 완료율 분모에서 빠지는 처리라
+    사유 없이는 받지 않는다.
+    """
+    data = await request.json()
+    item_no = (data.get("item_no") or "").strip()
+    updated_by = (data.get("updated_by") or "").strip()
+    excluded = bool(data.get("excluded", True))
+    reason = (data.get("reason") or "").strip()
+
+    if not item_no:
+        return JSONResponse({"ok": False, "error": "필수 값이 없습니다."}, status_code=400)
+    if updated_by not in settings.eos_admin_set:
+        return JSONResponse(
+            {"ok": False, "error": "제외 처리는 관리자만 가능합니다."}, status_code=403
+        )
+    if excluded and not reason:
+        return JSONResponse({"ok": False, "error": "제외 사유를 입력해주세요."}, status_code=400)
+
+    existing = get_eos_input(item_no) or {}
+    upsert_eos_input(
+        item_no=item_no,
+        schedule=existing.get("schedule") or "",
+        is_done=bool(existing.get("is_done")),
+        evidence=existing.get("evidence") or "",
+        note=existing.get("note") or "",
+        updated_by=updated_by,
+        excluded=excluded,
+        exclude_reason=reason if excluded else "",
+    )
+    # 대상 구성이 바뀌었으므로 티켓 매칭 캐시를 버린다
+    invalidate_eos_cache()
+    return JSONResponse({"ok": True})

@@ -183,6 +183,13 @@ def init_db():
         if "exclude_reason" not in cols:
             conn.execute("ALTER TABLE schedule_input ADD COLUMN exclude_reason TEXT")
 
+        # EoS도 웹에서 제외 처리(+사유)를 할 수 있게 (엑셀의 'EOS 진행/제외' 컬럼과 별개)
+        eos_cols = {row["name"] for row in conn.execute("PRAGMA table_info(eos_input)")}
+        if "is_excluded" not in eos_cols:
+            conn.execute("ALTER TABLE eos_input ADD COLUMN is_excluded INTEGER DEFAULT 0")
+        if "exclude_reason" not in eos_cols:
+            conn.execute("ALTER TABLE eos_input ADD COLUMN exclude_reason TEXT")
+
         rl_cols = {row["name"] for row in conn.execute("PRAGMA table_info(remind_log)")}
         if "kind" not in rl_cols:
             conn.execute("ALTER TABLE remind_log ADD COLUMN kind TEXT DEFAULT 'blank'")
@@ -472,29 +479,43 @@ def upsert_eos_input(
     note: str = "",
     updated_by: str = "",
     owner: str | None = None,
+    excluded: bool | None = None,
+    exclude_reason: str | None = None,
 ):
-    """EoS 조치계획 입력/수정 (변경 이력 기록). owner는 명시적으로 넘겼을 때만 갱신."""
+    """
+    EoS 조치계획 입력/수정 (변경 이력 기록).
+    owner/excluded/exclude_reason은 명시적으로 넘겼을 때만 갱신 - 일반 행 저장이
+    이 값들을 안 넘기더라도 덮어써지지 않게 한다.
+    """
     before = get_eos_input(item_no)
 
     with get_conn() as conn:
         conn.execute("""
             INSERT INTO eos_input
-                (item_no, schedule, is_done, evidence, note, updated_by, owner, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
+                (item_no, schedule, is_done, evidence, note, updated_by, owner,
+                 is_excluded, exclude_reason, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
             ON CONFLICT(item_no) DO UPDATE SET
-                schedule   = excluded.schedule,
-                is_done    = excluded.is_done,
-                evidence   = excluded.evidence,
-                note       = excluded.note,
-                updated_by = excluded.updated_by,
-                owner      = COALESCE(excluded.owner, eos_input.owner),
-                updated_at = datetime('now', 'localtime')
-        """, (item_no, schedule, int(is_done), evidence, note, updated_by, owner))
+                schedule       = excluded.schedule,
+                is_done        = excluded.is_done,
+                evidence       = excluded.evidence,
+                note           = excluded.note,
+                updated_by     = excluded.updated_by,
+                owner          = COALESCE(excluded.owner, eos_input.owner),
+                is_excluded    = COALESCE(excluded.is_excluded, eos_input.is_excluded),
+                exclude_reason = COALESCE(excluded.exclude_reason, eos_input.exclude_reason),
+                updated_at     = datetime('now', 'localtime')
+        """, (item_no, schedule, int(is_done), evidence, note, updated_by, owner,
+              int(excluded) if excluded is not None else None, exclude_reason))
 
         new_vals = {
             "schedule": schedule, "is_done": str(int(is_done)),
             "evidence": evidence, "note": note,
         }
+        if excluded is not None:
+            new_vals["is_excluded"] = str(int(excluded))
+        if exclude_reason is not None:
+            new_vals["exclude_reason"] = exclude_reason
         if owner is not None:
             new_vals["owner"] = owner
         for field, new_v in new_vals.items():

@@ -217,6 +217,8 @@ async def api_exclude(request: Request):
         updated_by=updated_by,
         exclude_reason=reason if excluded else "",  # 복귀 시엔 사유를 지운다
     )
+    # 대상 구성이 바뀌었으므로 티켓 매칭 캐시를 버린다
+    dr_data.invalidate_cache(half)
     return JSONResponse({"ok": True})
 
 
@@ -516,6 +518,8 @@ async def api_diagnose_mismatch(request: Request):
 # ─────────────────────────────────────────────
 @router.post("/send-report")
 def trigger_report(half: str = Form(...)):
+    # 수동 발송은 "지금 이 숫자를 보내겠다"는 행위라 캐시된 옛 티켓맵을 쓰면 안 된다
+    dr_data.invalidate_cache(half)
     # 발송은 하되, 지난주 대비 이상 징후가 있으면 화면에 띄워 확인하게 한다
     warning = send_report(half=half)
     url = f"/?half={half}"
