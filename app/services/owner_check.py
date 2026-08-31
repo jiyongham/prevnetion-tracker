@@ -11,6 +11,7 @@
 수정은 자동으로 하지 않고, 검토용 후보 목록만 만든다 (원본은 엑셀).
 """
 import concurrent.futures
+import time
 
 from app.config import settings
 from app.core.capacity_loader import get_targets as get_capacity_targets
@@ -98,9 +99,29 @@ def collect_capacity_targets_with_tickets(sheet: str, use_jira: bool = True):
     return targets, ticket_map, jira_error
 
 
+_CMDB_CACHE_TTL_SEC = 300
+_cmdb_cache: dict = {}  # 호스트명 -> (조회시각, 자산)
+
+
 def lookup_cmdb_assets(targets: list[dict]) -> dict[str, dict]:
-    """item_no -> CMDB 서버 자산 (호스트명 기준, 병렬 조회)"""
-    have_host = [i for i in targets if i.get("hostname")]
+    """
+    item_no -> CMDB 서버 자산 (호스트명 기준, 병렬 조회).
+    호스트명 단위로 TTL 캐시한다 - 대시보드/리마인드/담당자확인이 같은 호스트를 반복
+    조회하는데 자산 정보는 몇 분 사이에 바뀌지 않는다 (요청당 2.2초를 잡아먹던 구간).
+    """
+    now = time.time()
+    have_host = []
+    results: dict[str, dict] = {}
+    for i in targets:
+        host = i.get("hostname")
+        if not host:
+            continue
+        hit = _cmdb_cache.get(host)
+        if hit and now - hit[0] < _CMDB_CACHE_TTL_SEC:
+            if hit[1]:
+                results[i["no"]] = hit[1]
+        else:
+            have_host.append(i)
 
     def _fetch(item):
         try:
@@ -109,11 +130,12 @@ def lookup_cmdb_assets(targets: list[dict]) -> dict[str, dict]:
             print(f"⚠️ CMDB 조회 실패 (NO {item['no']}, {item['hostname']}): {e}")
             return item["no"], None
 
-    results: dict[str, dict] = {}
     if not have_host:
         return results
+    by_no = {i["no"]: i for i in have_host}
     with concurrent.futures.ThreadPoolExecutor(max_workers=10) as ex:
         for no, asset in ex.map(_fetch, have_host):
+            _cmdb_cache[by_no[no]["hostname"]] = (now, asset)
             if asset:
                 results[no] = asset
     return results
