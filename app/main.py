@@ -42,4 +42,4 @@ Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_sch
 app.include_router(dr.router)
 app.include_router(capacity.router)
 app.include_router(eos.router)
-app.include_router(misc.router)l
+app.include_router(misc.router)
