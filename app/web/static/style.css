@@ -201,6 +201,7 @@ tr.saved { animation: flash 1.2s; }
 .badge.bad { background: #fdecea; color: #c62828; }
 .badge.warn { background: #fff4e5; color: #b26a00; }
 .badge.muted { background: #eceff1; color: #607d8b; }
+.badge.info { background: #e8eefc; color: #2c4fa8; }
 
 /* 관리자 전용 요소. 요소마다 JS로 display를 세팅하면 행이 수백 개일 때 입력할 때마다
    버벅여서, body 클래스 하나만 토글하고 나머지는 CSS가 처리하게 한다.

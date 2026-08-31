@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>DR 모의훈련 진척 관리</title>
-  <link rel="stylesheet" href="/static/style.css?v=7">
+  <link rel="stylesheet" href="/static/style.css?v=8">
 </head>
 <body>
 <div class="container">
@@ -65,7 +65,7 @@
     <div class="card">
       <div class="label">미완료</div>
       <div class="value warn">{{ result.total - result.done }}건</div>
-      <div class="sub">미계획 {{ result.no_schedule }}건 · 제외 {{ excluded_cnt }}건</div>
+      <div class="sub">예정 {{ result.scheduled }} · 지연 {{ result.overdue }} · 미계획 {{ result.unplanned }} · 제외 {{ excluded_cnt }}</div>
     </div>
   </section>
 
@@ -103,9 +103,11 @@
         </form>
         <div class="filters">
           <a href="/?half={{ half }}{{ mode_qs }}" class="chip {% if not filter_status and not filter_team %}active{% endif %}">전체</a>
-          <a href="/?half={{ half }}{{ mode_qs }}&status=pending" class="chip {% if filter_status == 'pending' %}active{% endif %}">미완료</a>
-          <a href="/?half={{ half }}{{ mode_qs }}&status=unplanned" class="chip {% if filter_status == 'unplanned' %}active{% endif %}">미계획</a>
-          <a href="/?half={{ half }}{{ mode_qs }}&status=done" class="chip {% if filter_status == 'done' %}active{% endif %}">완료</a>
+          <a href="/?half={{ half }}{{ mode_qs }}&status=pending" class="chip {% if filter_status == 'pending' %}active{% endif %}">미완료 {{ result.total - result.done }}</a>
+          <a href="/?half={{ half }}{{ mode_qs }}&status=scheduled" class="chip {% if filter_status == 'scheduled' %}active{% endif %}">예정 {{ result.scheduled }}</a>
+          <a href="/?half={{ half }}{{ mode_qs }}&status=overdue" class="chip {% if filter_status == 'overdue' %}active{% endif %}">지연 {{ result.overdue }}</a>
+          <a href="/?half={{ half }}{{ mode_qs }}&status=unplanned" class="chip {% if filter_status == 'unplanned' %}active{% endif %}">미계획 {{ result.unplanned }}</a>
+          <a href="/?half={{ half }}{{ mode_qs }}&status=done" class="chip {% if filter_status == 'done' %}active{% endif %}">완료 {{ result.done }}</a>
         </div>
       </div>
     </div>
@@ -171,9 +173,10 @@
             {% endif %}
           </td>
           <td>
-            {% if d.completed %}<span class="badge ok" title="{{ d.reason }}">완료</span>
-            {% elif not d.planned %}<span class="badge warn">미계획</span>
-            {% else %}<span class="badge bad">미완료</span>{% endif %}
+            {% if d.status_label == '완료' %}<span class="badge ok" title="{{ d.reason }}">완료</span>
+            {% elif d.status_label == '예정' %}<span class="badge info" title="{{ d.schedule_disp }} 예정">예정</span>
+            {% elif d.status_label == '지연' %}<span class="badge bad" title="{{ d.schedule_disp }} 계획 경과">지연</span>
+            {% else %}<span class="badge warn">미계획</span>{% endif %}
           </td>
           <td><button class="btn-save" onclick="saveRow(this)">저장</button></td>
           <td class="admin-only">
