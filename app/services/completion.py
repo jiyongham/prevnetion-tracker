@@ -1,4 +1,5 @@
 # app/services/completion.py
+import calendar
 import re
 from datetime import date
 
@@ -44,6 +45,25 @@ def _extract_cmdb_old_keys(raw: list | None) -> set[str]:
         if m and _CMDB_OLD_PATTERN.search(_CMDB_KEY_PATTERN.sub("", text).strip()):
             keys.add(m.group(1))
     return keys
+
+
+_MONTH_ONLY_RE = re.compile(r"(\d{1,2})\s*월")
+
+
+def approx_schedule(raw: str, year: int) -> date | None:
+    """
+    '11월 예정', '12월'처럼 월만 적혀 날짜로 못 읽은 일정의 '정렬용' 근사 날짜.
+    그 달 말일로 잡는다 - 그래야 같은 달의 확정 일정보다 뒤에 오고, 다음 달 일정보다
+    앞에 온다. 완료 판정에는 쓰지 않고 화면 정렬에만 쓴다.
+    '10월 → 11월'처럼 여러 달이 적혔으면 마지막(최신) 값을 쓴다.
+    """
+    months = _MONTH_ONLY_RE.findall(raw or "")
+    if not months:
+        return None
+    month = int(months[-1])
+    if not 1 <= month <= 12:
+        return None
+    return date(year, month, calendar.monthrange(year, month)[1])
 
 
 def fmt_rate(rate: float) -> str:
@@ -213,6 +233,11 @@ def calc_completion(
         else:
             status_label = "예정"
 
+        # 정렬용 날짜. '대략'은 월만 알므로 그 달 말일로 근사해 '예정'과 같은 축에 놓는다
+        sort_date = sched or (
+            approx_schedule(item.get("schedule_raw"), year) if status_label == "대략" else None
+        )
+
         # 이 시스템에 연결된(IP/호스트명 매칭) 티켓 중 가장 최근 생성된 것의 JSM요청자.
         # 미계획 리마인드에서 여러 담당자 후보 중 누구를 1순위로 볼지 판단하는 데 쓰인다.
         most_recent = max(matched, key=lambda t: t.get("created") or "") if matched else None
@@ -234,6 +259,7 @@ def calc_completion(
             "schedule_disp": f"{sched.month}/{sched.day}" if sched else (item["schedule_raw"] or ""),
             "planned": planned,  # 일정 없거나, 계획일 경과 후 미완료면 미계획
             "status_label": status_label,  # 완료 / 예정 / 지연 / 대략 / 미계획
+            "schedule_sort": sort_date,    # 화면 정렬 전용 (대략은 월말로 근사)
             "mode": item["mode"],
             "jira_key": display_ticket["key"] if display_ticket else "",
             "jira_keys": [t["key"] for t in in_window],
