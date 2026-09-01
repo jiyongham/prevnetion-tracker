@@ -40,8 +40,9 @@ router = APIRouter()
 # ─────────────────────────────────────────────
 # 데이터 수집
 # ─────────────────────────────────────────────
-# 대상 목록 표시 순서 (완료 -> 지연 -> 예정 -> 대략 -> 미계획)
-STATUS_ORDER = {"완료": 0, "지연": 1, "예정": 2, "대략": 3, "미계획": 4}
+# 대상 목록 표시 순서. '예정'과 '대략'은 같은 그룹으로 두고 날짜순으로 섞는다
+# ('대략'은 월말로 근사한 schedule_sort를 쓴다 - completion.approx_schedule 참고).
+STATUS_ORDER = {"완료": 0, "지연": 1, "예정": 2, "대략": 2, "미계획": 3}
 
 # 수행방식 탭 (URL은 ASCII로, 엑셀 값은 한글)
 MODE_TABS = {"real": "실전환", "nonstop": "무중단"}
@@ -138,11 +139,11 @@ def dashboard(
         excluded_items = [d for d in excluded_items if _match(d)]
 
     # 상태 그룹 순 -> 그룹 안에서 일정 오름차순.
-    # 손댈 게 없는 것(완료)부터 손대야 하는 것(미계획)까지 순서대로 보이게 한다.
-    # 일정이 없는 '대략'/'미계획'은 날짜 비교가 불가능하므로 뒤로 몰고 시스템명으로 정렬.
+    # 손댈 게 없는 것(완료)부터 손대야 하는 것(미계획)까지 순서대로 보이게 하되,
+    # '예정'과 '대략'은 둘 다 앞으로 할 일이라 한 축에 놓고 날짜순으로 섞는다.
     details = sorted(details, key=lambda d: (
         STATUS_ORDER.get(d["status_label"], len(STATUS_ORDER)),
-        d["schedule"] or date.max,
+        d["schedule_sort"] or date.max,
         d["system_name"] or "",
     ))
 
