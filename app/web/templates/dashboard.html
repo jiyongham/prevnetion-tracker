@@ -201,7 +201,7 @@
     <div class="table-scroll">
     <table>
       <thead>
-        <tr><th>시스템명</th><th>호스트명</th><th>운영팀</th><th>담당자</th><th>제외 사유</th><th>처리자</th><th class="admin-only">복귀</th></tr>
+        <tr><th>시스템명</th><th>호스트명</th><th>운영팀</th><th>담당자</th><th>제외 사유</th><th>처리자</th><th class="admin-only" style="width:44px"></th></tr>
       </thead>
       <tbody>
       {% for d in excluded_items %}
@@ -213,7 +213,7 @@
           <td class="small">{{ d.web_exclude_reason or d.exclude_reason or "(미기재)" }}</td>
           <td class="small">{{ d.updated_by }}</td>
           <td class="admin-only">
-            <button class="btn-sm" data-no="{{ d.no }}" onclick="restoreRow(this)">↩️ 복귀</button>
+            <button class="btn-sm" data-no="{{ d.no }}" onclick="restoreRow(this)" title="제외 해제 - 대상 목록으로 되돌리기">↩️</button>
           </td>
         </tr>
       {% endfor %}
