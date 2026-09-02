@@ -15,8 +15,9 @@ def build_eos_body(items: list[dict], show_raw: bool = False) -> str:
         line = f"{d.get('system_name', '')} / {d.get('hostname', '')} / {d.get('ip', '')}"
         if show_raw and d.get("schedule_raw"):
             line += f" (현재 등록: {d['schedule_raw']})"
-        lines.append(f"\t- {line}")
-    return "\n\n".join(lines) if lines else "(대상 없음)"
+        # 줄 앞에 탭/공백을 두면 Teams가 그 줄을 코드블록으로 잡아 대시와 본문이 갈라진다
+        lines.append(f"- {line}")
+    return "\n".join(lines) if lines else "(대상 없음)"
 
 
 def eos_greeting_suffix(items: list[dict], hinted: bool = False) -> str:
@@ -29,9 +30,9 @@ def eos_greeting_suffix(items: list[dict], hinted: bool = False) -> str:
     else:
         ask = "다름아니라 공지드린 EoS(노후 OS/DB) 전환 대상의 계획된 조치 일정 알 수 있을까요?"
     return (
-        f"님. {settings.sender_team} {eos_sender()}입니다.\n\n\n\n"
+        f"님. {settings.sender_team} {eos_sender()}입니다.\n\n"
         f"{ask}\n\n"
-        f"{build_eos_body(items, show_raw=hinted)}\n\n\n\n"
+        f"{build_eos_body(items, show_raw=hinted)}\n\n"
         f"EoS 진척 현황({settings.dashboard_url}/eos)에 기입 요청드립니다."
     )
 
@@ -45,9 +46,9 @@ def no_reply_greeting_suffix(items: list[dict]) -> str:
     """미응답(EOS 진행/제외 여부 자체가 안 정해짐) 대상 리마인드 인사말"""
     ask = "다름아니라 공지드린 EoS(노후 OS/DB) 전환 대상 중 진행 여부(EOS 진행/제외) 응답이 아직 없어 확인 요청드립니다."
     return (
-        f"님. {settings.sender_team} {eos_sender()}입니다.\n\n\n\n"
+        f"님. {settings.sender_team} {eos_sender()}입니다.\n\n"
         f"{ask}\n\n"
-        f"{build_eos_body(items)}\n\n\n\n"
+        f"{build_eos_body(items)}\n\n"
         f"EoS 진척 현황({settings.dashboard_url}/eos)에 진행 여부 기입 요청드립니다."
     )
 
