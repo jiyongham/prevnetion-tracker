@@ -6,7 +6,7 @@ from datetime import date
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
-from app.config import settings
+from app.config import eos_sender, settings
 from app.core.date_utils import week_ranges
 from app.core.eos_loader import load_eos_items_merged
 from app.core.teams_client import send_teams_dm
@@ -200,7 +200,7 @@ def eos_remind_preview(
         "hinted_total": sum(g["count"] for g in hinted_groups),
         "no_reply_total": sum(g["count"] for g in no_reply_groups),
         "sender_team": settings.sender_team,
-        "sender_name": settings.sender_name,
+        "sender_name": eos_sender(),
         "teams_enabled": bool(settings.teams_webhook),
         "dm_enabled": bool(settings.teams_dm_trigger_webhook),
         "jira_error": jira_error,
