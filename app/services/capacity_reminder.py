@@ -70,9 +70,9 @@ def capacity_greeting_suffix(items: list[dict], hinted: bool = False) -> str:
     else:
         ask = "다름아니라 공지드린 용량관리(디스크 증설) 대상의 계획된 일정 알 수 있을까요?"
     return (
-        f"님. {settings.sender_team} {settings.capacity_sender_name}입니다.\n\n\n"
+        f"님. {settings.sender_team} {settings.capacity_sender_name}입니다.\n\n\n\n"
         f"{ask}\n\n"
-        f"{build_capacity_body(items, show_raw=hinted)}\n\n\n"
+        f"{build_capacity_body(items, show_raw=hinted)}\n\n\n\n"
         f"용량관리 진척 현황({settings.dashboard_url}/capacity)에 기입 요청드립니다."
     )
 
@@ -86,9 +86,9 @@ def no_reply_greeting_suffix(items: list[dict]) -> str:
     """미회신(증설 여부 O/X 미기재) 대상 리마인드 인사말"""
     ask = "다름아니라 공지드린 용량관리(디스크 증설) 대상 중 증설 필요 여부(O,X) 응답이 아직 없어 확인 요청드립니다."
     return (
-        f"님. {settings.sender_team} {settings.capacity_sender_name}입니다.\n\n\n"
+        f"님. {settings.sender_team} {settings.capacity_sender_name}입니다.\n\n\n\n"
         f"{ask}\n\n"
-        f"{build_capacity_body(items)}\n\n\n"
+        f"{build_capacity_body(items)}\n\n\n\n"
         f"용량관리 진척 현황({settings.dashboard_url}/capacity)에 증설 필요 여부(O,X) 기입 요청드립니다."
     )
 
