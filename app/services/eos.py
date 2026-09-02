@@ -73,6 +73,7 @@ def build_no_reply_details(items: list[dict], base_year: int) -> list[dict]:
             "planned": False,
             "jira_key": "",
             "jira_matched": False,
+            "polestar": "",   # 미응답 대상은 EOS 진행 대상이 아니라 전환 확인 자체를 하지 않는다
             "completed": False,
             "reason": "",
             "input_source": item.get("input_source", "excel"),
@@ -113,12 +114,22 @@ def schedule_marks_done(raw: str) -> bool:
     return not re.search(r"완료\s*예정", eff)
 
 
+def polestar_reason(item: dict, polestar_confirmed) -> str:
+    """이 대상에 대한 Polestar 근거 문구 ('CI명 매칭' / 'IP 경유 매칭 (...)'). 없으면 빈 문자열.
+    set으로 넘어온 경우(근거 없이 확인 여부만 아는 경우)엔 확인 사실만 돌려준다."""
+    if not polestar_confirmed or item["item_no"] not in polestar_confirmed:
+        return ""
+    if isinstance(polestar_confirmed, dict):
+        return polestar_confirmed[item["item_no"]] or "CI _OLD 확인"
+    return "CI _OLD 확인"
+
+
 def judge_eos(
     item: dict,
     tickets: list[dict] | None,
     as_of: date,
     base_year: int,
-    polestar_confirmed: set[str] | None = None,
+    polestar_confirmed: dict[str, str] | set[str] | None = None,
 ) -> tuple[bool, str, dict | None]:
     """
     완료 판정. 아래 근거만 인정하며, 위에서부터 먼저 걸리는 것을 채택한다.
@@ -158,7 +169,7 @@ def judge_eos(
 
     if polestar_confirmed and item["item_no"] in polestar_confirmed:
         latest = max(in_window, key=lambda x: x.get("created") or "") if in_window else None
-        return True, "Polestar CI _OLD 확인", latest
+        return True, f"Polestar {polestar_reason(item, polestar_confirmed) or 'CI _OLD 확인'}", latest
 
     # 최후 수단. 시스템 근거(JIRA/Polestar)가 우선이고, 그게 없을 때만 담당자 표기를 믿는다
     # - 표기보다 실제 자산 상태가 정확하고, 화면에 근거 티켓도 같이 보여줄 수 있기 때문.
@@ -173,13 +184,13 @@ def calc_eos_completion(
     ticket_map: dict[str, list[dict]],
     as_of: date,
     base_year: int | None = None,
-    polestar_confirmed: set[str] | None = None,
+    polestar_confirmed: dict[str, str] | set[str] | None = None,
 ) -> dict:
     """
     완료율 계산 (EOS 진행(target) 대상만 분모). ticket_map은 item_no(Insight Key) 기준.
-    polestar_confirmed: Polestar에서 '_OLD'로 확인된 item_no 집합
-    (app.services.eos_polestar.confirmed_item_nos()로 만든다. 조회 실패 시 None을 넘기면
-     JIRA CMDB 근거만으로 판정한다.)
+    polestar_confirmed: Polestar에서 '_OLD'로 확인된 {item_no: 근거}
+    (app.services.eos_polestar.confirmed_reasons()로 만든다. 조회 실패 시 None을 넘기면
+     JIRA CMDB 근거만으로 판정하고, 화면에는 '조회불가'로 표시한다.)
     """
     year = base_year or as_of.year
     targets = get_targets(items)
@@ -231,6 +242,10 @@ def calc_eos_completion(
             "planned": planned,
             "jira_key": display_ticket["key"] if display_ticket else "",
             "jira_matched": bool(in_window),
+            # Polestar 검증 결과는 완료 판정에 쓰였는지와 무관하게 항상 표시한다
+            # (JIRA 근거로 완료된 건도 실제 CI가 _OLD로 바뀌었는지 같이 보이는 게 낫다).
+            # None은 조회 실패 - '미확인'과 구분해야 오해가 없다.
+            "polestar": None if polestar_confirmed is None else polestar_reason(item, polestar_confirmed),
             "completed": completed,
             "reason": reason,
             "input_source": item.get("input_source", "excel"),

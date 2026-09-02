@@ -27,7 +27,7 @@ from app.config import settings
 from app.core.eos_loader import load_eos_items_merged
 from app.core.jira_client import jira
 from app.services.eos import build_eos_ticket_summary
-from app.services.eos_polestar import confirmed_item_nos
+from app.services.eos_polestar import confirmed_reasons
 from app.services.matcher import match_items_by_cmdb_key, match_items_by_ip, merge_ticket_maps
 
 logger = logging.getLogger(__name__)
@@ -52,7 +52,7 @@ def cached_at() -> float:
         return _cache["at"]
 
 
-def _collect_external(targets: list[dict]) -> tuple[dict, set[str] | None, str | None]:
+def _collect_external(targets: list[dict]) -> tuple[dict, dict[str, str] | None, str | None]:
     """JIRA 티켓 매칭 + Polestar 전환 확인. 어느 한쪽이 실패해도 나머지로 계속 진행한다."""
     ticket_map: dict = {}
     jira_error = None
@@ -69,14 +69,14 @@ def _collect_external(targets: list[dict]) -> tuple[dict, set[str] | None, str |
 
     polestar_confirmed = None
     try:
-        polestar_confirmed = confirmed_item_nos(targets)
+        polestar_confirmed = confirmed_reasons(targets)
     except Exception as e:
         logger.warning(f"Polestar 조회 실패 (JIRA CMDB 근거만으로 계속): {e}")
 
     return ticket_map, polestar_confirmed, jira_error
 
 
-def _refresh(targets: list[dict]) -> tuple[dict, set[str] | None, str | None]:
+def _refresh(targets: list[dict]) -> tuple[dict, dict[str, str] | None, str | None]:
     """외부 조회 후 캐시 갱신. _refresh_lock을 쥔 상태에서만 부른다."""
     started = time.time()
     value = _collect_external(targets)
