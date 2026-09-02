@@ -1,4 +1,5 @@
 # app/services/matcher.py
+import bisect
 import re
 
 # IP 패턴 (경계 포함 - 부분일치 방지)
@@ -40,6 +41,54 @@ def build_ip_index(tickets: list[dict]) -> dict[str, list[dict]]:
     return index
 
 
+def build_hostname_index(tickets: list[dict]) -> dict:
+    """
+    호스트명 검색용 인덱스.
+
+    티켓마다 `host in text`를 도는 방식은 대상 수 x 티켓 수만큼 파이썬 호출이 생기고
+    (EoS 기준 387 x 1,173 = 45만 회) 매번 티켓 본문 전체(합계 12MB)를 훑어 8초가 걸렸다.
+    본문을 공백으로 쪼개 중복을 없애면 같은 내용이 12MB -> 1MB로 줄어드는데,
+    (변경 티켓 본문에는 표 머리글·안내 문구 같은 같은 말이 계속 반복된다)
+    호스트명은 공백을 포함하지 않으므로 이 축약본만 훑어도 결과는 동일하다.
+
+    반환: {"tokens": [토큰...], "corpus": NUL로 이은 토큰들, "starts": 토큰 시작 offset,
+           "by_token": {토큰: [티켓 index...]}}
+    """
+    by_token: dict[str, list[int]] = {}
+    for n, t in enumerate(tickets):
+        for token in set(_ticket_text(t).lower().split()):
+            by_token.setdefault(token, []).append(n)
+
+    tokens = list(by_token)
+    starts: list[int] = []
+    pos = 0
+    for token in tokens:
+        starts.append(pos)
+        pos += len(token) + 1
+    # 구분자로 NUL을 쓰는 이유: 호스트명에 절대 들어가지 않는 문자라 두 토큰에
+    # 걸친 문자열이 호스트명으로 잘못 매칭될 수 없다.
+    return {"tokens": tokens, "corpus": "\u0000".join(tokens), "starts": starts, "by_token": by_token}
+
+
+def find_hostname_tickets(host: str, index: dict, tickets: list[dict]) -> list[int]:
+    """호스트명이 등장하는 티켓 index 목록 (티켓 순서).
+
+    호스트명에 공백이 있으면 축약본으로는 찾을 수 없으므로 원문을 그대로 훑는다
+    (엑셀 오타 등으로 드물게 생긴다)."""
+    if not host or host.split() != [host]:
+        return [n for n, t in enumerate(tickets) if host and host in _ticket_text(t).lower()]
+
+    corpus, starts, tokens, by_token = (
+        index["corpus"], index["starts"], index["tokens"], index["by_token"]
+    )
+    hits: set[int] = set()
+    pos = corpus.find(host)
+    while pos != -1:
+        hits.update(by_token[tokens[bisect.bisect_right(starts, pos) - 1]])
+        pos = corpus.find(host, pos + len(host))
+    return sorted(hits)
+
+
 def match_items_by_ip(items: list[dict], tickets: list[dict]) -> dict:
     """
     엑셀 항목 <-> JIRA 티켓 매칭 (IP 우선, 실패 시 호스트명).
@@ -52,8 +101,8 @@ def match_items_by_ip(items: list[dict], tickets: list[dict]) -> dict:
     }
     """
     ip_index = build_ip_index(tickets)
-    # 호스트명 매칭용: 티켓별 소문자 텍스트 미리 계산
-    ticket_texts = [(t, _ticket_text(t).lower()) for t in tickets]
+    host_index = build_hostname_index(tickets)
+    host_cache: dict[str, list[int]] = {}   # 같은 호스트명을 쓰는 항목이 있어 한 번만 훑는다
 
     matched = {}
     unmatched = []
@@ -72,8 +121,11 @@ def match_items_by_ip(items: list[dict], tickets: list[dict]) -> dict:
         # 2) 호스트명 매칭 (IP로 못 잡은 티켓 보강)
         host = (item.get("hostname") or "").strip().lower()
         if len(host) >= MIN_HOSTNAME_LEN:
-            for t, text in ticket_texts:
-                if t.get("key") not in seen and host in text:
+            if host not in host_cache:
+                host_cache[host] = find_hostname_tickets(host, host_index, tickets)
+            for idx in host_cache[host]:
+                t = tickets[idx]
+                if t.get("key") not in seen:
                     seen.add(t["key"])
                     found.append(t)
 

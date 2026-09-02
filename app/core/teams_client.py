@@ -1,3 +1,4 @@
+import html
 import json
 
 import requests
@@ -65,6 +66,23 @@ def _post_text(webhook: str, text: str) -> tuple[bool, str]:
         return False, str(e)
 
 
+def to_dm_html(text: str) -> str:
+    """
+    개인 DM 본문용 HTML 변환.
+
+    Flow의 'Post message in a chat or channel'이 올리는 Teams 메시지 본문은 HTML로
+    렌더돼서, 평문의 줄바꿈('\n')과 탭이 화면에서는 공백 하나로 접혀 사라진다.
+    그래서 줄바꿈은 <br>, 들여쓰기 탭은 고정폭 공백으로 바꾼 사본을 message_html로
+    같이 실어 보내고, Flow는 이 필드를 메시지 본문에 넣는다.
+    (평문 message도 그대로 남겨둔다 - 예전 Flow 및 로그/디버깅 호환)
+
+    시스템명에 '<', '&'가 들어가도 태그로 해석되지 않도록 먼저 이스케이프한다.
+    작은따옴표까지 이스케이프하면 본문에 &#x27;이 보이므로 quote=False로 둔다.
+    """
+    escaped = html.escape(text, quote=False)
+    return escaped.replace("\t", "&nbsp;&nbsp;&nbsp;&nbsp;").replace("\n", "<br>")
+
+
 def send_teams_message(text: str) -> bool:
     """Teams 워크플로우 Webhook으로 메시지 발송 (주간 리포트 등, 채널 공개용)"""
     if not settings.teams_webhook:
@@ -87,7 +105,13 @@ def send_teams_dm(name: str, team: str, message: str) -> tuple[bool, str]:
         return False, "TEAMS_DM_TRIGGER_WEBHOOK 미설정 (.env 확인)"
 
     payload_json = json.dumps(
-        {"name": name, "team": team, "message": message}, ensure_ascii=False
+        {
+            "name": name,
+            "team": team,
+            "message": message,
+            "message_html": to_dm_html(message),
+        },
+        ensure_ascii=False,
     )
     text = f"{settings.dm_marker}{payload_json}"
     return _post_text(settings.teams_dm_trigger_webhook, text)

@@ -1,7 +1,18 @@
 # app/core/jira_client.py
+import concurrent.futures
+import logging
+
 import requests
 from requests.adapters import HTTPAdapter
 from app.config import settings
+
+logger = logging.getLogger(__name__)
+
+# 한 번에 받아올 이슈 수. JIRA Server 기본 상한(jira.search.views.default.max)이
+# 보통 100이라 더 키워도 서버가 조용히 잘라서 준다.
+PAGE_SIZE = 100
+# 페이지 병렬 조회 수. 세션 커넥션 풀(pool_maxsize=20)과 JIRA 부하를 함께 고려한 값.
+MAX_PAGE_WORKERS = 6
 
 
 class JiraClient:
@@ -17,35 +28,56 @@ class JiraClient:
         self.session.mount("https://", adapter)
         self.session.mount("http://", adapter)
 
+    def _search_page(self, url: str, jql: str, fields_param: str | None, start_at: int, page_size: int) -> dict:
+        """검색 한 페이지"""
+        params = {"jql": jql, "startAt": start_at, "maxResults": page_size}
+        if fields_param:
+            params["fields"] = fields_param
+        resp = self.session.get(url, params=params, timeout=30)
+        resp.raise_for_status()
+        return resp.json()
+
     def search(self, jql: str, fields: list[str] | None = None):
         """
-        JQL 검색 (페이징 처리, 전체 건수 다 가져올 때까지).
+        JQL 검색 (전체 건수를 다 가져올 때까지 페이징).
         예전엔 max_results=500 상한이 있었는데, ORDER BY created DESC라
         상한을 넘는 티켓 중 "생성일이 오래된" 쪽이 통째로 잘려나갔다. EoS(예방1)가
         864건까지 쌓이면서 실제로 이 상한에 걸려, 예정된 작업인데도 티켓이 오래전에
         만들어졌다는 이유만으로 리포트/대시보드에서 누락되는 문제가 있었다.
+
+        첫 페이지를 받아 total을 안 뒤 나머지 페이지는 병렬로 가져온다. 순차로 돌리면
+        EoS(1,100건 이상 = 12페이지)에서 페이지당 1초씩 10초 넘게 걸렸는데, 페이지끼리
+        의존이 없어 동시에 부를 수 있다.
+
+        페이징 중에 티켓이 생기거나 사라지면 offset이 밀려 같은 이슈가 두 페이지에
+        걸릴 수 있으므로 key 기준으로 중복을 제거한다.
         """
         url = f"{self.base_url}/rest/api/2/search"
-        all_issues = []
-        start_at = 0
+        fields_param = ",".join(fields) if fields else None
 
-        while True:
-            params = {"jql": jql, "startAt": start_at, "maxResults": 100}
-            if fields:
-                params["fields"] = ",".join(fields)
+        first = self._search_page(url, jql, fields_param, 0, PAGE_SIZE)
+        issues = first.get("issues", [])
+        total = first.get("total", 0)
+        if not issues or len(issues) >= total:
+            return issues
 
-            resp = self.session.get(url, params=params, timeout=30)
-            resp.raise_for_status()
-            data = resp.json()
+        # 서버가 요청보다 작은 페이지를 줄 수 있어(설정 상한) 실제 응답 크기를 보폭으로 쓴다
+        step = len(issues)
+        offsets = list(range(step, total, step))
+        with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_PAGE_WORKERS) as ex:
+            pages = list(ex.map(
+                lambda start: self._search_page(url, jql, fields_param, start, step),
+                offsets,
+            ))
 
-            issues = data.get("issues", [])
-            all_issues.extend(issues)
+        by_key = {i["key"]: i for i in issues}
+        for page in pages:
+            for issue in page.get("issues", []):
+                by_key.setdefault(issue["key"], issue)
 
-            start_at += len(issues)
-            if start_at >= data.get("total", 0) or not issues:
-                break
-
-        return all_issues
+        if len(by_key) < total:
+            logger.info(f"JIRA 검색 {len(by_key)}/{total}건 (조회 중 티켓 변동 가능): {jql[:80]}")
+        return list(by_key.values())
 
     def get_dr_tickets(self):
         """

@@ -30,14 +30,26 @@ def norm_mode(value: str) -> str:
     return (value or "").replace(" ", "").strip()
 
 
+# 엑셀 파싱은 호출당 약 0.7초인데, 대시보드 한 번에 여러 번 읽힌다
+# (하반기 항목 + 상반기 무중단 대상 확인 + 화면별 재조회). 파일 수정시각이 바뀌면
+# 자동으로 다시 읽으므로 엑셀을 교체해도 재시작할 필요는 없다.
+_items_cache: dict = {}   # (경로, mtime, half) -> items
+
+
 def load_dr_items(excel_path: str | None = None, half: str = "H2") -> list[dict]:
-    """DR 모의훈련 대상 엑셀 로드 (half: H1/H2)"""
+    """DR 모의훈련 대상 엑셀 로드 (half: H1/H2, 파일 mtime 기준 캐시)"""
     path = Path(excel_path or settings.excel_path)
     if not path.exists():
         raise FileNotFoundError(f"엑셀 파일 없음: {path}")
 
     if half not in HALF_COLS:
         raise ValueError(f"half는 H1 또는 H2여야 합니다: {half}")
+
+    cache_key = (str(path), path.stat().st_mtime_ns, half)
+    cached = _items_cache.get(cache_key)
+    if cached is not None:
+        # 호출부가 항목을 수정(DB 병합 등)하므로 캐시 원본이 오염되지 않게 사본을 준다
+        return [dict(i) for i in cached]
 
     df = pd.read_excel(path, dtype=str)
     cols = HALF_COLS[half]
@@ -72,7 +84,12 @@ def load_dr_items(excel_path: str | None = None, half: str = "H2") -> list[dict]
             "prevention_type": "예방3",
         })
 
-    return items
+    # 엑셀이 교체되면(mtime 변경) 예전 키는 쓸모없으니 지운다. 반기는 H1/H2 둘 다 남긴다 -
+    # 하반기 화면이 분모를 구할 때 상반기 무중단 대상을 같이 읽기 때문에 서로 밀어내면 안 된다.
+    for stale in [k for k in _items_cache if k[:2] != cache_key[:2]]:
+        del _items_cache[stale]
+    _items_cache[cache_key] = items
+    return [dict(i) for i in items]
 
 
 def get_targets(items: list[dict]) -> list[dict]:

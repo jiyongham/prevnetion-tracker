@@ -49,7 +49,7 @@
     <div class="card">
       <div class="label">기준일</div>
       <div class="value">{{ as_of }}</div>
-      <div class="sub">오늘</div>
+      <div class="sub">{% if data_as_of %}JIRA/Polestar {{ data_as_of }} 기준{% else %}오늘{% endif %}</div>
     </div>
     <div class="card">
       <div class="label">미완료</div>
