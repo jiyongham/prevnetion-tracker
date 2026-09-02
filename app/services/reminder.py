@@ -8,14 +8,24 @@ from app.config import settings
 TWO_CHAR_SURNAMES = {"남궁", "선우", "황보", "제갈", "사공", "서문", "독고", "동방"}
 
 
+# 담당자 구분자: 파이프(대부분 '||', 일부 '|') 또는 쉼표.
+# - 괄호 안의 쉼표('홍길동(A사, B사)')는 나누지 않는다.
+# - 슬래시는 구분자가 아니다 ('UI/UX팀'처럼 팀명에 들어간다).
+_OWNER_SPLIT_RE = re.compile(r"\|+|,(?![^(]*\))")
+
+
 def parse_owners(cell: str) -> list[dict]:
     """
     담당자 셀 파싱.
     '강대원-라이브쇼핑팀||김아름-커머스사업2그룹' 형태 (한 대상에 여러 명).
+
+    엑셀엔 '김중희, 김지현, 심성민'(쉼표), '조대영P|양승혁P'(단일 파이프)처럼 표기가
+    섞여 있어 셋 다 구분자로 본다. 안 나누면 여러 명이 한 사람으로 묶여 리마인드에서
+    담당자를 개별 선택할 수 없다.
     반환: [{raw, name, team}, ...]
     """
     out = []
-    for tok in (cell or "").split("||"):
+    for tok in _OWNER_SPLIT_RE.split(cell or ""):
         tok = tok.strip()
         if not tok:
             continue
@@ -32,17 +42,41 @@ def clean_name(name: str) -> str:
     return re.sub(r"\(.*?\)", "", name or "").strip()
 
 
+# 이름 뒤에 붙는 직급/호칭 (엑셀에 '안강현CP', '박재민P', '이준석 파트너'처럼 섞여 있다).
+# CP/PI를 P보다 앞에 둬야 'CP'가 'C'+'P'로 잘리지 않는다.
+_TITLE_RE = re.compile(r"\s*(파트장|파트너|매니저|프로|책임|선임|수석|팀장|CP|PI|[PDK])\s*$")
+
+# 약어 직급은 부르는 말로 바꿔 인사말에 쓴다 ('박재민P' -> '파트너님').
+# 'PI'는 'P' 오기로 확인돼 파트너로 함께 매핑한다. 여기 없는 직급(CP 등)은 적힌 그대로.
+_TITLE_ALIASES = {"P": "파트너", "PI": "파트너", "D": "대리", "K": "과장"}
+
+# 성을 뗄 수 있는 형태: 한글 2~4자. 이 범위를 벗어나면 외국인명이거나 여러 명이
+# 한 칸에 들어간 오염 데이터라, 앞 글자를 떼면 이름이 망가진다.
+_KOREAN_NAME_RE = re.compile(r"[가-힣]{2,4}$")
+
+
+def strip_title(name: str) -> str:
+    """이름 뒤 직급/호칭 제거 ('안강현CP' -> '안강현', '이준석 파트너' -> '이준석')"""
+    return _TITLE_RE.sub("", name or "").strip()
+
+
 def strip_surname(name: str) -> str:
     """
-    이름에서 성 제외 (홍길동 -> 길동).
-    두 글자 성(남궁/선우 등)은 두 글자, 그 외에는 한 글자 제거.
+    리마인드 인사말('안녕하세요, OO님')에 넣을 호칭을 만든다.
+
+    - 직급이 붙어 있으면 직급으로 부른다 ('안강현CP' -> 'CP', '박재민P' -> '파트너')
+    - 직급이 없는 한글 2~4자 이름이면 성을 뗀다 ('홍길동' -> '길동', '남궁민수' -> '민수')
+    - 그 밖(외국인 이름 등)은 손대지 않는다. 무조건 앞 글자를 자르면
+      '다와너밍졸' -> '와너밍졸'처럼 이름이 망가진다.
     """
     name = clean_name(name)
-    if len(name) <= 1:
+    m = _TITLE_RE.search(name)
+    if m:
+        title = m.group(1)
+        return _TITLE_ALIASES.get(title, title)
+    if not _KOREAN_NAME_RE.fullmatch(name):
         return name
-    if name[:2] in TWO_CHAR_SURNAMES:
-        return name[2:]
-    return name[1:]
+    return name[2:] if name[:2] in TWO_CHAR_SURNAMES else name[1:]
 
 
 def has_schedule_hint(item: dict) -> bool:
@@ -117,13 +151,25 @@ def team_via_cmdb(name: str, items: list[dict], cmdb_map: dict | None, fallback:
 
 
 def candidates_of(items: list[dict], cmdb_map: dict | None = None) -> list[dict]:
-    """대상들에 등장하는 담당자 후보 (중복 제거, 등장 순)"""
-    seen: dict[str, dict] = {}
+    """
+    대상들에 등장하는 담당자 후보 (중복 제거, 등장 순).
+    같은 사람이 '한경진'과 '한경진-교육플랫폼팀'처럼 다르게 적힌 행이 섞여 있어
+    원문(raw)이 아니라 이름+팀으로 중복을 판단한다. 한쪽에만 팀이 적힌 경우는 같은
+    사람으로 보고 팀이 있는 쪽으로 합친다 (동명이인이 서로 다른 팀에 있으면 그대로 둔다).
+    """
+    seen: dict[tuple, dict] = {}
     for d in items:
         for p in parse_owners(d.get("owner", "")):
-            if p["raw"] not in seen:
+            name = clean_name(p["name"])
+            key = (name, p["team"])
+            if key not in seen and p["team"]:
+                # 팀 없이 먼저 등록된 동일 인물이 있으면 그 자리를 이 항목으로 대체
+                seen.pop((name, ""), None)
+            elif key not in seen and not p["team"] and any(k[0] == name for k in seen):
+                continue  # 팀이 적힌 항목이 이미 있으면 팀 없는 중복은 버린다
+            if key not in seen:
                 team = team_via_cmdb(p["name"], items, cmdb_map, p["team"])
-                seen[p["raw"]] = {
+                seen[key] = {
                     "raw": p["raw"],
                     "name": p["name"],
                     "team": team,

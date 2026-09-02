@@ -79,6 +79,9 @@ class Settings(BaseSettings):
     sender_team: str
     sender_name: str
     capacity_sender_name: str   # 용량관리 리마인드는 발신자가 다름
+    # EoS 리마인드 발신자. 미설정이면 sender_name으로 폴백한다 - 필수로 두면 k8s Secret에
+    # 이 키가 들어가기 전에 코드가 배포될 때 config 로딩에서 앱이 통째로 죽는다.
+    eos_sender_name: str = ""
 
     # 대시보드 접속 주소 (리마인드 메시지 하단 안내용, 사내 IP라 .env에서만 설정)
     dashboard_url: str
@@ -155,3 +158,8 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+def eos_sender() -> str:
+    """EoS 리마인드 발신자 (미설정 시 공통 발신자)"""
+    return settings.eos_sender_name or settings.sender_name
