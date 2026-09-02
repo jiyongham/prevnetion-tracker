@@ -27,9 +27,9 @@
       </form>
       <form method="post" action="/send-report" class="inline-form admin-only">
         <input type="hidden" name="half" value="{{ half }}">
-        <button type="submit" class="btn-teams">📤 Teams 발송</button>
+        <button type="submit" class="btn-teams">📤 진척률 발송</button>
       </form>
-      <a href="/remind-preview?half={{ half }}" class="btn-remind admin-only" onclick="markNavigating(this)">📣 리마인드</a>
+      <a href="/remind-preview?half={{ half }}" class="btn-remind admin-only" onclick="markNavigating(this)">📣 Teams 리마인드</a>
       <a href="/owner-check?half={{ half }}" class="btn-sm admin-only" onclick="markNavigating(this)">🔍 담당자 확인</a>
     </div>
   </header>
