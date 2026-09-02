@@ -119,9 +119,9 @@ def greeting_suffix(items: list[dict], kind: str = "blank") -> str:
         ask = "다름아니라 공지드린 하반기 DR 훈련 하기 계획된 일정 알 수 있을까요?"
         closing = f"DR 모의훈련 진척 현황({settings.dashboard_url})에 기입 요청드립니다."
     return (
-        f"님. {settings.sender_team} {settings.sender_name}입니다.\n\n\n"
+        f"님. {settings.sender_team} {settings.sender_name}입니다.\n\n\n\n"
         f"{ask}\n\n"
-        f"{build_body(items, show_raw=kind != 'blank')}\n\n\n"
+        f"{build_body(items, show_raw=kind != 'blank')}\n\n\n\n"
         f"{closing}"
     )
 
