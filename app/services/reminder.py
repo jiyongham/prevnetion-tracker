@@ -95,7 +95,7 @@ def build_body(items: list[dict], show_raw: bool = False) -> str:
                 line += f" (예정: {d.get('schedule_disp') or d['schedule_raw']})"
             else:
                 line += f" (현재 등록: {d['schedule_raw']})"
-        lines.append(line)
+        lines.append(f"\t- {line}")
     return "\n\n".join(lines) if lines else "(대상 없음)"
 
 
