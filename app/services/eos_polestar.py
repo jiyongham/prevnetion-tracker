@@ -67,7 +67,8 @@ def judge_converted(item: dict, index: dict) -> tuple[bool, str]:
     그 사이에 전환이 일어났다고 말할 수 있다. 현재 상태만 보면 "원래 그 이름이었던 것"과
     구분되지 않는다.
 
-    근거 문자열은 어느 키로 확인했는지 화면/진단에서 보여주기 위한 것.
+    근거 문자열은 어느 키로 확인했는지 화면/진단에서 보여주기 위한 것
+    ("Polestar" 접두어는 붙이지 않는다 - 쓰는 쪽에서 붙이면 중복된다).
     """
     by_name, by_ip = index["by_name"], index["by_ip"]
     system_name = item.get("system_name", "")
@@ -82,7 +83,7 @@ def judge_converted(item: dict, index: dict) -> tuple[bool, str]:
 
     # 엑셀엔 접미사가 없었는데 Polestar엔 같은 기준명의 '_OLD'가 있다 = 그 사이 전환됨
     if "OLD" in by_name.get(_basename(system_name), {}):
-        return True, "Polestar CI명 매칭"
+        return True, "CI명 매칭"
 
     # 이름이 드리프트된 경우: IP로 Polestar의 실제 CI명을 찾아 그 기준으로 재확인
     for ci in by_ip.get((item.get("ip") or "").strip(), []):
@@ -103,10 +104,11 @@ def judge_pending(item: dict, index: dict) -> bool:
     )
 
 
-def confirmed_item_nos(items: list[dict], resources: list[dict] | None = None) -> set[str]:
+def confirmed_reasons(items: list[dict], resources: list[dict] | None = None) -> dict[str, str]:
     """
-    Polestar에서 '_OLD'가 확인된 대상의 item_no 집합.
-    calc_eos_completion(..., polestar_confirmed=...)에 그대로 넘겨 쓴다.
+    Polestar에서 '_OLD'가 확인된 대상의 {item_no: 근거}.
+    calc_eos_completion(..., polestar_confirmed=...)에 그대로 넘겨 쓴다 (판정은 in 연산만
+    하므로 집합이든 사전이든 동작이 같고, 사전이면 화면에 근거까지 보여줄 수 있다).
 
     Polestar 조회는 네트워크 호출이라 대상마다 부르지 않고 목록을 한 번만 받아 인덱싱한다.
 
@@ -117,7 +119,18 @@ def confirmed_item_nos(items: list[dict], resources: list[dict] | None = None) -
     if resources is None:
         resources = polestar.list_resources()
     index = build_index(resources)
-    return {i["item_no"] for i in items if judge_converted(i, index)[0]}
+
+    reasons = {}
+    for i in items:
+        done, reason = judge_converted(i, index)
+        if done:
+            reasons[i["item_no"]] = reason
+    return reasons
+
+
+def confirmed_item_nos(items: list[dict], resources: list[dict] | None = None) -> set[str]:
+    """Polestar에서 '_OLD'가 확인된 대상의 item_no 집합 (근거가 필요 없을 때)"""
+    return set(confirmed_reasons(items, resources))
 
 
 def check_eos_conversion(items: list[dict], resources: list[dict] | None = None) -> dict:

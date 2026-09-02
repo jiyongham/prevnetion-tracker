@@ -120,7 +120,7 @@
           <th style="width:50px">완료 ✏️</th>
           <th style="width:130px">증적 ✏️</th>
           <th style="width:130px">비고 ✏️</th>
-          <th>JIRA</th><th>상태</th><th style="width:60px">저장</th>
+          <th>JIRA</th><th style="width:90px">Polestar</th><th>상태</th><th style="width:60px">저장</th>
           <th class="admin-only" style="width:60px">제외</th>
         </tr>
       </thead>
@@ -151,6 +151,17 @@
             {% if d.jira_key %}
             <a href="{{ jira_base }}/browse/{{ d.jira_key }}" target="_blank" class="link small">{{ d.jira_key }}</a>
             {% else %}<span class="muted">-</span>{% endif %}
+          </td>
+          <td class="center">
+            {% if d.polestar is none %}
+              <span class="badge muted" title="Polestar 조회에 실패해 확인하지 못했습니다 (JIRA 근거만 반영)">조회불가</span>
+            {% elif d.polestar %}
+              <span class="badge ok" title="Polestar에서 AS-IS CI가 '_OLD'로 바뀐 것을 확인 — {{ d.polestar }}">_OLD ✓</span>
+            {% elif d.no_reply %}
+              <span class="muted">-</span>
+            {% else %}
+              <span class="muted small" title="Polestar에 '_OLD' CI가 아직 없습니다 (전환 전이거나 CI명이 달라 못 찾은 경우)">미확인</span>
+            {% endif %}
           </td>
           <td>
             {% if d.no_reply %}<span class="badge muted">미응답</span>
