@@ -10,22 +10,23 @@
 
 수정은 자동으로 하지 않고, 검토용 후보 목록만 만든다 (원본은 엑셀).
 """
-import concurrent.futures
+import logging
 import time
 
 from app.config import settings
 from app.core.capacity_loader import get_targets as get_capacity_targets
 from app.core.capacity_loader import load_capacity_items_merged
 from app.core.eos_loader import get_targets as get_eos_targets
-from app.core.eos_loader import load_eos_items_merged
 from app.core.excel_loader import get_targets, load_dr_items_merged, scope_h2_targets
-from app.core.insight_client import get_server_asset
+from app.core.insight_client import get_server_assets
 from app.core.jira_client import jira
 from app.services.capacity import build_capacity_ticket_summary, filter_tickets_by_sheet
 from app.services.completion import build_ticket_summary
-from app.services.eos import build_eos_ticket_summary
-from app.services.matcher import match_items_by_cmdb_key, match_items_by_ip, merge_ticket_maps
+from app.services.eos_data import get_eos_data
+from app.services.matcher import match_items_by_ip
 from app.services.reminder import clean_name, parse_owners
+
+logger = logging.getLogger(__name__)
 
 
 def parse_jsm_requester(display_name: str) -> dict:
@@ -61,23 +62,13 @@ def collect_targets_with_tickets(half: str, use_jira: bool = True):
 
 
 def collect_eos_targets_with_tickets(use_jira: bool = True):
-    """EoS 대상 목록 + (윈도우 제한 없는) 매칭 티켓맵"""
-    items = load_eos_items_merged()
-    targets = get_eos_targets(items)
-
-    ticket_map = {}
-    jira_error = None
-    if use_jira:
-        try:
-            issues = jira.get_eos_tickets()
-            tickets = build_eos_ticket_summary(issues, settings.planned_end_date_field)
-            cmdb_map = match_items_by_cmdb_key(targets, tickets)
-            ip_map = match_items_by_ip(targets, tickets)["matched"]
-            ticket_map = merge_ticket_maps(cmdb_map, ip_map)
-        except Exception as e:
-            jira_error = str(e)
-
-    return targets, ticket_map, jira_error
+    """
+    EoS 대상 목록 + 매칭 티켓맵.
+    대시보드와 같은 캐시(eos_data)를 쓴다 - 여기서 JIRA를 따로 부르면 담당자 확인
+    화면만 매번 수십 초씩 걸렸고, 같은 조회 결과가 화면마다 어긋날 여지도 있었다.
+    """
+    items, ticket_map, _, jira_error = get_eos_data(use_external=use_jira)
+    return get_eos_targets(items), ticket_map, jira_error
 
 
 def collect_capacity_targets_with_tickets(sheet: str, use_jira: bool = True):
@@ -105,39 +96,42 @@ _cmdb_cache: dict = {}  # 호스트명 -> (조회시각, 자산)
 
 def lookup_cmdb_assets(targets: list[dict]) -> dict[str, dict]:
     """
-    item_no -> CMDB 서버 자산 (호스트명 기준, 병렬 조회).
+    item_no -> CMDB 서버 자산 (호스트명 기준).
+
     호스트명 단위로 TTL 캐시한다 - 대시보드/리마인드/담당자확인이 같은 호스트를 반복
-    조회하는데 자산 정보는 몇 분 사이에 바뀌지 않는다 (요청당 2.2초를 잡아먹던 구간).
+    조회하는데 자산 정보는 몇 분 사이에 바뀌지 않는다.
+    캐시에 없는 호스트명은 한 번에 묶어서 조회한다 (한 건씩 부르면 EoS 387대 기준 35초).
     """
     now = time.time()
-    have_host = []
+    missing: list[dict] = []
     results: dict[str, dict] = {}
     for i in targets:
-        host = i.get("hostname")
+        host = (i.get("hostname") or "").strip()
         if not host:
             continue
-        hit = _cmdb_cache.get(host)
+        hit = _cmdb_cache.get(host.lower())
         if hit and now - hit[0] < _CMDB_CACHE_TTL_SEC:
             if hit[1]:
                 results[i["no"]] = hit[1]
         else:
-            have_host.append(i)
+            missing.append(i)
 
-    def _fetch(item):
-        try:
-            return item["no"], get_server_asset(item["hostname"])
-        except Exception as e:
-            print(f"⚠️ CMDB 조회 실패 (NO {item['no']}, {item['hostname']}): {e}")
-            return item["no"], None
-
-    if not have_host:
+    if not missing:
         return results
-    by_no = {i["no"]: i for i in have_host}
-    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as ex:
-        for no, asset in ex.map(_fetch, have_host):
-            _cmdb_cache[by_no[no]["hostname"]] = (now, asset)
-            if asset:
-                results[no] = asset
+
+    try:
+        assets = get_server_assets([i["hostname"] for i in missing])
+    except Exception as e:
+        logger.warning(f"CMDB 묶음 조회 실패 (담당자 비교 생략): {e}")
+        return results
+
+    for i in missing:
+        host = i["hostname"].strip().lower()
+        asset = assets.get(host)
+        # CMDB에 없는 호스트명도 캐시한다 (없다는 사실이 반복 조회를 막는다)
+        _cmdb_cache[host] = (now, asset)
+        if asset:
+            results[i["no"]] = asset
     return results
 
 

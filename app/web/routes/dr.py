@@ -2,7 +2,7 @@
 """DR 모의훈련 관련 라우트 (대시보드/저장/리마인드/담당자확인/챗봇/AI진단/리포트/내보내기)"""
 import io
 import logging
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from urllib.parse import quote
 
 import pandas as pd
@@ -54,6 +54,13 @@ def filter_by_mode(items: list[dict], mode: str | None) -> list[dict]:
     if not label:
         return items
     return [i for i in items if label in (i.get("mode") or "")]
+
+
+def external_as_of(half: str) -> str:
+    """외부 데이터(JIRA) 기준 시각 표시용. 갱신은 뒤에서 돌기 때문에 화면 숫자가
+    몇 분 전 기준일 수 있어 언제 것인지 같이 보여준다."""
+    at = dr_data.cached_at(half)
+    return datetime.fromtimestamp(at).strftime("%m-%d %H:%M") if at else ""
 
 
 def get_dashboard_data(half: str, as_of: date, use_jira: bool = True, mode: str | None = None):
@@ -167,6 +174,7 @@ def dashboard(
         "mode_counts": mode_counts,
         "mode_qs": f"&mode={mode}" if mode else "",
         "as_of": today,
+        "data_as_of": external_as_of(half),
         "next_week": today + timedelta(days=7),
         "today": today,
         "filter_team": team or "",
@@ -230,8 +238,10 @@ async def api_exclude(request: Request):
         updated_by=updated_by,
         exclude_reason=reason if excluded else "",  # 복귀 시엔 사유를 지운다
     )
-    # 대상 구성이 바뀌었으므로 티켓 매칭 캐시를 버린다
+    # 대상 구성이 바뀌었으므로 티켓 매칭 캐시를 버리고, 곧바로 뒤에서 다시 채운다
+    # (버리기만 하면 제외 직후 화면을 여는 사람이 재조회를 다 기다리게 된다)
     dr_data.invalidate_cache(half)
+    dr_data.prewarm(half)
     return JSONResponse({"ok": True})
 
 

@@ -1,7 +1,7 @@
 # app/web/routes/eos.py
 """EoS(노후 OS/DB 전환 - [예방1]) 관련 라우트"""
 import logging
-from datetime import date
+from datetime import date, datetime
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -22,7 +22,12 @@ from app.models.db import (
 from app.services.completion import group_by
 from app.services.eos import build_no_reply_details, calc_eos_completion, filter_track
 from app.services import eos_chatbot, evidence_check
-from app.services.eos_data import get_eos_data, invalidate_cache as invalidate_eos_cache
+from app.services.eos_data import (
+    cached_at,
+    get_eos_data,
+    invalidate_cache as invalidate_eos_cache,
+    prewarm as prewarm_eos,
+)
 from app.services.eos_plan_chat import build_candidates, parse_plan_message
 from app.services.eos_reminder import group_eos_no_reply, group_eos_unplanned
 from app.services.eos_report import send_eos_report
@@ -34,12 +39,24 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def external_as_of() -> str:
+    """외부 데이터(JIRA/Polestar) 기준 시각 표시용. 갱신은 뒤에서 돌기 때문에
+    화면 숫자가 몇 분 전 기준일 수 있어 언제 것인지 같이 보여준다."""
+    at = cached_at()
+    return datetime.fromtimestamp(at).strftime("%m-%d %H:%M") if at else ""
+
+
 def get_eos_dashboard_data(as_of: date, use_jira: bool = True, track: str = "ALL"):
+    """반환: (완료율 집계, 엑셀+DB 병합 전체 항목, JIRA 오류메시지)
+
+    items를 같이 돌려주는 이유: 호출부가 제외/미응답 목록을 만들려고 엑셀을 또 읽고 있었는데,
+    같은 요청 안에서 두 번 읽으면 그 사이 엑셀이 갱신될 경우 집계와 목록의 기준이 어긋난다.
+    """
     items, ticket_map, polestar_confirmed, jira_error = get_eos_data(use_external=use_jira)
     result = calc_eos_completion(
         filter_track(items, track), ticket_map, as_of, polestar_confirmed=polestar_confirmed
     )
-    return result, jira_error
+    return result, items, jira_error
 
 
 @router.get("/eos", response_class=HTMLResponse)
@@ -54,10 +71,9 @@ def eos_dashboard(
         track = "ALL"
     today = date.today()
 
-    result, jira_error = get_eos_dashboard_data(today, track=track)
+    result, all_items, jira_error = get_eos_dashboard_data(today, track=track)
     by_team = group_by(result, "ops_team")
 
-    all_items = load_eos_items_merged()
     excluded_cnt = sum(1 for i in all_items if i["status"] == "excluded")
     no_reply_raw = [i for i in all_items if i["status"] == "no_reply"]
     no_reply_details = build_no_reply_details(no_reply_raw, today.year)
@@ -113,6 +129,7 @@ def eos_dashboard(
         "admins": sorted(settings.eos_admin_set),
         "jira_error": jira_error,
         "jira_base": settings.jira_url.rstrip("/"),
+        "data_as_of": external_as_of(),
     })
 
 
@@ -174,11 +191,11 @@ def eos_remind_preview(
     team: str | None = None,
     kind: str = "blank",
 ):
-    result, jira_error = get_eos_dashboard_data(date.today())
+    result, all_items, jira_error = get_eos_dashboard_data(date.today())
 
     blank_groups = group_eos_unplanned(result["details"], hinted=False)
     hinted_groups = group_eos_unplanned(result["details"], hinted=True)
-    no_reply_groups = group_eos_no_reply(load_eos_items_merged())
+    no_reply_groups = group_eos_no_reply(all_items)
 
     groups = {"hinted": hinted_groups, "no_reply": no_reply_groups}.get(kind, blank_groups)
 
@@ -423,6 +440,8 @@ async def api_eos_exclude(request: Request):
         excluded=excluded,
         exclude_reason=reason if excluded else "",
     )
-    # 대상 구성이 바뀌었으므로 티켓 매칭 캐시를 버린다
+    # 대상 구성이 바뀌었으므로 티켓 매칭 캐시를 버리고, 곧바로 뒤에서 다시 채운다
+    # (버리기만 하면 제외 직후 화면을 여는 사람이 재조회를 다 기다리게 된다)
     invalidate_eos_cache()
+    prewarm_eos()
     return JSONResponse({"ok": True})
