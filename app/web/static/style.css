@@ -1,3 +1,17 @@
+:root {
+  /* 깊이는 테두리 대신 겹친 그림자로. 투명도라 배경색이 달라져도 자연스럽게 얹힌다.
+     구분선(테이블 경계, 헤더 밑줄 등)은 구조를 나타내므로 테두리 그대로 둔다. */
+  --shadow-border:
+    0 0 0 1px rgba(0, 0, 0, .06),
+    0 1px 2px -1px rgba(0, 0, 0, .06),
+    0 2px 4px 0 rgba(0, 0, 0, .04);
+  --shadow-border-hover:
+    0 0 0 1px rgba(0, 0, 0, .08),
+    0 1px 2px -1px rgba(0, 0, 0, .08),
+    0 2px 4px 0 rgba(0, 0, 0, .06);
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+}
+
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
@@ -94,7 +108,7 @@ select, input[type="date"], input[type="text"] {
   gap: 14px; margin-bottom: 20px;
 }
 .card {
-  background: #fff; border: 1px solid #e3e6ea;
+  background: #fff; box-shadow: var(--shadow-border);
   border-radius: 10px; padding: 18px;
 }
 .card .label { font-size: 12px; color: #888; margin-bottom: 6px; }
@@ -112,7 +126,7 @@ select, input[type="date"], input[type="text"] {
 
 /* 패널 */
 .panel {
-  background: #fff; border: 1px solid #e3e6ea; border-radius: 10px;
+  background: #fff; box-shadow: var(--shadow-border); border-radius: 10px;
   padding: 18px; margin-bottom: 20px;
 }
 .panel-head {
@@ -144,7 +158,7 @@ select, input[type="date"], input[type="text"] {
 
 /* 입력자명 박스 */
 .user-input {
-  background: #f0f4ff; padding: 10px 14px; border-radius: 6px;
+  background: #f0f4ff; padding: 10px 14px; border-radius: 16px;
   margin-bottom: 12px; font-size: 13px; border: 1px solid #dbe4ff;
 }
 .user-input input { width: 140px; padding: 5px 10px; }
@@ -195,7 +209,7 @@ input.cell.edited { border-left: 3px solid #5b5fc7; }
 .btn-save {
   padding: 5px 12px; background: #5b5fc7; color: #fff;
   border: none; border-radius: 5px; cursor: pointer; font-size: 12px;
-  white-space: nowrap;
+  white-space: nowrap; min-width: 52px;
 }
 .btn-save:hover { background: #4a4eb0; }
 .btn-save:disabled { background: #aaa; cursor: not-allowed; }
@@ -279,13 +293,16 @@ footer a:hover { text-decoration: underline; }
 
 /* 토스트 */
 .toast {
-  position: fixed; bottom: 24px; right: 24px;
+  position: fixed; bottom: 84px; right: 24px;
   padding: 12px 20px; border-radius: 8px;
   color: #fff; font-size: 13px; font-weight: 500;
-  opacity: 0; transform: translateY(10px);
-  transition: all .25s; pointer-events: none; z-index: 999;
+  opacity: 0; translate: 0 10px;
+  transition-property: opacity, translate;
+  transition-duration: .25s;
+  transition-timing-function: var(--ease-out);
+  pointer-events: none; z-index: 1200;
 }
-.toast.show { opacity: 1; transform: translateY(0); }
+.toast.show { opacity: 1; translate: 0 0; }
 .toast.ok { background: #2e7d32; }
 .toast.err { background: #c62828; }
 
@@ -300,12 +317,14 @@ footer a:hover { text-decoration: underline; }
   background: #fff; color: #5b5fc7; font-size: 20px; cursor: pointer;
   border: 1.5px solid #5b5fc7;
   box-shadow: 0 2px 8px rgba(0,0,0,.12);
-  transition: transform .15s, box-shadow .15s, opacity .2s, visibility .2s;
+  transition-property: scale, box-shadow, background-color, color, opacity, visibility;
+  transition-duration: .15s;
+  transition-timing-function: var(--ease-out);
 }
 .chat-toggle:hover {
   background: #5b5fc7; color: #fff;
   box-shadow: 0 4px 14px rgba(0,0,0,.2);
-  transform: scale(1.06);
+  scale: 1.06;
 }
 .chat-toggle.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
 .chat-panel {
@@ -316,11 +335,13 @@ footer a:hover { text-decoration: underline; }
   box-shadow: 0 8px 28px rgba(0,0,0,.22);
   display: flex; flex-direction: column; overflow: hidden;
   transform-origin: bottom right;
-  transition: opacity .18s ease, transform .18s ease, visibility .18s;
+  transition-property: opacity, scale, translate, visibility;
+  transition-duration: .18s;
+  transition-timing-function: var(--ease-out);
 }
 .chat-panel.hidden {
   opacity: 0; visibility: hidden; pointer-events: none;
-  transform: scale(.92) translateY(8px);
+  scale: .92; translate: 0 8px;
 }
 .chat-head {
   background: #5b5fc7; color: #fff; padding: 10px 14px;
@@ -357,6 +378,23 @@ footer a:hover { text-decoration: underline; }
 .chat-form button {
   border: none; background: #5b5fc7; color: #fff; padding: 0 16px; cursor: pointer; font-size: 13px;
 }
+
+/* 누를 때 살짝 눌리는 촉감. 산만한 자리는 요소에 .static 을 붙여 끈다 */
+.btn-teams, .btn-remind, .btn-sm, .btn-save, .btn-ai, .btn-xs,
+.chip, .tab, .top-nav-item, .chat-agent-btn, .chat-form button,
+.chat-close, .sent-report-close, .owner-item {
+  transition-property: scale;
+  transition-duration: 150ms;
+  transition-timing-function: var(--ease-out);
+}
+.btn-teams:active, .btn-remind:active, .btn-sm:active, .btn-save:active,
+.btn-ai:active, .btn-xs:active, .chip:active, .tab:active, .top-nav-item:active,
+.chat-agent-btn:active, .chat-form button:active, .chat-close:active,
+.sent-report-close:active, .owner-item:active {
+  scale: .96;
+}
+.static:active, :disabled:active { scale: 1; }
+.chat-toggle:active { scale: .96; }
 
 /* AI 진단 버튼/모달 (매칭 미확인 사유, 담당자 불일치 판단 공용) */
 .btn-ai {
