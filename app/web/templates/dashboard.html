@@ -1,23 +1,8 @@
-<!DOCTYPE html>
-<html lang="ko">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>DR 모의훈련 진척 관리</title>
-  <link rel="stylesheet" href="/static/style.css?v=15">
-</head>
-<body>
-<a href="#main" class="skip-link">본문으로 건너뛰기</a>
-<div class="container">
+{% extends "_layout.html" %}
 
-  <nav class="top-nav">
-    <a href="/" class="top-nav-item active">🔄 DR훈련</a>
-    <a href="/capacity" class="top-nav-item">💾 용량관리</a>
-    <a href="/eos" class="top-nav-item">💻 EoS</a>
-  </nav>
+{% block title %}DR 모의훈련 진척 관리{% endblock %}
 
-  <main id="main">
-
+{% block content %}
   <header>
     <h1>🔄 DR 모의훈련 진척 현황</h1>
     <div class="controls">
@@ -263,10 +248,9 @@
       <a href="/api/summary?half={{ half }}" target="_blank">API</a>
     </span>
   </footer>
+{% endblock %}
 
-</main>
-</div>
-
+{% block after %}
 <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
 <!-- 조회 챗봇 위젯 -->
@@ -656,5 +640,4 @@ function closeSentReport() {
   }
 }
 </script>
-</body>
-</html>
+{% endblock %}

@@ -1,17 +1,9 @@
 <!-- app/web/templates/capacity_owner_check.html -->
-<!DOCTYPE html>
-<html lang="ko">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>용량관리 담당자 불일치 후보</title>
-  <link rel="stylesheet" href="/static/style.css?v=15">
-</head>
-<body>
-<a href="#main" class="skip-link">본문으로 건너뛰기</a>
-<div class="container">
-  <main id="main">
+{% extends "_layout.html" %}
 
+{% block title %}용량관리 담당자 불일치 후보{% endblock %}
+
+{% block content %}
   <header>
     <h1>🔍 용량관리 담당자 불일치 후보</h1>
     <a href="/capacity?sheet={{ sheet }}" class="btn-sm">← 용량관리</a>
@@ -101,9 +93,9 @@
       </tbody>
     </table>
   </div>
-</main>
-</div>
+{% endblock %}
 
+{% block after %}
 <!-- AI 진단 결과 모달 -->
 <div id="aiModal" class="ai-modal hidden" onclick="if(event.target===this) closeAiModal()">
   <div class="ai-modal-box">
@@ -271,5 +263,4 @@ async function diagnoseAll(btn) {
   btn.disabled = false;
 }
 </script>
-</body>
-</html>
+{% endblock %}

@@ -1,0 +1,62 @@
+{# 모든 화면의 공통 껍데기 (사이드바 + 본문 영역).
+   화면마다 <head>와 상단 네비게이션을 복사해두던 것을 여기로 합쳤다 - 12벌을 각자 고치면
+   한 화면만 다르게 생기는 일이 반복된다.
+
+   자식 템플릿이 채우는 블록:
+     title   - 브라우저 탭 제목
+     content - <main> 안에 들어갈 본문
+     after   - 본문 밖에 놓여야 하는 것 (토스트, 모달, <script>)
+
+   현재 화면이 어느 도메인인지는 request.url.path로 판별한다. 라우트마다 변수를
+   넘기게 하면 새 화면을 추가할 때 빠뜨리기 쉬워서, 경로 하나만 보면 되게 했다. #}
+{% set path = request.url.path %}
+{% if path.startswith('/capacity') %}{% set section = 'capacity' %}
+{% elif path.startswith('/eos') %}{% set section = 'eos' %}
+{% elif path.startswith('/logs') %}{% set section = 'logs' %}
+{% else %}{% set section = 'dr' %}{% endif %}
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}장애예방 활동 진척 관리{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css?v=17">
+</head>
+<body>
+<a href="#main" class="skip-link">본문으로 건너뛰기</a>
+
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">🛡️</span>
+      <span class="brand-text">장애예방 활동<em>진척 관리</em></span>
+    </div>
+
+    <nav class="side-nav" aria-label="주요 영역">
+      <a href="/" class="side-nav-item {{ 'active' if section == 'dr' }}"
+         {{ 'aria-current=page' if section == 'dr' }}>
+        <span class="side-nav-icon" aria-hidden="true">🔄</span>DR훈련</a>
+      <a href="/capacity" class="side-nav-item {{ 'active' if section == 'capacity' }}"
+         {{ 'aria-current=page' if section == 'capacity' }}>
+        <span class="side-nav-icon" aria-hidden="true">💾</span>용량관리</a>
+      <a href="/eos" class="side-nav-item {{ 'active' if section == 'eos' }}"
+         {{ 'aria-current=page' if section == 'eos' }}>
+        <span class="side-nav-icon" aria-hidden="true">💻</span>EoS</a>
+    </nav>
+
+    <div class="side-nav-foot">
+      <a href="/logs" class="side-nav-item subtle {{ 'active' if section == 'logs' }}">
+        <span class="side-nav-icon" aria-hidden="true">🧾</span>변경 이력</a>
+    </div>
+  </aside>
+
+  <div class="app-body">
+    <main id="main" class="container">
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+</div>
+
+{% block after %}{% endblock %}
+</body>
+</html>

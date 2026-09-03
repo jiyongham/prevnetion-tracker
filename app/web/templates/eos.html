@@ -1,24 +1,9 @@
 <!-- app/web/templates/eos.html -->
-<!DOCTYPE html>
-<html lang="ko">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>EoS 진척 현황</title>
-  <link rel="stylesheet" href="/static/style.css?v=15">
-</head>
-<body>
-<a href="#main" class="skip-link">본문으로 건너뛰기</a>
-<div class="container">
+{% extends "_layout.html" %}
 
-  <nav class="top-nav">
-    <a href="/" class="top-nav-item">🔄 DR훈련</a>
-    <a href="/capacity" class="top-nav-item">💾 용량관리</a>
-    <a href="/eos" class="top-nav-item active">💻 EoS</a>
-  </nav>
+{% block title %}EoS 진척 현황{% endblock %}
 
-  <main id="main">
-
+{% block content %}
   <header>
     <h1>💻 EoS 진척 현황 (노후 OS/DB 전환)</h1>
     <div class="controls">
@@ -131,14 +116,13 @@
       <thead>
         <tr>
           <th scope="col">시스템명</th><th scope="col">호스트명</th><th scope="col">운영팀</th><th scope="col">담당자</th>
-          <th scope="col" style="width:110px">OS</th>
-          <th scope="col" style="width:70px">DB</th>
+          <th scope="col" style="width:150px">OS / DB</th>
           <th scope="col" style="width:80px">입력자명</th>
           <th scope="col" style="width:90px">조치계획 ✏️</th>
           <th scope="col" style="width:50px">완료 ✏️</th>
           <th scope="col" style="width:130px">증적 ✏️</th>
           <th scope="col" style="width:130px">비고 ✏️</th>
-          <th scope="col">JIRA</th><th scope="col" style="width:90px">Polestar</th><th scope="col">상태</th><th scope="col" style="width:60px">저장</th>
+          <th scope="col" style="width:200px">완료 근거</th><th scope="col">상태</th><th scope="col" style="width:60px">저장</th>
           <th scope="col" class="admin-only" style="width:60px">제외</th>
         </tr>
       </thead>
@@ -154,8 +138,10 @@
             <input type="text" class="cell owner-edit" value="{{ d.owner }}"
                    aria-label="{{ d.system_name }} 담당자">
           </td>
-          <td class="small">{{ d.os }}</td>
-          <td class="small">{{ d.db }}</td>
+          <td class="small stack-cell">
+            <span>{{ d.os }}</span>
+            {% if d.db %}<span class="muted">{{ d.db }}</span>{% endif %}
+          </td>
           <td class="small updated-by">{{ d.updated_by }}</td>
 
           <td><input type="text" class="cell sched {{ 'edited' if d.input_source == 'web' else '' }}" value="{{ d.schedule_disp }}" placeholder="OO월"
@@ -170,22 +156,16 @@
           <td><input type="text" class="cell note" value="{{ d.note }}" placeholder="비고"
                  aria-label="{{ d.system_name }} 비고"></td>
 
-          <td>
+          <td class="evidence-pair">
             {% if d.jira_key %}
-            <a href="{{ jira_base }}/browse/{{ d.jira_key }}" target="_blank" class="link small">{{ d.jira_key }}</a>
+              <a href="{{ jira_base }}/browse/{{ d.jira_key }}" target="_blank" class="link small">{{ d.jira_key }}</a>
             {% else %}<span class="muted">-</span>{% endif %}
-          </td>
-          <td class="center polestar-cell">
             {% if d.polestar_gone %}
-              <span class="badge warn" title="{{ d.polestar }} — {{ d.polestar_seen }}에 '_OLD' 확인. 지금은 Polestar에 CI가 없습니다(폐기 추정). 확인 기록이 있어 완료 근거는 유지됩니다.">_OLD ✓ 폐기</span>
+              <span class="badge warn" title="{{ d.polestar }} — {{ d.polestar_seen }}에 '_OLD' 확인. 지금은 Polestar에 CI가 없습니다(폐기 추정). 확인 기록이 있어 완료 근거는 유지됩니다.">_OLD 폐기</span>
               <button class="btn-xs admin-only" onclick="clearPolestar(this)"
                       title="관리자: 오탐이면 이 관측 기록을 지웁니다 (다음 조회에서 다시 보이면 재기록)">✕</button>
             {% elif d.polestar %}
-              <span class="badge ok" title="{{ d.polestar }}{% if d.polestar_seen %} — {{ d.polestar_seen }} 최초 확인{% endif %}">_OLD ✓</span>
-            {% elif d.no_reply %}
-              <span class="muted">-</span>
-            {% else %}
-              <span class="muted small" title="Polestar에 '_OLD' CI가 아직 없습니다 (전환 전이거나 CI명이 달라 못 찾은 경우)">미확인</span>
+              <span class="badge ok" title="Polestar {{ d.polestar }}{% if d.polestar_seen %} — {{ d.polestar_seen }} 최초 확인{% endif %}">_OLD ✓</span>
             {% endif %}
           </td>
           <td>
@@ -237,10 +217,9 @@
   <footer>
     <span>기준일 {{ as_of }}</span>
   </footer>
+{% endblock %}
 
-</main>
-</div>
-
+{% block after %}
 <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
 <script>
@@ -526,5 +505,4 @@ function closeSentReport() {
   }
 }
 </script>
-</body>
-</html>
+{% endblock %}
