@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>DR 모의훈련 진척 관리</title>
-  <link rel="stylesheet" href="/static/style.css?v=11">
+  <link rel="stylesheet" href="/static/style.css?v=12">
 </head>
 <body>
 <div class="container">
@@ -257,8 +257,8 @@
 <div id="toast" class="toast"></div>
 
 <!-- 조회 챗봇 위젯 -->
-<button id="chatToggle" class="chat-toggle hidden" onclick="toggleChat()">💬</button>
-<div id="chatPanel" class="chat-panel">
+<button id="chatToggle" class="chat-toggle" onclick="toggleChat()">💬</button>
+<div id="chatPanel" class="chat-panel hidden">
   <div class="chat-head">
     <span>💬 DR훈련 조회 챗봇</span>
     <button class="chat-close" onclick="toggleChat()">✕</button>
@@ -414,6 +414,10 @@ async function saveRow(btn) {
       showToast(`NO.${payload.item_no} 저장 완료`);
       const ubCell = tr.querySelector(".updated-by");
       if (ubCell) ubCell.textContent = payload.updated_by;
+      // 같은 행을 1.2초 안에 다시 저장하면 클래스가 이미 붙어 있어 애니메이션이
+      // 다시 안 돈다. 지웠다가 리플로우를 강제한 뒤 붙여 매번 처음부터 재생시킨다.
+      tr.classList.remove("saved");
+      void tr.offsetWidth;
       tr.classList.add("saved");
       setTimeout(() => tr.classList.remove("saved"), 1200);
     } else { showToast("저장 실패", false); }
