@@ -838,39 +838,3 @@ footer a:hover {
 .cell.ev-bad  { border-color: var(--color-status-danger-solid);  background: var(--color-status-danger-bg); }
 .ev-flag { margin-inline-start: 2px; cursor: help; font-size: var(--text-caption); }
 .warn-text { color: var(--color-status-warning-text); font-weight: 600; }
-
-/* 포털 홈 - DR/용량관리/EoS 중 하나를 고르는 진입 카드 */
-.portal-lead { color: var(--color-text-tertiary); font-size: var(--text-md); margin-bottom: 20px; }
-.module-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
-@media (max-width: 860px) {
-  .module-grid { grid-template-columns: 1fr; }
-}
-.module-tile {
-  display: flex; flex-direction: column; gap: 14px;
-  background: var(--color-bg-surface); box-shadow: var(--shadow-border);
-  border-radius: 10px; padding: 20px;
-  text-decoration: none; color: inherit;
-}
-.module-tile:hover { box-shadow: var(--shadow-border-hover); }
-.module-tile:focus-visible {
-  outline: 2px solid var(--color-focus-ring); outline-offset: 2px;
-}
-.module-tile-head { display: flex; align-items: center; gap: 10px; }
-.module-tile-icon { font-size: var(--text-xl); line-height: 1; }
-.module-tile h2 { margin: 0; color: var(--color-text-primary); }
-.module-tile .desc { font-size: var(--text-base); color: var(--color-text-tertiary); line-height: 1.55; }
-.module-tile-stat {
-  display: flex; align-items: baseline; gap: 8px; margin-top: auto;
-}
-.module-tile-stat .pct { font-size: var(--text-2xl); font-weight: 700; font-variant-numeric: tabular-nums; }
-.module-tile-stat .count { font-size: var(--text-sm); color: var(--color-text-tertiary); font-variant-numeric: tabular-nums; }
-.module-tile-foot {
-  display: flex; justify-content: flex-end;
-  font-size: var(--text-sm); color: var(--color-accent-text); font-weight: 600;
-  padding-top: 12px; border-top: 1px solid var(--color-divider);
-}
-.module-tile-foot .arrow { display: inline-block; transition: translate 150ms var(--ease-out); }
-.module-tile:hover .module-tile-foot .arrow { translate: 3px 0; }
-@media (prefers-reduced-motion: reduce) {
-  .module-tile-foot .arrow { transition: none; }
-}
