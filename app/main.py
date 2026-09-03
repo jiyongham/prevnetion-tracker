@@ -12,7 +12,7 @@ from app.services.dr_data import prewarm as prewarm_dr
 from app.services.eos_data import prewarm as prewarm_eos
 from app.services.report import get_current_half
 from app.web.deps import WEB_DIR
-from app.web.routes import capacity, dr, eos, misc
+from app.web.routes import capacity, dr, eos, home, misc
 
 logging.basicConfig(
     level=logging.INFO,
@@ -46,6 +46,7 @@ app.mount(
 
 Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
 
+app.include_router(home.router)
 app.include_router(dr.router)
 app.include_router(capacity.router)
 app.include_router(eos.router)

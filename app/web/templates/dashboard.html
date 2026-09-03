@@ -1,3 +1,23 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DR 모의훈련 진척 관리</title>
+  <link rel="stylesheet" href="/static/style.css?v=17">
+</head>
+<body>
+<a href="#main" class="skip-link">본문으로 건너뛰기</a>
+<div class="container">
+
+  <nav class="top-nav">
+    <a href="/" class="top-nav-item">🏠 홈</a>
+    <a href="/dr" class="top-nav-item active">🔄 DR훈련</a>
+    <a href="/capacity" class="top-nav-item">💾 용량관리</a>
+    <a href="/eos" class="top-nav-item">💻 EoS</a>
+  </nav>
+
+  <main id="main">
 {% extends "_layout.html" %}
 
 {% block title %}DR 모의훈련 진척 관리{% endblock %}
@@ -40,9 +60,9 @@
 
   <!-- 수행방식 탭 -->
   <div class="tabs">
-    <a href="/?half={{ half }}" class="tab {% if not mode %}active{% endif %}">전체 {{ mode_counts[''] }}대</a>
-    <a href="/?half={{ half }}&mode=real" class="tab {% if mode == 'real' %}active{% endif %}">실전환 {{ mode_counts['real'] }}대</a>
-    <a href="/?half={{ half }}&mode=nonstop" class="tab {% if mode == 'nonstop' %}active{% endif %}">무중단 {{ mode_counts['nonstop'] }}대</a>
+    <a href="/dr?half={{ half }}" class="tab {% if not mode %}active{% endif %}">전체 {{ mode_counts[''] }}대</a>
+    <a href="/dr?half={{ half }}&mode=real" class="tab {% if mode == 'real' %}active{% endif %}">실전환 {{ mode_counts['real'] }}대</a>
+    <a href="/dr?half={{ half }}&mode=nonstop" class="tab {% if mode == 'nonstop' %}active{% endif %}">무중단 {{ mode_counts['nonstop'] }}대</a>
   </div>
 
   <!-- 요약 카드 -->
@@ -74,8 +94,8 @@
       </thead>
       <tbody>
       {% for team, v in by_team.items() %}
-        <tr class="clickable" onclick="location.href='/?half={{ half }}&team={{ team }}'">
-          <td><a class="team-link" href="/?half={{ half }}&team={{ team }}">{{ team }}</a></td>
+        <tr class="clickable" onclick="location.href='/dr?half={{ half }}&team={{ team }}'">
+          <td><a class="team-link" href="/dr?half={{ half }}&team={{ team }}">{{ team }}</a></td>
           <td>{{ v.done }}</td>
           <td>{{ v.total }}</td>
           <td class="{% if v.rate == 100 %}ok{% elif v.rate >= 50 %}mid{% else %}bad{% endif %}">{{ v.rate }}%</td>
@@ -99,13 +119,13 @@
           <button type="submit" class="btn-sm">검색</button>
         </form>
         <div class="filters">
-          <a href="/?half={{ half }}{{ mode_qs }}" class="chip {% if not filter_status and not filter_team %}active{% endif %}">전체</a>
-          <a href="/?half={{ half }}{{ mode_qs }}&status=pending" class="chip {% if filter_status == 'pending' %}active{% endif %}">미완료 {{ result.total - result.done }}</a>
-          <a href="/?half={{ half }}{{ mode_qs }}&status=scheduled" class="chip {% if filter_status == 'scheduled' %}active{% endif %}">예정 {{ result.scheduled }}</a>
-          <a href="/?half={{ half }}{{ mode_qs }}&status=overdue" class="chip {% if filter_status == 'overdue' %}active{% endif %}">지연 {{ result.overdue }}</a>
-          <a href="/?half={{ half }}{{ mode_qs }}&status=approximate" class="chip {% if filter_status == 'approximate' %}active{% endif %}">대략 {{ result.approximate }}</a>
-          <a href="/?half={{ half }}{{ mode_qs }}&status=unplanned" class="chip {% if filter_status == 'unplanned' %}active{% endif %}">미계획 {{ result.unplanned }}</a>
-          <a href="/?half={{ half }}{{ mode_qs }}&status=done" class="chip {% if filter_status == 'done' %}active{% endif %}">완료 {{ result.done }}</a>
+          <a href="/dr?half={{ half }}{{ mode_qs }}" class="chip {% if not filter_status and not filter_team %}active{% endif %}">전체</a>
+          <a href="/dr?half={{ half }}{{ mode_qs }}&status=pending" class="chip {% if filter_status == 'pending' %}active{% endif %}">미완료 {{ result.total - result.done }}</a>
+          <a href="/dr?half={{ half }}{{ mode_qs }}&status=scheduled" class="chip {% if filter_status == 'scheduled' %}active{% endif %}">예정 {{ result.scheduled }}</a>
+          <a href="/dr?half={{ half }}{{ mode_qs }}&status=overdue" class="chip {% if filter_status == 'overdue' %}active{% endif %}">지연 {{ result.overdue }}</a>
+          <a href="/dr?half={{ half }}{{ mode_qs }}&status=approximate" class="chip {% if filter_status == 'approximate' %}active{% endif %}">대략 {{ result.approximate }}</a>
+          <a href="/dr?half={{ half }}{{ mode_qs }}&status=unplanned" class="chip {% if filter_status == 'unplanned' %}active{% endif %}">미계획 {{ result.unplanned }}</a>
+          <a href="/dr?half={{ half }}{{ mode_qs }}&status=done" class="chip {% if filter_status == 'done' %}active{% endif %}">완료 {{ result.done }}</a>
         </div>
       </div>
     </div>
