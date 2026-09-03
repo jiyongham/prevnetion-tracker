@@ -1,4 +1,127 @@
+/* ══════════════════════════════════════════════════════════════════════════
+   색상 시스템 — 두 계층
+     1. 프리미티브 (--gray-500 등): 값의 이름. 컴포넌트에서 직접 쓰지 않는다.
+     2. 시맨틱   (--color-text-secondary 등): 역할의 이름. 컴포넌트는 이것만 참조한다.
+   이 이음매가 있어야 나중에 다크 모드를 넣을 때 "이건 액센트였나 그냥 보라였나"를
+   사용처마다 되짚지 않아도 된다.
+
+   램프 생성 규칙 (OKLCH로 계산, sRGB hex로 선언):
+     · 색상각(H) 램프 내 고정. 가무트 초과분은 채도로만 흡수해 H가 밀리지 않게 한다.
+     · 지각 명도 스텝: 50=.988 100=.972 200=.951 300=.908 400=.876 500=.760
+                      600=.620 700=.510 800=.450 900=.330 950=.252 (밝은 쪽이 촘촘)
+     · 채도는 중간(700)에서 최대, 양끝에서 소멸.
+   ── 아래에는 실제로 역할이 소비하는 스텝만 선언한다. 쓰는 데 없는 스텝은 만들지 않는다.
+   ══════════════════════════════════════════════════════════════════════════ */
 :root {
+  /* ── 프리미티브 ── */
+
+  /* 중립  H=258° (기존 표면 색들이 이미 이 근방의 차가운 회색이었다) */
+  --gray-50:   #fafbfc;
+  --gray-100:  #f4f6f8;
+  --gray-200:  #eceff3;
+  --gray-300:  #dde1e6;
+  --gray-400:  #d0d7de;
+  --gray-700:  #60676f;
+  --gray-800:  #50565e;
+  --gray-950:  #1f2226;
+
+  /* 액센트 보라  H=278° — 브랜드색 #5b5fc7 을 600에 앵커 */
+  --violet-100: #f3f5ff;
+  --violet-200: #ebeeff;
+  --violet-500: #9fa9ff;
+  --violet-600: #5b5fc7;
+  --violet-700: #4a4eb0;
+
+  /* 정보 파랑  H=248.5° — 액센트와 30° 떨어져 '같은 색'으로 읽히지 않는다 */
+  --blue-100: #eff7ff;
+  --blue-200: #e3f1ff;
+  --blue-300: #c9e4ff;
+  --blue-700: #0069b1;
+  --blue-800: #005896;
+  --blue-950: #002342;
+
+  /* 정상 초록  H=144.2° — 기존 #2e7d32 를 600에 앵커 */
+  --green-50:  #f8fcf8;
+  --green-200: #e5f4e4;
+  --green-700: #2d7c31;
+
+  /* 경고 주황  H=64.5° — 기존 #ef8f00 을 500에 앵커 */
+  --orange-200: #feebda;
+  --orange-300: #fdd9b9;
+  --orange-500: #ef8f00;
+  --orange-700: #925500;
+
+  /* 위험 빨강  H=26.7° — 기존 #c62828 을 600에 앵커 */
+  --red-100: #fff2f1;
+  --red-200: #ffe9e6;
+  --red-300: #ffd5d0;
+  --red-600: #c62828;
+
+  /* 부분 보라  H=297.5° — '대략적 일정' 전용. 액센트와 19.6° 떨어져 구분된다 */
+  --purple-200: #efe8f7;
+  --purple-700: #69488f;
+
+  /* ── 시맨틱: 컴포넌트가 참조하는 유일한 계층 ── */
+
+  /* 표면 */
+  --color-bg-page:      var(--gray-100);
+  --color-bg-surface:   #fff;
+  --color-bg-subtle:    var(--gray-50);
+  --color-bg-hover:     var(--gray-50);
+  --color-bg-disabled:  var(--gray-200);
+  --color-scrim:        rgba(0, 0, 0, .35);
+
+  /* 텍스트 — 4.5:1 을 통과하는 스텝에만 바인딩한다.
+     gray 의 더 밝은 쪽은 흰 배경에서 4.5:1 을 못 넘기므로 텍스트 역할을 맡지 않는다. */
+  --color-text-primary:   var(--gray-950);
+  --color-text-secondary: var(--gray-800);
+  --color-text-tertiary:  var(--gray-700);
+  --color-text-disabled:  var(--gray-700);
+  --color-text-on-solid:  #fff;
+
+  /* 구조 — 깊이가 아니라 경계. 깊이는 아래 --shadow-border 담당 */
+  --color-border:        var(--gray-400);
+  --color-border-subtle: var(--gray-300);
+  --color-divider:       var(--gray-200);
+
+  /* 액센트 = 상호작용. 정적 텍스트·배지에는 쓰지 않는다 */
+  --color-accent-solid:       var(--violet-600);
+  --color-accent-solid-hover: var(--violet-700);
+  --color-accent-text:        var(--violet-600);
+  --color-accent-bg:          var(--violet-100);
+  --color-accent-border:      var(--violet-200);
+  --color-accent-ring:        rgba(91, 95, 199, .12);
+  /* 포커스 링은 인접한 어떤 색 위에서도 보여야 한다.
+     기존 12% 알파 링은 흰 배경에서 1.1:1 로 사실상 안 보였다. */
+  --color-focus-ring: var(--violet-600);
+  --color-accent-gradient-from: var(--violet-600);
+  --color-accent-gradient-to:   var(--violet-500);
+
+  /* 상태 — 램프마다 텍스트용 스텝과 배경용 스텝을 따로 집는다 */
+  --color-status-success-text:  var(--green-700);
+  --color-status-success-bg:    var(--green-200);
+  --color-status-success-solid: var(--green-700);
+  --color-status-success-bg-subtle: var(--green-50);
+  --color-status-danger-text:   var(--red-600);
+  --color-status-danger-bg:     var(--red-200);
+  --color-status-danger-solid:  var(--red-600);
+  --color-status-danger-border:     var(--red-300);
+  --color-status-danger-bg-subtle:  var(--red-100);
+  --color-status-warning-text:  var(--orange-700);
+  --color-status-warning-bg:    var(--orange-200);
+  --color-status-warning-solid: var(--orange-500);
+  --color-status-warning-border: var(--orange-300);
+  --color-status-info-text:     var(--blue-700);
+  --color-status-info-bg:       var(--blue-200);
+  /* 발송 리포트처럼 넓은 정보 표면은 배지보다 옅은 바탕에 진한 본문을 쓴다 */
+  --color-info-surface-bg:      var(--blue-100);
+  --color-info-surface-border:  var(--blue-300);
+  --color-info-surface-text:    var(--blue-950);
+  --color-status-partial-text:  var(--purple-700);
+  --color-status-partial-bg:    var(--purple-200);
+  --color-status-neutral-text:  var(--gray-700);
+  --color-status-neutral-bg:    var(--gray-200);
+
   /* 깊이는 테두리 대신 겹친 그림자로. 투명도라 배경색이 달라져도 자연스럽게 얹힌다.
      구분선(테이블 경계, 헤더 밑줄 등)은 구조를 나타내므로 테두리 그대로 둔다. */
   --shadow-border:
@@ -10,97 +133,163 @@
     0 1px 2px -1px rgba(0, 0, 0, .08),
     0 2px 4px 0 rgba(0, 0, 0, .06);
   --ease-out: cubic-bezier(0.2, 0, 0, 1);
+
+  /* ── 타입 스케일 ──
+     쓰임으로 이름을 붙인다. 여기서 벗어난 크기는 두지 않는다.
+     (예전엔 11·12·12.5·13·14·15·20·22·24·40px 이 아무 체계 없이 섞여 있었다) */
+  --text-caption: 11px;   /* 배지, 카운트, 힌트 — 짧은 라벨과 표 보조 열 */
+  --text-sm:      12px;   /* 표 편집 셀, 캡션 */
+  --text-base:    13px;   /* 버튼, 입력, 챗봇 본문 */
+  --text-md:      14px;   /* body 기본 */
+  --text-lg:      15px;   /* h2 */
+  --text-xl:      22px;   /* h1 */
+  --text-2xl:     24px;   /* 카드 값 */
+  --text-display: 40px;   /* 완료율 */
+  --text-icon-lg: 20px;   /* 챗봇 FAB 안의 이모지 글리프 (글자가 아니라 아이콘 치수) */
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Malgun Gothic", "맑은 고딕", sans-serif;
-  background: #f4f6f8;
-  color: #222;
-  font-size: 14px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui,
+               "Malgun Gothic", "맑은 고딕", sans-serif;
+  background: var(--color-bg-page);
+  color: var(--color-text-primary);
+  font-size: var(--text-md);
   line-height: 1.5;
+  /* macOS 가 의도보다 굵게 렌더하는 것을 보정. 루트에 한 번만 건다 */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 .container { max-width: 1600px; margin: 0 auto; padding: 20px; }
 
+/* 모든 페이지가 같은 상단 도메인 탭으로 시작한다. 키보드 사용자가 매번
+   그걸 지나치지 않도록 첫 포커스 지점으로 건너뛰기 링크를 둔다. */
+.skip-link {
+  position: absolute; inset-inline-start: -9999px; top: 0; z-index: 1300;
+  background: var(--color-accent-solid); color: var(--color-text-on-solid);
+  padding: 10px 16px; border-radius: 0 0 8px 0; font-size: var(--text-base); font-weight: 600;
+  text-decoration: none;
+}
+.skip-link:focus { inset-inline-start: 0; }
+
+/* 눈에는 안 보이지만 스크린리더는 읽는 텍스트. 라벨이 시각적으로는 이미
+   표 머리글이나 placeholder 로 드러나 있는 자리에 쓴다. */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0;
+}
+
 /* 상단 도메인 탭 */
 .top-nav { display: flex; gap: 4px; margin-bottom: 16px; }
 .top-nav-item {
-  padding: 8px 16px; border-radius: 8px 8px 0 0; font-size: 13px; font-weight: 600;
-  color: #667; text-decoration: none; background: transparent;
+  padding: 8px 16px; border-radius: 8px 8px 0 0; font-size: var(--text-base); font-weight: 600;
+  color: var(--color-text-tertiary); text-decoration: none; background: transparent;
 }
-.top-nav-item:hover { background: #e9ecf2; }
-.top-nav-item.active { background: #fff; color: #5b5fc7; box-shadow: 0 -2px 0 #5b5fc7 inset; }
+.top-nav-item:hover { background: var(--color-divider); }
+.top-nav-item.active {
+  background: var(--color-bg-surface); color: var(--color-accent-text);
+  box-shadow: 0 -2px 0 var(--color-accent-solid) inset;
+}
 
 /* 헤더 */
 header {
   display: flex; justify-content: space-between; align-items: center;
-  margin-bottom: 20px; flex-wrap: wrap; gap: 12px;
+  margin-bottom: 20px; flex-wrap: wrap; gap: 16px;
 }
-h1 { font-size: 22px; font-weight: 700; }
-h2 { font-size: 15px; margin-bottom: 12px; color: #555; font-weight: 600; }
+h1 {
+  font-size: var(--text-xl); font-weight: 700;
+  line-height: 1.15; letter-spacing: -0.01em; text-wrap: balance;
+}
+h2 {
+  font-size: var(--text-lg); margin-block-end: 12px; color: var(--color-text-secondary);
+  font-weight: 600; line-height: 1.3; text-wrap: balance;
+}
 
-.controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .inline-form { display: flex; gap: 8px; align-items: center; margin: 0; }
 
 select, input[type="date"], input[type="text"] {
-  padding: 7px 10px; border: 1px solid #d0d7de; border-radius: 6px;
-  background: #fff; font-size: 13px; font-family: inherit;
+  padding: 7px 10px; border: 1px solid var(--color-border); border-radius: 6px;
+  background: var(--color-bg-surface); font-size: var(--text-base); font-family: inherit;
 }
 
+/* 화면당 채워진 액션은 하나. 진척률 발송이 그 하나다. */
 .btn-teams {
-  padding: 7px 14px; background: #5b5fc7; color: #fff;
-  border: none; border-radius: 6px; cursor: pointer; font-size: 13px;
+  padding: 7px 14px; background: var(--color-accent-solid); color: var(--color-text-on-solid);
+  border: none; border-radius: 6px; cursor: pointer; font-size: var(--text-base);
 }
-.btn-teams:hover { background: #4a4eb0; }
+.btn-teams:hover { background: var(--color-accent-solid-hover); }
 
+/* 리마인드는 발송과 나란히 놓이는 동급 액션이라 채우지 않는다.
+   (예전엔 주황으로 채워 흰 글씨 2.44:1 이었고, 주황이 '경고 상태'와 의미가 겹쳤다) */
 .btn-remind {
   display: inline-block; text-decoration: none;
-  padding: 7px 14px; background: #ef8f00; color: #fff;
-  border: none; border-radius: 6px; cursor: pointer; font-size: 13px;
+  padding: 7px 14px; background: var(--color-bg-surface); color: var(--color-text-secondary);
+  border: 1px solid var(--color-border); border-radius: 6px; cursor: pointer; font-size: var(--text-base);
 }
-.btn-remind:hover { background: #d67f00; }
+.btn-remind:hover { background: var(--color-bg-hover); }
 
 .btn-sm {
-  padding: 6px 12px; background: #fff; border: 1px solid #d0d7de;
-  border-radius: 6px; cursor: pointer; font-size: 12px;
-  text-decoration: none; color: #444; display: inline-block;
+  padding: 6px 12px; background: var(--color-bg-surface); border: 1px solid var(--color-border);
+  border-radius: 6px; cursor: pointer; font-size: var(--text-sm);
+  text-decoration: none; color: var(--color-text-secondary); display: inline-block;
 }
-.btn-sm:hover { background: #f4f6f8; }
+.btn-sm:hover { background: var(--color-bg-hover); }
 
-/* 배지 옆에 붙는 아주 작은 정정 버튼 (Polestar 관측 기록 삭제 등) */
+/* 배지 옆에 붙는 아주 작은 정정 버튼 (Polestar 관측 기록 삭제 등).
+   글리프는 작게 두되 누를 수 있는 영역은 24×24 를 채운다 (WCAG 2.5.8 AA). */
 .btn-xs {
-  padding: 0 4px; margin-left: 2px; background: none; border: none;
-  cursor: pointer; font-size: 11px; color: #999; line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 24px; min-height: 24px;
+  padding: 0; margin-inline-start: 2px; background: none; border: none;
+  cursor: pointer; font-size: var(--text-caption); color: var(--color-text-tertiary); line-height: 1;
 }
-.btn-xs:hover { color: #c62828; }
+.btn-xs:hover { color: var(--color-status-danger-text); }
 
-.btn-exclude { color: #c62828; border-color: #f0c4c4; }
-.btn-exclude:hover { background: #fdecea; }
+.btn-exclude { color: var(--color-status-danger-text); border-color: var(--color-status-danger-border); }
+.btn-exclude:hover { background: var(--color-status-danger-bg-subtle); }
 
 .alert {
-  background: #fff4e5; border: 1px solid #ffd59e; color: #8a5300;
-  padding: 10px 14px; border-radius: 6px; margin-bottom: 16px; font-size: 13px;
+  background: var(--color-status-warning-bg); border: 1px solid var(--color-status-warning-border);
+  color: var(--color-status-warning-text);
+  padding: 10px 14px; border-radius: 6px; margin-bottom: 16px; font-size: var(--text-base);
+}
+/* 알림 변형. 예전엔 템플릿 10곳이 인라인 style 로 색을 각자 박아뒀고,
+   거기 쓰인 #7a4a00 / #eef4ff / #334 / #fff8e6 / #664 는 style.css 에 없는 색이었다. */
+.alert-warn { white-space: pre-wrap; }
+.alert-info {
+  background: var(--color-status-info-bg); border-color: var(--color-info-surface-border);
+  color: var(--color-status-info-text);
+}
+/* 좌우로 벌리는 경고 바 (내용 + 액션 버튼) */
+.alert-bar {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
 }
 
 /* 발송 직후 화면에 띄우는 리포트 본문 (닫기 버튼으로 제거) */
 .sent-report {
-  position: relative; background: #eef6ff; border-color: #bcd9f5; color: #1c4e80;
-  padding-right: 36px;
+  position: relative; background: var(--color-info-surface-bg);
+  border-color: var(--color-info-surface-border);
+  color: var(--color-status-info-text);
+  padding-inline-end: 36px;
 }
 .sent-report-title { font-weight: 600; margin-bottom: 8px; }
 .sent-report-body {
-  margin: 0; white-space: pre-wrap; word-break: break-all;
-  font-family: ui-monospace, "D2Coding", Consolas, monospace; font-size: 12.5px;
-  line-height: 1.6; color: #24405c; max-height: 340px; overflow-y: auto;
+  margin: 0; white-space: pre-wrap; overflow-wrap: break-word;
+  font-family: ui-monospace, "D2Coding", Consolas, monospace; font-size: var(--text-sm);
+  line-height: 1.6; color: var(--color-info-surface-text);
+  max-width: 80ch; max-height: 340px; overflow-y: auto;
 }
 .sent-report-close {
-  position: absolute; top: 6px; right: 8px;
+  position: absolute; top: 6px; inset-inline-end: 8px;
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 24px; min-height: 24px;
   background: none; border: none; cursor: pointer;
-  font-size: 14px; color: #7fa5c8; line-height: 1; padding: 4px;
+  font-size: var(--text-md); color: var(--color-text-tertiary); line-height: 1; padding: 4px;
 }
-.sent-report-close:hover { color: #1c4e80; }
+.sent-report-close:hover { color: var(--color-status-info-text); }
 
 /* 요약 카드 */
 .cards {
@@ -108,25 +297,38 @@ select, input[type="date"], input[type="text"] {
   gap: 14px; margin-bottom: 20px;
 }
 .card {
-  background: #fff; box-shadow: var(--shadow-border);
+  background: var(--color-bg-surface); box-shadow: var(--shadow-border);
   border-radius: 10px; padding: 18px;
 }
-.card .label { font-size: 12px; color: #888; margin-bottom: 6px; }
-.card .rate { font-size: 40px; font-weight: 700; color: #5b5fc7; line-height: 1.1; }
-.card .value { font-size: 24px; font-weight: 600; }
-.card .value.warn { color: #d9534f; }
-.card .sub { font-size: 12px; color: #999; margin-top: 4px; }
+.card .label { font-size: var(--text-sm); color: var(--color-text-tertiary); margin-bottom: 6px; }
+/* 완료율 숫자는 클릭할 수 없다. 액센트를 입히면 눌러야 할 것처럼 보이므로
+   위계는 40px/700 이라는 크기로만 만든다. */
+.card .rate {
+  font-size: var(--text-display); font-weight: 700; color: var(--color-text-primary);
+  line-height: 1.1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums;
+}
+.card .value { font-size: var(--text-2xl); font-weight: 600; font-variant-numeric: tabular-nums; }
+.card .value.warn { color: var(--color-status-danger-text); }
+.card .sub {
+  font-size: var(--text-sm); color: var(--color-text-tertiary); margin-top: 4px;
+  font-variant-numeric: tabular-nums; text-wrap: pretty;
+}
 
 .progress {
-  height: 8px; background: #eceff3; border-radius: 4px;
+  height: 8px; background: var(--color-divider); border-radius: 4px;
   overflow: hidden; margin-top: 12px;
 }
 .progress.sm { height: 6px; margin: 0; }
-.bar { height: 100%; background: linear-gradient(90deg, #5b5fc7, #7b7fe0); }
+/* 두 스톱이 같은 색상 계열이라 oklab 보간이 중간에서 탁해지지 않는다 */
+.bar {
+  height: 100%;
+  background: linear-gradient(90deg in oklab,
+    var(--color-accent-gradient-from), var(--color-accent-gradient-to));
+}
 
 /* 패널 */
 .panel {
-  background: #fff; box-shadow: var(--shadow-border); border-radius: 10px;
+  background: var(--color-bg-surface); box-shadow: var(--shadow-border); border-radius: 10px;
   padding: 18px; margin-bottom: 20px;
 }
 .panel-head {
@@ -138,57 +340,96 @@ select, input[type="date"], input[type="text"] {
 
 .filters { display: flex; gap: 6px; }
 .chip {
-  padding: 5px 12px; border: 1px solid #d0d7de; border-radius: 14px;
-  font-size: 12px; text-decoration: none; color: #555; background: #fff;
+  padding: 5px 12px; border: 1px solid var(--color-border); border-radius: 14px;
+  font-size: var(--text-sm); text-decoration: none; color: var(--color-text-secondary);
+  background: var(--color-bg-surface);
 }
-.chip.active { background: #5b5fc7; color: #fff; border-color: #5b5fc7; }
+.chip.active {
+  background: var(--color-accent-solid); color: var(--color-text-on-solid);
+  border-color: var(--color-accent-solid);
+}
 
 /* 리마인드: 완전 미기입 / 대략적 일정만 있음 탭 */
 .tabs { display: flex; gap: 8px; margin: 12px 0; }
 .tab {
-  padding: 8px 16px; border: 1px solid #d0d7de; border-radius: 8px;
-  font-size: 13px; font-weight: 600; text-decoration: none; color: #555; background: #fff;
+  padding: 8px 16px; border: 1px solid var(--color-border); border-radius: 8px;
+  font-size: var(--text-base); font-weight: 600; text-decoration: none;
+  color: var(--color-text-secondary); background: var(--color-bg-surface);
 }
 .tab .cnt {
-  display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 10px;
-  background: #f0f1f3; font-size: 11px; font-weight: 700;
+  display: inline-block; margin-inline-start: 6px; padding: 1px 7px; border-radius: 10px;
+  background: var(--color-divider); font-size: var(--text-caption); font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
-.tab.active { background: #5b5fc7; color: #fff; border-color: #5b5fc7; }
-.tab.active .cnt { background: rgba(255,255,255,.25); color: #fff; }
+.tab.active {
+  background: var(--color-accent-solid); color: var(--color-text-on-solid);
+  border-color: var(--color-accent-solid);
+}
+.tab.active .cnt { background: rgba(255, 255, 255, .25); color: var(--color-text-on-solid); }
 
 /* 입력자명 박스 */
 .user-input {
-  background: #f0f4ff; padding: 10px 14px; border-radius: 16px;
-  margin-bottom: 12px; font-size: 13px; border: 1px solid #dbe4ff;
+  background: var(--color-accent-bg); padding: 10px 14px; border-radius: 16px;
+  margin-bottom: 12px; font-size: var(--text-base); border: 1px solid var(--color-accent-border);
 }
 .user-input input { width: 140px; padding: 5px 10px; }
-.hint { color: #7a86a8; font-size: 11px; margin-left: 8px; }
+.hint {
+  color: var(--color-text-tertiary); font-size: var(--text-caption); margin-inline-start: 8px;
+  text-wrap: pretty;
+}
+/* 관리자 여부 안내. 예전엔 JS 가 hint.style.color 에 원시 hex 를 직접 박았다 */
+.hint.is-admin { color: var(--color-status-success-text); }
+.hint.is-locked { color: var(--color-status-warning-text); }
 
 /* 테이블 */
-.table-scroll { overflow-x: auto; }
-table { width: 100%; border-collapse: collapse; }
+/* 열이 13~16개라 좁은 폭에서 뒤쪽 열이 잘린다. 잘린 쪽 가장자리에 그림자를 띄워
+   "더 있다"를 알린다 (끝까지 스크롤하면 배경과 붙어 사라진다). */
+.table-scroll {
+  overflow-x: auto;
+  background:
+    linear-gradient(to right, var(--color-bg-surface) 30%, transparent),
+    linear-gradient(to left,  var(--color-bg-surface) 30%, transparent) right,
+    linear-gradient(to right, rgba(0,0,0,.10), transparent 12px),
+    linear-gradient(to left,  rgba(0,0,0,.10), transparent 12px) right;
+  background-repeat: no-repeat;
+  background-size: 40px 100%, 40px 100%, 14px 100%, 14px 100%;
+  background-attachment: local, local, scroll, scroll;
+}
+table {
+  width: 100%; border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
 th, td {
-  padding: 9px 10px; text-align: left;
-  border-bottom: 1px solid #eef0f3; vertical-align: middle;
+  padding: 9px 10px; text-align: start;
+  border-bottom: 1px solid var(--color-divider); vertical-align: middle;
 }
 th {
-  background: #fafbfc; font-size: 12px; color: #666;
+  background: var(--color-bg-subtle); font-size: var(--text-sm); color: var(--color-text-tertiary);
   font-weight: 600; white-space: nowrap;
 }
-tbody tr:hover { background: #f8f9fb; }
+tbody tr:hover { background: var(--color-bg-hover); }
 tr.clickable { cursor: pointer; }
-tr.row-done { background: #fafffa; }
+/* 행 클릭은 마우스 편의. 키보드·스크린리더는 셀 안의 진짜 <a> 로 이동한다. */
+.team-link { color: inherit; text-decoration: none; display: block; }
+.team-link:hover { text-decoration: underline; }
+tr.row-done { background: var(--color-status-success-bg-subtle); }
 
 table.editable td { padding: 5px 6px; }
 
 /* 편집 셀 */
 input.cell, select.cell {
-  width: 100%; padding: 5px 7px; border: 1px solid #dde1e6;
-  border-radius: 5px; font-size: 12px; background: #fff;
+  width: 100%; padding: 5px 7px; border: 1px solid var(--color-border-subtle);
+  border-radius: 5px; font-size: var(--text-sm); background: var(--color-bg-surface);
 }
+input.cell:focus-visible, select.cell:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 1px;
+  border-color: var(--color-accent-solid);
+}
+/* 마우스로 눌렀을 때도 어느 셀에 들어와 있는지는 보여준다 (링보다 약하게) */
 input.cell:focus, select.cell:focus {
-  outline: none; border-color: #5b5fc7;
-  box-shadow: 0 0 0 2px rgba(91, 95, 199, .12);
+  outline: none; border-color: var(--color-accent-solid);
+  box-shadow: 0 0 0 2px var(--color-accent-ring);
 }
 input[type="checkbox"].cell {
   width: 16px; height: 16px; cursor: pointer; padding: 0;
@@ -197,50 +438,64 @@ input[type="checkbox"].cell {
 
 /* 값 출처 구분 */
 .src-excel input.cell, .src-excel select.cell {
-  color: #9aa4b2; background: #fbfcfd;
+  color: var(--color-text-tertiary); background: var(--color-bg-subtle);
 }
 .src-web input.cell, .src-web select.cell {
-  color: #1a1a1a; font-weight: 600; background: #fff;
+  color: var(--color-text-primary); font-weight: 600; background: var(--color-bg-surface);
 }
-input.cell.edited { border-left: 3px solid #5b5fc7; }
+input.cell.edited { border-inline-start: 3px solid var(--color-accent-solid); }
+/* 담당자 저장 성공 표시. 예전엔 JS 가 input.style.background 에 원시 hex 를 박았다 */
+input.cell.saved-ok { background: var(--color-status-success-bg); }
 
 .owner-cell input.cell { width: 100px; }
 
 .btn-save {
-  padding: 5px 12px; background: #5b5fc7; color: #fff;
-  border: none; border-radius: 5px; cursor: pointer; font-size: 12px;
+  padding: 5px 12px; background: var(--color-accent-solid); color: var(--color-text-on-solid);
+  border: none; border-radius: 5px; cursor: pointer; font-size: var(--text-sm);
   white-space: nowrap; min-width: 52px;
 }
-.btn-save:hover { background: #4a4eb0; }
-.btn-save:disabled { background: #aaa; cursor: not-allowed; }
+.btn-save:hover { background: var(--color-accent-solid-hover); }
+.btn-save:disabled {
+  background: var(--color-bg-disabled); color: var(--color-text-disabled); cursor: not-allowed;
+}
 
 tr.saved { animation: flash 1.2s; }
 @keyframes flash {
-  0% { background: #d4f4dd; }
+  0% { background: var(--color-status-success-bg); }
   100% { background: transparent; }
 }
 
 /* 텍스트 스타일 */
 .strong { font-weight: 600; }
-.mono { font-family: ui-monospace, Consolas, "D2Coding", monospace; font-size: 12px; }
-.small { font-size: 11px; }
-.muted { color: #bbb; }
-.link { color: #5b5fc7; text-decoration: none; }
-.link:hover { text-decoration: underline; }
+.mono {
+  font-family: ui-monospace, Consolas, "D2Coding", monospace;
+  font-size: var(--text-sm); font-variant-numeric: tabular-nums;
+}
+.small { font-size: var(--text-caption); }
+.muted { color: var(--color-text-tertiary); }
+.link { color: var(--color-accent-text); text-decoration: none; }
+.link:hover {
+  text-decoration: underline;
+  text-underline-position: from-font; text-decoration-thickness: from-font;
+  text-decoration-skip-ink: auto;
+}
 
-.ok { color: #2e7d32; font-weight: 600; }
-.mid { color: #ef8f00; font-weight: 600; }
-.bad { color: #d9534f; font-weight: 600; }
+.ok { color: var(--color-status-success-text); font-weight: 600; }
+.mid { color: var(--color-status-warning-text); font-weight: 600; }
+.bad { color: var(--color-status-danger-text); font-weight: 600; }
 
 .badge {
   padding: 3px 9px; border-radius: 10px;
-  font-size: 11px; font-weight: 600; white-space: nowrap;
+  font-size: var(--text-caption); font-weight: 600; white-space: nowrap;
 }
-.badge.ok { background: #e6f4ea; color: #2e7d32; }
-.badge.bad { background: #fdecea; color: #c62828; }
-.badge.warn { background: #fff4e5; color: #b26a00; }
-.badge.muted { background: #eceff1; color: #607d8b; }
-.badge.info { background: #e8eefc; color: #2c4fa8; }
+/* 상태 열에는 이 여섯이 한꺼번에 나타난다. 색상각이 서로 충분히 벌어져 있어야 한다. */
+.badge.ok    { background: var(--color-status-success-bg); color: var(--color-status-success-text); }
+.badge.bad   { background: var(--color-status-danger-bg);  color: var(--color-status-danger-text); }
+.badge.warn  { background: var(--color-status-warning-bg); color: var(--color-status-warning-text); }
+.badge.muted { background: var(--color-status-neutral-bg); color: var(--color-status-neutral-text); }
+.badge.info  { background: var(--color-status-info-bg);    color: var(--color-status-info-text); }
+/* 대략적 일정만 등록된 상태 (미계획과 구분) */
+.badge.soft  { background: var(--color-status-partial-bg); color: var(--color-status-partial-text); }
 
 /* 관리자 전용 요소. 요소마다 JS로 display를 세팅하면 행이 수백 개일 때 입력할 때마다
    버벅여서, body 클래스 하나만 토글하고 나머지는 CSS가 처리하게 한다.
@@ -256,24 +511,27 @@ body:not(.is-admin) .admin-only { display: none !important; }
   padding: 8px 12px; border-radius: 8px; text-decoration: none;
   color: inherit; margin-bottom: 4px;
 }
-.owner-item:hover { background: #f2f4f8; }
-.owner-item.active { background: #e3ecff; font-weight: 600; }
+.owner-item:hover { background: var(--color-bg-hover); }
+.owner-item.active { background: var(--color-accent-bg); font-weight: 600; }
 .owner-item .cnt {
-  background: #fff4e5; color: #b26a00; border-radius: 10px;
-  padding: 1px 8px; font-size: 11px; font-weight: 600;
+  background: var(--color-status-warning-bg); color: var(--color-status-warning-text);
+  border-radius: 10px;
+  padding: 1px 8px; font-size: var(--text-caption); font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 .draft { margin-bottom: 18px; }
 .draft-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.recipient-pick { font-size: 12px; color: #555; }
-.recipient-pick select { margin-left: 4px; padding: 3px 6px; }
-.greet-name { font-weight: 700; color: #1a56db; }
-.send-status { font-size: 12px; font-weight: 600; margin-left: 8px; }
-.send-status.ok { color: #1a7f37; }
-.send-status.err { color: #c0392b; }
+.recipient-pick { font-size: var(--text-sm); color: var(--color-text-secondary); }
+.recipient-pick select { margin-inline-start: 4px; padding: 3px 6px; }
+.greet-name { font-weight: 700; color: var(--color-status-info-text); }
+.send-status { font-size: var(--text-sm); font-weight: 600; margin-inline-start: 8px; }
+.send-status.ok { color: var(--color-status-success-text); }
+.send-status.err { color: var(--color-status-danger-text); }
 .draft .msg {
-  white-space: pre-wrap; word-break: break-all;
-  background: #f7f9fc; border: 1px solid #e3e8f0; border-radius: 8px;
-  padding: 12px 14px; font-size: 13px; line-height: 1.6; margin: 0 0 12px;
+  white-space: pre-wrap; overflow-wrap: break-word;
+  background: var(--color-bg-subtle); border: 1px solid var(--color-border-subtle);
+  border-radius: 8px; max-width: 70ch;
+  padding: 12px 14px; font-size: var(--text-base); line-height: 1.6; margin: 0 0 12px;
 }
 @media (max-width: 720px) {
   .remind-layout { flex-direction: column; }
@@ -286,16 +544,20 @@ body:not(.is-admin) .admin-only { display: none !important; }
 /* 푸터 */
 footer {
   display: flex; justify-content: space-between;
-  font-size: 12px; color: #999; padding: 10px 0; flex-wrap: wrap; gap: 8px;
+  font-size: var(--text-sm); color: var(--color-text-tertiary); padding: 10px 0; flex-wrap: wrap; gap: 8px;
 }
-footer a { color: #5b5fc7; text-decoration: none; }
-footer a:hover { text-decoration: underline; }
+footer a { color: var(--color-accent-text); text-decoration: none; }
+footer a:hover {
+  text-decoration: underline;
+  text-underline-position: from-font; text-decoration-thickness: from-font;
+  text-decoration-skip-ink: auto;
+}
 
 /* 토스트 */
 .toast {
-  position: fixed; bottom: 84px; right: 24px;
+  position: fixed; bottom: 84px; inset-inline-end: 24px;
   padding: 12px 20px; border-radius: 8px;
-  color: #fff; font-size: 13px; font-weight: 500;
+  color: var(--color-text-on-solid); font-size: var(--text-base); font-weight: 500;
   opacity: 0; translate: 0 10px;
   transition-property: opacity, translate;
   transition-duration: .25s;
@@ -303,8 +565,12 @@ footer a:hover { text-decoration: underline; }
   pointer-events: none; z-index: 1200;
 }
 .toast.show { opacity: 1; translate: 0 0; }
-.toast.ok { background: #2e7d32; }
-.toast.err { background: #c62828; }
+.toast.ok { background: var(--color-status-success-solid); }
+/* 오류 토스트는 사라지지 않고 남으므로 직접 닫을 수 있어야 한다 */
+.toast.err {
+  background: var(--color-status-danger-solid);
+  pointer-events: auto; cursor: pointer;
+}
 
 @media (max-width: 900px) {
   .cards { grid-template-columns: 1fr; }
@@ -312,27 +578,29 @@ footer a:hover { text-decoration: underline; }
 
 /* 조회 챗봇 위젯 — 뷰포트 고정(스크롤 추종), 열림/닫힘은 애니메이션으로 전환 */
 .chat-toggle {
-  position: fixed; bottom: 24px; right: 24px; z-index: 1000;
+  position: fixed; bottom: 24px; inset-inline-end: 24px; z-index: 1000;
   width: 48px; height: 48px; border-radius: 50%;
-  background: #fff; color: #5b5fc7; font-size: 20px; cursor: pointer;
-  border: 1.5px solid #5b5fc7;
-  box-shadow: 0 2px 8px rgba(0,0,0,.12);
+  background: var(--color-bg-surface); color: var(--color-accent-text);
+  font-size: var(--text-icon-lg); cursor: pointer;
+  border: 1.5px solid var(--color-accent-solid);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .12);
   transition-property: scale, box-shadow, background-color, color, opacity, visibility;
   transition-duration: .15s;
   transition-timing-function: var(--ease-out);
 }
 .chat-toggle:hover {
-  background: #5b5fc7; color: #fff;
-  box-shadow: 0 4px 14px rgba(0,0,0,.2);
+  background: var(--color-accent-solid); color: var(--color-text-on-solid);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .2);
   scale: 1.06;
 }
 .chat-toggle.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
 .chat-panel {
-  position: fixed; bottom: 24px; right: 24px; z-index: 1000;
-  width: 340px; max-width: calc(100vw - 32px); height: 440px;
-  background: #fff; border-radius: 12px;
-  border: 1px solid #dfe1ea;
-  box-shadow: 0 8px 28px rgba(0,0,0,.22);
+  position: fixed; bottom: 24px; inset-inline-end: 24px; z-index: 1000;
+  width: 340px; max-width: calc(100vw - 32px);
+  height: min(440px, calc(100dvh - 48px));
+  background: var(--color-bg-surface); border-radius: 12px;
+  border: 1px solid var(--color-border-subtle);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, .22);
   display: flex; flex-direction: column; overflow: hidden;
   transform-origin: bottom right;
   transition-property: opacity, scale, translate, visibility;
@@ -344,39 +612,73 @@ footer a:hover { text-decoration: underline; }
   scale: .92; translate: 0 8px;
 }
 .chat-head {
-  background: #5b5fc7; color: #fff; padding: 10px 14px;
+  background: var(--color-accent-solid); color: var(--color-text-on-solid); padding: 10px 14px;
   display: flex; align-items: center; justify-content: space-between;
-  font-size: 14px; font-weight: 600;
+  font-size: var(--text-md); font-weight: 600;
 }
-.chat-close { background: none; border: none; color: #fff; cursor: pointer; font-size: 14px; }
-.chat-agent-select { display: flex; border-bottom: 1px solid #eee; }
+.chat-close {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 24px; min-height: 24px;
+  background: none; border: none; color: var(--color-text-on-solid);
+  cursor: pointer; font-size: var(--text-md);
+}
+.chat-agent-select { display: flex; border-bottom: 1px solid var(--color-divider); }
 .chat-agent-btn {
-  flex: 1; border: none; background: #f7f7fb; color: #666; cursor: pointer;
-  padding: 8px 6px; font-size: 12px; font-weight: 600;
+  flex: 1; border: none; background: var(--color-bg-subtle); color: var(--color-text-tertiary);
+  cursor: pointer;
+  padding: 8px 6px; font-size: var(--text-sm); font-weight: 600;
   border-bottom: 2px solid transparent;
 }
-.chat-agent-btn.active { background: #fff; color: #5b5fc7; border-bottom-color: #5b5fc7; }
-.chat-name-row { border-bottom: 1px solid #eee; background: #f7f7fb; padding: 6px 10px; }
-.chat-name-row input {
-  width: 100%; border: 1px solid #dfe1ea; border-radius: 6px;
-  padding: 5px 8px; font-size: 12px; outline: none; box-sizing: border-box;
+.chat-agent-btn.active {
+  background: var(--color-bg-surface); color: var(--color-accent-text);
+  border-bottom-color: var(--color-accent-solid);
 }
-.chat-name-row input:focus { border-color: #5b5fc7; }
+.chat-name-row {
+  border-bottom: 1px solid var(--color-divider); background: var(--color-bg-subtle);
+  padding: 6px 10px;
+}
+.chat-name-row input {
+  width: 100%; border: 1px solid var(--color-border-subtle); border-radius: 6px;
+  padding: 5px 8px; font-size: var(--text-sm); box-sizing: border-box;
+}
+.chat-name-row input:focus-visible {
+  outline: 2px solid var(--color-focus-ring); outline-offset: 1px;
+  border-color: var(--color-accent-solid);
+}
 .chat-msgs { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
 .chat-msgs.hidden { display: none; }
+/* 챗봇 패널이 아니라 일반 패널 안에 놓이는 대화 영역 (EoS 계획·실적 입력) */
+.chat-msgs-inline {
+  height: 280px; flex: none;
+  border: 1px solid var(--color-divider); border-radius: 8px; margin-bottom: 10px;
+}
 .chat-msg {
   max-width: 85%; padding: 8px 12px; border-radius: 10px;
-  font-size: 13px; line-height: 1.5; white-space: pre-wrap; word-break: break-word;
+  font-size: var(--text-base); line-height: 1.5; white-space: pre-wrap;
+  overflow-wrap: break-word;
 }
-.chat-msg.bot { align-self: flex-start; background: #f0f1f8; color: #222; }
-.chat-msg.me { align-self: flex-end; background: #5b5fc7; color: #fff; }
-.chat-msg.warn { background: #fdecea; color: #c62828; font-weight: 700; }
-.chat-form { display: flex; border-top: 1px solid #eee; }
+.chat-msg.bot { align-self: flex-start; background: var(--color-accent-bg); color: var(--color-text-primary); }
+.chat-msg.me {
+  align-self: flex-end; background: var(--color-accent-solid); color: var(--color-text-on-solid);
+}
+.chat-msg.warn {
+  background: var(--color-status-danger-bg); color: var(--color-status-danger-text); font-weight: 700;
+}
+.chat-form { display: flex; border-top: 1px solid var(--color-divider); }
 .chat-form input {
-  flex: 1; border: none; padding: 10px 12px; font-size: 13px; outline: none;
+  flex: 1; border: none; padding: 10px 12px; font-size: var(--text-base);
+}
+.chat-form input:focus-visible {
+  outline: 2px solid var(--color-focus-ring); outline-offset: -2px;
 }
 .chat-form button {
-  border: none; background: #5b5fc7; color: #fff; padding: 0 16px; cursor: pointer; font-size: 13px;
+  border: none; background: var(--color-accent-solid); color: var(--color-text-on-solid);
+  padding: 0 16px; cursor: pointer; font-size: var(--text-base);
+}
+
+/* 강제 색상 모드에서는 box-shadow 가 지워지므로 시스템 색 윤곽선을 남긴다 */
+@media (forced-colors: active) {
+  :focus-visible { outline: 2px solid CanvasText; outline-offset: 1px; }
 }
 
 /* 누를 때 살짝 눌리는 촉감. 산만한 자리는 요소에 .static 을 붙여 끈다 */
@@ -396,47 +698,65 @@ footer a:hover { text-decoration: underline; }
 .static:active, :disabled:active { scale: 1; }
 .chat-toggle:active { scale: .96; }
 
+/* 모션 최소화를 켠 사용자에게는 이동·확대를 걷어내고 페이드만 남긴다.
+   상태 변화 자체는 색·아이콘·문구가 따로 전달하므로 정보는 잃지 않는다. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .toast { translate: none; }
+  .chat-panel.hidden { scale: none; translate: none; }
+  .chat-toggle:hover, .btn-teams:active, .btn-remind:active, .btn-sm:active,
+  .btn-save:active, .chip:active, .tab:active, .top-nav-item:active { scale: none; }
+}
+
 /* AI 진단 버튼/모달 (매칭 미확인 사유, 담당자 불일치 판단 공용) */
 .btn-ai {
-  border: 1px solid #dfe1ea; background: #fff; border-radius: 6px;
-  font-size: 12px; padding: 1px 6px; margin-left: 4px; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 24px; min-height: 24px;
+  border: 1px solid var(--color-border-subtle); background: var(--color-bg-surface);
+  border-radius: 6px;
+  font-size: var(--text-sm); padding: 1px 6px; margin-inline-start: 4px; cursor: pointer;
 }
-.btn-ai:hover { background: #f0f1f8; }
+.btn-ai:hover { background: var(--color-accent-bg); }
 .btn-ai:disabled { opacity: .5; cursor: default; }
 .ai-modal {
   position: fixed; inset: 0; z-index: 1100;
-  background: rgba(0,0,0,.35);
+  background: var(--color-scrim);
   display: flex; align-items: center; justify-content: center;
 }
 .ai-modal.hidden { display: none; }
 .ai-modal-box {
   width: 420px; max-width: calc(100vw - 32px); max-height: 70vh;
-  background: #fff; border-radius: 12px; box-shadow: 0 12px 32px rgba(0,0,0,.3);
+  background: var(--color-bg-surface); border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .3);
   display: flex; flex-direction: column; overflow: hidden;
 }
 .ai-modal-head {
-  background: #5b5fc7; color: #fff; padding: 10px 14px;
+  background: var(--color-accent-solid); color: var(--color-text-on-solid); padding: 10px 14px;
   display: flex; align-items: center; justify-content: space-between;
-  font-size: 14px; font-weight: 600;
+  font-size: var(--text-md); font-weight: 600;
 }
 .ai-modal-body {
-  padding: 16px; font-size: 13px; line-height: 1.6; white-space: pre-wrap;
-  overflow-y: auto;
+  padding: 16px; font-size: var(--text-base); line-height: 1.6; white-space: pre-wrap;
+  overflow-wrap: break-word; overflow-y: auto;
 }
 
 /* 담당자 불일치 우선순위 태그 (클릭하면 전체 판단 근거가 모달로 열림) */
 .ai-tag {
   display: inline-block; padding: 2px 8px; border-radius: 999px;
-  font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap;
+  font-size: var(--text-sm); font-weight: 600; cursor: pointer; white-space: nowrap;
 }
-.ai-tag-org { background: #fdecea; color: #c0392b; }
-.ai-tag-typo { background: #fff8e1; color: #a06a00; }
-.ai-tag-unknown { background: #f0f1f3; color: #666; }
+.ai-tag-org     { background: var(--color-status-danger-bg);  color: var(--color-status-danger-text); }
+.ai-tag-typo    { background: var(--color-status-warning-bg); color: var(--color-status-warning-text); }
+.ai-tag-unknown { background: var(--color-status-neutral-bg); color: var(--color-status-neutral-text); }
+
 /* 증적 티켓 상태 경고 (반려/미종결 티켓이 증적으로 적힌 경우) */
 .evidence-cell { position: relative; white-space: nowrap; }
-.cell.ev-warn { border-color: #f0a030; background: #fffaf0; }
-.cell.ev-bad  { border-color: #d9534f; background: #fdf3f3; }
-.ev-flag { margin-left: 2px; cursor: help; font-size: 11px; }
-.warn-text { color: #b26a00; font-weight: 600; }
-/* 대략적 일정만 등록된 상태 (미계획과 구분) */
-.badge.soft { background: #f3eefb; color: #6b4fa0; }
+.cell.ev-warn { border-color: var(--color-status-warning-solid); background: var(--color-status-warning-bg); }
+.cell.ev-bad  { border-color: var(--color-status-danger-solid);  background: var(--color-status-danger-bg); }
+.ev-flag { margin-inline-start: 2px; cursor: help; font-size: var(--text-caption); }
+.warn-text { color: var(--color-status-warning-text); font-weight: 600; }

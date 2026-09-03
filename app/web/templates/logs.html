@@ -4,10 +4,12 @@
 <head>
   <meta charset="UTF-8">
   <title>변경 이력</title>
-  <link rel="stylesheet" href="/static/style.css?v=12">
+  <link rel="stylesheet" href="/static/style.css?v=14">
 </head>
 <body>
+<a href="#main" class="skip-link">본문으로 건너뛰기</a>
 <div class="container">
+  <main id="main">
   <header>
     <h1>📝 변경 이력</h1>
     <a href="/" class="btn-sm">← 대시보드</a>
@@ -16,7 +18,7 @@
   <section class="panel">
     <table>
       <thead>
-        <tr><th>일시</th><th>NO</th><th>반기</th><th>항목</th><th>이전</th><th>변경</th><th>수정자</th></tr>
+        <tr><th scope="col">일시</th><th scope="col">NO</th><th scope="col">반기</th><th scope="col">항목</th><th scope="col">이전</th><th scope="col">변경</th><th scope="col">수정자</th></tr>
       </thead>
       <tbody>
       {% for l in logs %}
@@ -32,8 +34,11 @@
       {% endfor %}
       </tbody>
     </table>
-    {% if not logs %}<p class="muted" style="padding:20px">이력이 없습니다.</p>{% endif %}
+    {% if not logs %}<p class="muted" style="padding:20px">
+    아직 변경 이력이 없습니다. 대시보드에서 일정·완료·증적을 저장하면 여기에 기록됩니다.
+  </p>{% endif %}
   </section>
+</main>
 </div>
 </body>
 </html>

@@ -5,9 +5,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>용량관리 진척 현황</title>
-  <link rel="stylesheet" href="/static/style.css?v=12">
+  <link rel="stylesheet" href="/static/style.css?v=14">
 </head>
 <body>
+<a href="#main" class="skip-link">본문으로 건너뛰기</a>
 <div class="container">
 
   <nav class="top-nav">
@@ -15,6 +16,8 @@
     <a href="/capacity" class="top-nav-item active">💾 용량관리</a>
     <a href="/eos" class="top-nav-item">💻 EoS</a>
   </nav>
+
+  <main id="main">
 
   <header>
     <h1>💾 용량관리 진척 현황 (ASM/파일시스템 증설)</h1>
@@ -41,7 +44,7 @@
   </div>
   {% endif %}
   {% if report_warning %}
-  <div class="alert" style="background:#fff4e5;color:#7a4a00;white-space:pre-wrap">{{ report_warning }}</div>
+  <div class="alert alert-warn">{{ report_warning }}</div>
   {% endif %}
 
   {% if jira_error %}
@@ -73,12 +76,12 @@
     <h2>운영팀별 현황</h2>
     <table>
       <thead>
-        <tr><th>시스템 운영팀</th><th>완료</th><th>전체</th><th>완료율</th><th style="width:35%">진행</th></tr>
+        <tr><th scope="col">시스템 운영팀</th><th scope="col">완료</th><th scope="col">전체</th><th scope="col">완료율</th><th scope="col" style="width:35%">진행</th></tr>
       </thead>
       <tbody>
       {% for team, v in by_team.items() %}
         <tr class="clickable" onclick="location.href='/capacity?sheet={{ sheet }}&team={{ team }}'">
-          <td>{{ team }}</td>
+          <td><a class="team-link" href="/capacity?sheet={{ sheet }}&team={{ team }}">{{ team }}</a></td>
           <td>{{ v.done }}</td>
           <td>{{ v.total }}</td>
           <td class="{% if v.rate == 100 %}ok{% elif v.rate >= 50 %}mid{% else %}bad{% endif %}">{{ v.rate }}%</td>
@@ -96,7 +99,8 @@
       <div class="head-right">
         <form method="get" class="inline-form">
           <input type="hidden" name="sheet" value="{{ sheet }}">
-          <input type="text" name="q" value="{{ q }}" placeholder="운영팀/CI명/호스트/IP 검색" class="search">
+          <label for="q" class="sr-only">목록 검색</label>
+          <input type="text" id="q" name="q" value="{{ q }}" placeholder="운영팀/CI명/호스트/IP 검색" class="search">
           <button type="submit" class="btn-sm">검색</button>
         </form>
         <div class="filters">
@@ -109,8 +113,9 @@
     </div>
 
     <div class="user-input">
-      <strong>입력자명:</strong>
-      <input type="text" id="updatedBy" placeholder="이름 입력">
+      <label for="updatedBy"><strong>입력자명:</strong></label>
+      <input type="text" id="updatedBy" placeholder="예: 홍길동"
+             autocomplete="name" autocorrect="off" spellcheck="false">
       <span class="hint">※ 수정 이력에 기록됩니다. 엑셀 원본은 변경되지 않습니다.</span>
       <span id="adminHint" class="hint"></span>
       <button id="bulkSaveBtn" class="btn-sm" onclick="bulkSave()">
@@ -122,16 +127,16 @@
     <table class="editable">
       <thead>
         <tr>
-          <th>CI명</th><th>호스트명</th><th>운영팀</th><th>담당자</th>
-          <th style="width:70px">사용량</th>
-          <th style="width:90px">증설필요(GB)</th>
-          <th style="width:80px">입력자명</th>
-          <th style="width:90px">일정 ✏️</th>
-          <th style="width:50px">완료 ✏️</th>
-          <th style="width:130px">증적 ✏️</th>
-          <th style="width:130px">비고 ✏️</th>
-          <th>JIRA</th><th>상태</th><th style="width:60px">저장</th>
-          <th class="admin-only" style="width:60px">제외</th>
+          <th scope="col">CI명</th><th scope="col">호스트명</th><th scope="col">운영팀</th><th scope="col">담당자</th>
+          <th scope="col" style="width:70px">사용량</th>
+          <th scope="col" style="width:90px">증설필요(GB)</th>
+          <th scope="col" style="width:80px">입력자명</th>
+          <th scope="col" style="width:90px">일정 ✏️</th>
+          <th scope="col" style="width:50px">완료 ✏️</th>
+          <th scope="col" style="width:130px">증적 ✏️</th>
+          <th scope="col" style="width:130px">비고 ✏️</th>
+          <th scope="col">JIRA</th><th scope="col">상태</th><th scope="col" style="width:60px">저장</th>
+          <th scope="col" class="admin-only" style="width:60px">제외</th>
         </tr>
       </thead>
       <tbody>
@@ -143,16 +148,21 @@
           <td class="mono small">{{ d.hostname }}</td>
           <td class="small">{{ d.ops_team }}</td>
           <td class="owner-cell">
-            <input type="text" class="cell owner-edit" value="{{ d.owner }}">
+            <input type="text" class="cell owner-edit" value="{{ d.owner }}"
+                   aria-label="{{ d.ci_name }} 담당자">
           </td>
           <td class="small">{% if d.usage_pct is not none %}{{ d.usage_pct }}%{% else %}-{% endif %}</td>
           <td class="small">{{ d.required_gb if d.required_gb is not none else "-" }}</td>
           <td class="small updated-by">{{ d.updated_by }}</td>
 
-          <td><input type="text" class="cell sched {{ 'edited' if d.input_source == 'web' else '' }}" value="{{ d.schedule_disp }}" placeholder="OO월OO일"></td>
-          <td class="center"><input type="checkbox" class="cell done" {% if d.completed %}checked{% endif %}></td>
-          <td><input type="text" class="cell evidence" value="{{ d.evidence }}" placeholder="증적"></td>
-          <td><input type="text" class="cell note" value="{{ d.note }}" placeholder="비고"></td>
+          <td><input type="text" class="cell sched {{ 'edited' if d.input_source == 'web' else '' }}" value="{{ d.schedule_disp }}" placeholder="OO월OO일"
+                 aria-label="{{ d.ci_name }} 일정"></td>
+          <td class="center"><input type="checkbox" class="cell done" {% if d.completed %}checked{% endif %}
+                   aria-label="{{ d.ci_name }} 완료"></td>
+          <td><input type="text" class="cell evidence" value="{{ d.evidence }}" placeholder="증적"
+                   aria-label="{{ d.ci_name }} 증적"></td>
+          <td><input type="text" class="cell note" value="{{ d.note }}" placeholder="비고"
+                 aria-label="{{ d.ci_name }} 비고"></td>
 
           <td>
             {% if d.jira_key %}
@@ -169,7 +179,7 @@
             {% elif not d.planned %}<span class="badge warn">미계획</span>
             {% else %}<span class="badge bad">미완료</span>{% endif %}
           </td>
-          <td><button class="btn-save" onclick="saveRow(this)">저장</button></td>
+          <td><button class="btn-save" onclick="saveRow(this)" aria-label="{{ d.ci_name }} 저장">저장</button></td>
           <td class="admin-only">
             <button class="btn-sm btn-exclude" onclick="excludeRow(this)" title="증설 안 함으로 확정 - 제외 대상으로 이동">🚫 제외</button>
           </td>
@@ -186,7 +196,7 @@
     <div class="table-scroll">
     <table>
       <thead>
-        <tr><th>CI명</th><th>호스트명</th><th>운영팀</th><th>담당자</th><th>사유/처리자</th><th>상태</th><th class="admin-only">복귀</th></tr>
+        <tr><th scope="col">CI명</th><th scope="col">호스트명</th><th scope="col">운영팀</th><th scope="col">담당자</th><th scope="col">사유/처리자</th><th scope="col">상태</th><th scope="col" class="admin-only">복귀</th></tr>
       </thead>
       <tbody>
       {% for d in excluded_items %}
@@ -205,7 +215,7 @@
           <td><span class="badge muted">제외</span></td>
           <td class="admin-only">
             {% if d.expand_flag != 'X' %}
-            <button class="btn-sm" data-no="{{ d.item_no }}" data-sheet="{{ d.sheet }}" onclick="restoreRow(this)">↩️ 복귀</button>
+            <button class="btn-sm" data-no="{{ d.item_no }}" data-sheet="{{ d.sheet }}" onclick="restoreRow(this)">↩️ 제외 해제</button>
             {% else %}
             <span class="muted small">-</span>
             {% endif %}
@@ -222,33 +232,35 @@
     <span>기준일 {{ as_of }}</span>
   </footer>
 
+</main>
 </div>
 
-<div id="toast" class="toast"></div>
+<div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
 <!-- AI 진단 결과 모달 (매칭 미확인 원인) -->
 <div id="aiModal" class="ai-modal hidden" onclick="if(event.target===this) closeAiModal()">
   <div class="ai-modal-box">
     <div class="ai-modal-head">
       <span>🤖 AI 진단</span>
-      <button class="chat-close" onclick="closeAiModal()">✕</button>
+      <button class="chat-close" onclick="closeAiModal()" aria-label="진단 결과 닫기">✕</button>
     </div>
-    <div id="aiModalBody" class="ai-modal-body">...</div>
+    <div id="aiModalBody" class="ai-modal-body">…</div>
   </div>
 </div>
 
 <!-- 챗봇 위젯: 산정 기준 설명 / 진척 조회 중 선택 -->
-<button id="chatToggle" class="chat-toggle" onclick="toggleChat()">💬</button>
+<button id="chatToggle" class="chat-toggle" onclick="toggleChat()" aria-label="조회 챗봇 열기">💬</button>
 <div id="chatPanel" class="chat-panel hidden">
   <div class="chat-head">
     <span>💬 용량관리 챗봇</span>
-    <button class="chat-close" onclick="toggleChat()">✕</button>
+    <button class="chat-close" onclick="toggleChat()" aria-label="챗봇 닫기">✕</button>
   </div>
   <div class="chat-agent-select">
     <button type="button" class="chat-agent-btn active" data-agent="status" onclick="selectChatAgent('status')">📋 진척 조회</button>
     <button type="button" class="chat-agent-btn" data-agent="calc" onclick="selectChatAgent('calc')">🧮 산정 기준</button>
   </div>
   <div class="chat-name-row">
+    <label for="chatName" class="sr-only">챗봇 입력자명</label>
     <input type="text" id="chatName" placeholder="입력자명 (대상 목록과 자동 연동)" autocomplete="off">
   </div>
   <div id="chatMsgs-status" class="chat-msgs">
@@ -260,6 +272,7 @@
     <div class="chat-msg bot">🧮 산정 기준 설명을 선택했어요. "이 서버는 왜 증설 대상이야?", "80%가 진짜 기준이야?"처럼 물어보세요.</div>
   </div>
   <form id="chatForm" class="chat-form" onsubmit="return sendChat(event)">
+    <label for="chatInput" class="sr-only">챗봇 질문</label>
     <input type="text" id="chatInput" placeholder="질문을 입력하세요" autocomplete="off">
     <button type="submit">전송</button>
   </form>
@@ -290,7 +303,8 @@ function applyAdminState() {
   const admin = isAdmin();
   const hint = document.getElementById("adminHint");
   hint.textContent = admin ? "🔓 관리자: 완료 체크/담당자 수정 가능" : "🔒 완료 체크/담당자 수정은 관리자만 가능";
-  hint.style.color = admin ? "#2e7d32" : "#b26a00";
+  hint.classList.toggle("is-admin", admin);
+  hint.classList.toggle("is-locked", !admin);
 
   if (admin === _lastAdminState) return; // 상태 변화 없으면 무거운 DOM 순회 생략 (입력할 때마다 랙 방지)
   _lastAdminState = admin;
@@ -307,12 +321,18 @@ function applyAdminState() {
   document.body.classList.toggle("is-admin", admin);   // .admin-only 표시는 CSS가 처리
 }
 
+// 성공은 2초 뒤 사라지지만, 오류는 놓치면 안 되므로 직접 닫을 때까지 남는다.
+let _toastTimer = null;
 function showToast(msg, ok = true) {
   const t = document.getElementById("toast");
-  t.textContent = msg;
+  clearTimeout(_toastTimer);
+  t.textContent = msg + (ok ? "" : "  (클릭해서 닫기)");
   t.className = "toast show " + (ok ? "ok" : "err");
-  setTimeout(() => { t.className = "toast"; }, 2000);
+  if (ok) _toastTimer = setTimeout(() => { t.className = "toast"; }, 2000);
 }
+document.getElementById("toast").addEventListener("click", e => {
+  e.currentTarget.className = "toast";
+});
 
 async function saveRow(btn) {
   const name = requireName();
@@ -330,7 +350,7 @@ async function saveRow(btn) {
     updated_by: name,
   };
 
-  btn.disabled = true; btn.textContent = "...";
+  btn.disabled = true; btn.textContent = "…";
   try {
     const res = await fetch("/api/capacity/save", {
       method: "POST",
@@ -347,8 +367,8 @@ async function saveRow(btn) {
       void tr.offsetWidth;
       tr.classList.add("saved");
       setTimeout(() => tr.classList.remove("saved"), 1200);
-    } else { showToast("저장 실패", false); }
-  } catch (e) { showToast("오류: " + e.message, false); }
+    } else { showToast("저장하지 못했습니다. 잠시 후 다시 시도해주세요.", false); }
+  } catch (e) { showToast("저장하지 못했습니다. 네트워크 연결을 확인하고 다시 시도해주세요. (" + e.message + ")", false); }
   finally { btn.disabled = false; btn.textContent = "저장"; }
 }
 
@@ -357,7 +377,7 @@ async function excludeRow(btn) {
   if (!name) return;
   const tr = btn.closest("tr");
   const ci = tr.querySelector("td.strong").textContent;
-  if (!confirm(`${ci} 을(를) 증설 안 함으로 확정해 제외 대상으로 옮깁니다. 계속할까요?`)) return;
+  if (!confirm(`${ci}\n\n이 대상을 제외 처리할까요? (증설 안 함으로 확정)`)) return;
 
   btn.disabled = true;
   try {
@@ -371,16 +391,16 @@ async function excludeRow(btn) {
       showToast("제외 처리 완료");
       setTimeout(() => location.reload(), 500);
     } else {
-      showToast("실패: " + (data.error || ""), false);
+      showToast("처리하지 못했습니다. 잠시 후 다시 시도해주세요." + (data.error ? " (" + data.error + ")" : ""), false);
       btn.disabled = false;
     }
-  } catch (e) { showToast("오류: " + e.message, false); btn.disabled = false; }
+  } catch (e) { showToast("저장하지 못했습니다. 네트워크 연결을 확인하고 다시 시도해주세요. (" + e.message + ")", false); btn.disabled = false; }
 }
 
 async function restoreRow(btn) {
   const name = requireName();
   if (!name) return;
-  if (!confirm("제외를 해제하고 다시 대상 목록으로 복귀시킬까요?")) return;
+  if (!confirm("제외를 해제하고 대상 목록으로 되돌릴까요?")) return;
 
   btn.disabled = true;
   try {
@@ -391,13 +411,13 @@ async function restoreRow(btn) {
     });
     const data = await res.json();
     if (data.ok) {
-      showToast("복귀 완료");
+      showToast("제외 해제 완료");
       setTimeout(() => location.reload(), 500);
     } else {
-      showToast("실패: " + (data.error || ""), false);
+      showToast("처리하지 못했습니다. 잠시 후 다시 시도해주세요." + (data.error ? " (" + data.error + ")" : ""), false);
       btn.disabled = false;
     }
-  } catch (e) { showToast("오류: " + e.message, false); btn.disabled = false; }
+  } catch (e) { showToast("저장하지 못했습니다. 네트워크 연결을 확인하고 다시 시도해주세요. (" + e.message + ")", false); btn.disabled = false; }
 }
 
 async function bulkSave() {
@@ -421,10 +441,10 @@ async function bulkSave() {
   }).filter(Boolean);
 
   if (!rows.length) { showToast("변경된 항목이 없습니다", false); return; }
-  if (!confirm(`변경된 ${rows.length}건만 일괄 저장합니다. 계속할까요?`)) return;
+  if (!confirm(`변경된 ${rows.length}건을 저장할까요?`)) return;
 
   const btn = document.getElementById("bulkSaveBtn");
-  btn.disabled = true; btn.textContent = "저장 중...";
+  btn.disabled = true; btn.textContent = "저장 중…";
   try {
     const res = await fetch("/api/capacity/bulk-save", {
       method: "POST",
@@ -436,9 +456,9 @@ async function bulkSave() {
       showToast(`${data.count}건 일괄 저장 완료`);
       setTimeout(() => location.reload(), 700);
     } else {
-      showToast("실패: " + (data.error || ""), false);
+      showToast("처리하지 못했습니다. 잠시 후 다시 시도해주세요." + (data.error ? " (" + data.error + ")" : ""), false);
     }
-  } catch (e) { showToast("오류: " + e.message, false); }
+  } catch (e) { showToast("저장하지 못했습니다. 네트워크 연결을 확인하고 다시 시도해주세요. (" + e.message + ")", false); }
   finally { btn.disabled = false; btn.textContent = "💾 현재 목록 일괄 저장"; }
 }
 
@@ -481,17 +501,33 @@ ub.addEventListener("input", () => {
 });
 
 // ── AI 진단 (매칭 미확인 사유) ──
+// 모달: 열 때 배경을 inert 로 막고 안으로 포커스를 옮긴 뒤,
+// 닫을 때 원래 눌렀던 버튼으로 되돌린다. Esc 로도 닫힌다.
+let _modalReturnFocus = null;
 function showAiModal(text) {
+  const modal = document.getElementById("aiModal");
+  _modalReturnFocus = document.activeElement;
   document.getElementById("aiModalBody").textContent = text;
-  document.getElementById("aiModal").classList.remove("hidden");
+  modal.classList.remove("hidden");
+  document.querySelector("main").inert = true;
+  modal.querySelector(".chat-close").focus();
 }
 function closeAiModal() {
   document.getElementById("aiModal").classList.add("hidden");
+  document.querySelector("main").inert = false;
+  if (_modalReturnFocus) { _modalReturnFocus.focus(); _modalReturnFocus = null; }
 }
+document.addEventListener("keydown", e => {
+  if (e.key !== "Escape") return;
+  const modal = document.getElementById("aiModal");
+  if (modal && !modal.classList.contains("hidden")) { closeAiModal(); return; }
+  const panel = document.getElementById("chatPanel");
+  if (panel && !panel.classList.contains("hidden")) toggleChat();
+});
 
 async function diagnoseUnmatched(btn, itemNo) {
   btn.disabled = true;
-  showAiModal("진단 중...");
+  showAiModal("진단 중…");
   try {
     const res = await fetch("/api/capacity/diagnose-unmatched", {
       method: "POST",
@@ -570,7 +606,7 @@ async function sendChat(e) {
 
   addChatMsg(query, "me");
   input.value = "";
-  const pending = addChatMsg("...", "bot");
+  const pending = addChatMsg("…", "bot");
 
   try {
     const res = await fetch("/api/capacity/chat", {
