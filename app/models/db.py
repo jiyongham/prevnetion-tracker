@@ -147,11 +147,23 @@ def init_db():
 
         CREATE INDEX IF NOT EXISTS idx_eos_next_week_plan_week ON eos_next_week_plan(week_start);
 
+        -- Polestar에서 '_OLD'를 확인한 관측 기록.
+        -- 전환이 끝난 AS-IS 서버는 한동안 '_OLD'로 남아 있다가 결국 폐기(CI 삭제)된다.
+        -- 판정은 매번 '지금 상태'를 다시 보기 때문에, 이 기록이 없으면 CI가 지워지는 순간
+        -- 완료 근거가 사라져 완료 대수가 뒤로 간다. 그래서 판정 결과가 아니라 '관측 사실'을
+        -- 날짜와 함께 남겨, 폐기 후에도 근거가 유지되게 한다.
+        CREATE TABLE IF NOT EXISTS eos_polestar_seen (
+            item_no    TEXT PRIMARY KEY,  -- Insight Key
+            reason     TEXT DEFAULT '',   -- 어느 키로 확인했는지 ('CI명 매칭' / 'IP 경유 매칭 (...)')
+            first_seen TEXT NOT NULL,     -- 'YYYY-MM-DD' 처음 확인한 날
+            last_seen  TEXT NOT NULL      -- 'YYYY-MM-DD' 마지막으로 확인된 날 (이후로는 폐기 추정)
+        );
+
         -- 리포트 발송 시점의 집계 스냅샷. 지난 발송분과 비교해 이상(완료 대수 감소 등)을
         -- 감지하는 데 쓴다. 이게 없으면 매 발송이 과거와 단절돼 "이 0대가 맞나"를 알 수 없다.
         CREATE TABLE IF NOT EXISTS report_snapshot (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            domain      TEXT NOT NULL,     -- 'dr' | 'capacity'
+            domain      TEXT NOT NULL,     -- 'dr' | 'capacity' | 'eos_os' | 'eos_db'
             sent_at     TEXT DEFAULT CURRENT_TIMESTAMP,
             total       INTEGER,
             done        INTEGER,
@@ -626,3 +638,40 @@ def save_report_snapshot(domain: str, metrics: dict):
             metrics.get("no_schedule"), metrics.get("perf_cnt"), metrics.get("plan_cnt"),
             json.dumps(comp, ensure_ascii=False) if comp else None,
         ))
+
+
+# ─────────────────────────────────────────────
+# Polestar '_OLD' 관측 기록 (완료 근거 보존)
+# ─────────────────────────────────────────────
+def get_eos_polestar_seen() -> dict[str, dict]:
+    """{item_no: {reason, first_seen, last_seen}}"""
+    with get_conn() as conn:
+        rows = conn.execute("SELECT * FROM eos_polestar_seen").fetchall()
+    return {r["item_no"]: dict(r) for r in rows}
+
+
+def record_eos_polestar_seen(reasons: dict[str, str]) -> int:
+    """
+    이번 조회에서 '_OLD'로 확인된 대상을 기록. 반환: 새로 추가된 건수.
+    first_seen은 처음 값을 유지하고 last_seen만 갱신한다 - 언제부터 전환돼 있었는지가
+    실적 집계의 근거이므로 나중 조회로 덮어쓰면 안 된다.
+    """
+    if not reasons:
+        return 0
+    with get_conn() as conn:
+        before = conn.execute("SELECT COUNT(*) c FROM eos_polestar_seen").fetchone()["c"]
+        conn.executemany("""
+            INSERT INTO eos_polestar_seen (item_no, reason, first_seen, last_seen)
+            VALUES (?, ?, date('now', 'localtime'), date('now', 'localtime'))
+            ON CONFLICT(item_no) DO UPDATE SET
+                reason    = excluded.reason,
+                last_seen = excluded.last_seen
+        """, [(no, reason) for no, reason in reasons.items()])
+        after = conn.execute("SELECT COUNT(*) c FROM eos_polestar_seen").fetchone()["c"]
+    return after - before
+
+
+def delete_eos_polestar_seen(item_no: str) -> None:
+    """오탐으로 판단된 관측 기록 삭제 (관리자용). 다음 조회에서 다시 보이면 또 기록된다."""
+    with get_conn() as conn:
+        conn.execute("DELETE FROM eos_polestar_seen WHERE item_no = ?", (item_no,))

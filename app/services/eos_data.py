@@ -26,6 +26,7 @@ import time
 from app.config import settings
 from app.core.eos_loader import load_eos_items_merged
 from app.core.jira_client import jira
+from app.models.db import get_eos_polestar_seen, record_eos_polestar_seen
 from app.services.eos import build_eos_ticket_summary
 from app.services.eos_polestar import confirmed_reasons
 from app.services.matcher import match_items_by_cmdb_key, match_items_by_ip, merge_ticket_maps
@@ -52,7 +53,14 @@ def cached_at() -> float:
         return _cache["at"]
 
 
-def _collect_external(targets: list[dict]) -> tuple[dict, dict[str, str] | None, str | None]:
+def polestar_error() -> str | None:
+    """마지막 조회에서의 Polestar 오류 (정상이면 None). 화면에 조회 실패를 알리는 용도"""
+    with _cache_lock:
+        value = _cache["value"]
+    return value[3] if value else None
+
+
+def _collect_external(targets: list[dict]) -> tuple[dict, dict[str, dict], str | None, str | None]:
     """JIRA 티켓 매칭 + Polestar 전환 확인. 어느 한쪽이 실패해도 나머지로 계속 진행한다."""
     ticket_map: dict = {}
     jira_error = None
@@ -67,16 +75,44 @@ def _collect_external(targets: list[dict]) -> tuple[dict, dict[str, str] | None,
         jira_error = str(e)
         logger.warning(f"EoS JIRA 조회 실패 (엑셀 기준으로 계속): {e}")
 
-    polestar_confirmed = None
+    current = None
+    p_error = None
     try:
-        polestar_confirmed = confirmed_reasons(targets)
+        current = confirmed_reasons(targets)
+        added = record_eos_polestar_seen(current)
+        if added:
+            logger.info(f"Polestar '_OLD' 신규 확인 {added}건 기록")
     except Exception as e:
-        logger.warning(f"Polestar 조회 실패 (JIRA CMDB 근거만으로 계속): {e}")
+        p_error = str(e)
+        logger.warning(f"Polestar 조회 실패 (기록된 관측으로 계속): {e}")
 
-    return ticket_map, polestar_confirmed, jira_error
+    return ticket_map, merge_polestar_latch(current), jira_error, p_error
 
 
-def _refresh(targets: list[dict]) -> tuple[dict, dict[str, str] | None, str | None]:
+def merge_polestar_latch(current: dict[str, str] | None) -> dict[str, dict]:
+    """
+    이번 조회 결과 + DB에 남은 과거 관측을 합친다. 반환: {item_no: {reason, first_seen, last_seen, present}}
+
+    전환이 끝난 AS-IS 서버는 결국 폐기(CI 삭제)되는데, 판정은 매번 '지금 상태'를 다시
+    보기 때문에 그 순간 완료 근거가 사라져 완료 대수가 뒤로 간다. 그래서 한 번 확인한
+    '_OLD'는 기록으로 남겨 계속 근거로 인정하고, 지금은 안 보인다는 사실(present)만
+    따로 표시한다. Polestar 조회 자체가 실패해도 기록분은 그대로 유효하다.
+    """
+    stored = get_eos_polestar_seen()
+    merged = {}
+    for item_no, row in stored.items():
+        merged[item_no] = {
+            "reason": row["reason"],
+            "first_seen": row["first_seen"],
+            "last_seen": row["last_seen"],
+            # 조회에 실패했으면(current is None) 사라졌는지 알 수 없다. '폐기'로 표시하면
+            # Polestar 장애 한 번에 전 건이 폐기된 것처럼 보이므로 모른다=그대로 둔다.
+            "present": True if current is None else (item_no in current),
+        }
+    return merged
+
+
+def _refresh(targets: list[dict]) -> tuple[dict, dict[str, dict], str | None, str | None]:
     """외부 조회 후 캐시 갱신. _refresh_lock을 쥔 상태에서만 부른다."""
     started = time.time()
     value = _collect_external(targets)
@@ -123,7 +159,7 @@ def get_eos_data(use_external: bool = True, force_refresh: bool = False):
         if time.time() - cached_time >= CACHE_TTL_SEC:
             # 낡았지만 그대로 돌려주고 갱신은 뒤에서 (다음 요청부터 새 값)
             _refresh_in_background([i for i in items if i["is_target"]])
-        ticket_map, polestar_confirmed, jira_error = cached
+        ticket_map, polestar_confirmed, jira_error, _ = cached
         return items, ticket_map, polestar_confirmed, jira_error
 
     # 캐시가 비었거나 강제 갱신: 조회가 끝날 때까지 기다린다.
@@ -138,7 +174,7 @@ def get_eos_data(use_external: bool = True, force_refresh: bool = False):
         else:
             value = _refresh([i for i in items if i["is_target"]])
 
-    ticket_map, polestar_confirmed, jira_error = value
+    ticket_map, polestar_confirmed, jira_error, _ = value
     return items, ticket_map, polestar_confirmed, jira_error
 
 

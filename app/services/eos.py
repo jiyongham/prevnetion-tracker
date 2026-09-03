@@ -73,7 +73,10 @@ def build_no_reply_details(items: list[dict], base_year: int) -> list[dict]:
             "planned": False,
             "jira_key": "",
             "jira_matched": False,
-            "polestar": "",   # 미응답 대상은 EOS 진행 대상이 아니라 전환 확인 자체를 하지 않는다
+            # 미응답 대상은 EOS 진행 대상이 아니라 전환 확인 자체를 하지 않는다
+            "polestar": "",
+            "polestar_seen": "",
+            "polestar_gone": False,
             "completed": False,
             "reason": "",
             "input_source": item.get("input_source", "excel"),
@@ -114,14 +117,26 @@ def schedule_marks_done(raw: str) -> bool:
     return not re.search(r"완료\s*예정", eff)
 
 
-def polestar_reason(item: dict, polestar_confirmed) -> str:
-    """이 대상에 대한 Polestar 근거 문구 ('CI명 매칭' / 'IP 경유 매칭 (...)'). 없으면 빈 문자열.
-    set으로 넘어온 경우(근거 없이 확인 여부만 아는 경우)엔 확인 사실만 돌려준다."""
+def polestar_entry(item: dict, polestar_confirmed) -> dict | None:
+    """
+    이 대상의 Polestar 관측 기록. 없으면 None.
+    입력은 세 형태를 다 받는다 - {item_no: {reason, first_seen, last_seen, present}}(기본),
+    {item_no: 근거문자열}, item_no 집합(근거 없이 확인 여부만 아는 경우).
+    """
     if not polestar_confirmed or item["item_no"] not in polestar_confirmed:
-        return ""
-    if isinstance(polestar_confirmed, dict):
-        return polestar_confirmed[item["item_no"]] or "CI _OLD 확인"
-    return "CI _OLD 확인"
+        return None
+    if not isinstance(polestar_confirmed, dict):
+        return {"reason": "CI _OLD 확인", "first_seen": "", "last_seen": "", "present": True}
+    value = polestar_confirmed[item["item_no"]]
+    if isinstance(value, dict):
+        return {**value, "reason": value.get("reason") or "CI _OLD 확인"}
+    return {"reason": value or "CI _OLD 확인", "first_seen": "", "last_seen": "", "present": True}
+
+
+def polestar_reason(item: dict, polestar_confirmed) -> str:
+    """이 대상에 대한 Polestar 근거 문구 ('CI명 매칭' / 'IP 경유 매칭 (...)'). 없으면 빈 문자열."""
+    entry = polestar_entry(item, polestar_confirmed)
+    return entry["reason"] if entry else ""
 
 
 def judge_eos(
@@ -213,6 +228,7 @@ def calc_eos_completion(
             max(in_window, key=lambda x: x.get("created") or "") if in_window else None
         )
 
+        p_entry = polestar_entry(item, polestar_confirmed)
         sched = parse_eos_schedule(item.get("schedule_raw", ""), year)
         overdue_unfulfilled = bool(sched) and sched < as_of and not completed
         planned = bool(sched) and not overdue_unfulfilled
@@ -244,8 +260,10 @@ def calc_eos_completion(
             "jira_matched": bool(in_window),
             # Polestar 검증 결과는 완료 판정에 쓰였는지와 무관하게 항상 표시한다
             # (JIRA 근거로 완료된 건도 실제 CI가 _OLD로 바뀌었는지 같이 보이는 게 낫다).
-            # None은 조회 실패 - '미확인'과 구분해야 오해가 없다.
-            "polestar": None if polestar_confirmed is None else polestar_reason(item, polestar_confirmed),
+            "polestar": (p_entry or {}).get("reason", ""),
+            "polestar_seen": (p_entry or {}).get("first_seen", ""),
+            # 예전에 '_OLD'로 확인했지만 지금은 CI가 없는 상태 (폐기 추정) - 근거는 그대로 인정
+            "polestar_gone": bool(p_entry and not p_entry.get("present", True)),
             "completed": completed,
             "reason": reason,
             "input_source": item.get("input_source", "excel"),

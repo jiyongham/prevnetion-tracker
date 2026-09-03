@@ -34,8 +34,21 @@
     <a href="/eos?track=DB" class="tab {% if track == 'DB' %}active{% endif %}">DB</a>
   </div>
 
+  {% if sent_report %}
+  <div class="alert sent-report" id="sentReport">
+    <button class="sent-report-close" onclick="closeSentReport()" title="닫기">✕</button>
+    <div class="sent-report-title">📤 방금 Teams로 발송한 내용</div>
+    <pre class="sent-report-body">{{ sent_report }}</pre>
+  </div>
+  {% endif %}
+  {% if report_warning %}
+  <div class="alert" style="background:#fff4e5;color:#7a4a00;white-space:pre-wrap">{{ report_warning }}</div>
+  {% endif %}
   {% if jira_error %}
   <div class="alert">⚠️ JIRA 연동 실패 (엑셀 기준 표시): {{ jira_error[:100] }}</div>
+  {% endif %}
+  {% if polestar_error %}
+  <div class="alert">⚠️ Polestar 조회 실패 (이전에 확인된 기록으로 표시): {{ polestar_error[:100] }}</div>
   {% endif %}
 
   <!-- 요약 카드 -->
@@ -152,11 +165,13 @@
             <a href="{{ jira_base }}/browse/{{ d.jira_key }}" target="_blank" class="link small">{{ d.jira_key }}</a>
             {% else %}<span class="muted">-</span>{% endif %}
           </td>
-          <td class="center">
-            {% if d.polestar is none %}
-              <span class="badge muted" title="Polestar 조회에 실패해 확인하지 못했습니다 (JIRA 근거만 반영)">조회불가</span>
+          <td class="center polestar-cell">
+            {% if d.polestar_gone %}
+              <span class="badge warn" title="{{ d.polestar }} — {{ d.polestar_seen }}에 '_OLD' 확인. 지금은 Polestar에 CI가 없습니다(폐기 추정). 확인 기록이 있어 완료 근거는 유지됩니다.">_OLD ✓ 폐기</span>
+              <button class="btn-xs admin-only" onclick="clearPolestar(this)"
+                      title="관리자: 오탐이면 이 관측 기록을 지웁니다 (다음 조회에서 다시 보이면 재기록)">✕</button>
             {% elif d.polestar %}
-              <span class="badge ok" title="Polestar에서 AS-IS CI가 '_OLD'로 바뀐 것을 확인 — {{ d.polestar }}">_OLD ✓</span>
+              <span class="badge ok" title="{{ d.polestar }}{% if d.polestar_seen %} — {{ d.polestar_seen }} 최초 확인{% endif %}">_OLD ✓</span>
             {% elif d.no_reply %}
               <span class="muted">-</span>
             {% else %}
@@ -411,6 +426,26 @@ async function postExclude(btn, body) {
   } catch (e) { alert("오류: " + e.message); btn.disabled = false; }
 }
 
+// Polestar '_OLD' 관측 기록 삭제 (오탐 정정)
+async function clearPolestar(btn) {
+  const name = (document.getElementById("updatedBy").value || "").trim();
+  if (name.length < 2) { alert("먼저 입력자명을 입력해주세요."); return; }
+  const tr = btn.closest("tr");
+  const sys = tr.querySelector("td.strong").textContent;
+  if (!confirm(`${sys}\n\nPolestar '_OLD' 확인 기록을 지웁니다.\n완료 근거에서 빠지며, 다음 조회에서 다시 확인되면 재기록됩니다.`)) return;
+  btn.disabled = true;
+  try {
+    const res = await fetch("/api/eos/clear-polestar", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ item_no: tr.dataset.no, updated_by: name }),
+    });
+    const data = await res.json();
+    if (data.ok) { setTimeout(() => location.reload(), 300); }
+    else { alert("실패: " + (data.error || "")); btn.disabled = false; }
+  } catch (e) { alert("오류: " + e.message); btn.disabled = false; }
+}
+
 function toggleChat() {
   const panel = document.getElementById("chatPanel");
   const toggle = document.getElementById("chatToggle");
@@ -455,6 +490,17 @@ async function sendChat(e) {
     pending.textContent = "오류: " + err.message;
   }
   return false;
+}
+
+// 발송 본문 패널 닫기. 주소에서 sent=1도 같이 지워 새로고침해도 다시 뜨지 않게 한다.
+function closeSentReport() {
+  const el = document.getElementById("sentReport");
+  if (el) el.remove();
+  const url = new URL(location.href);
+  if (url.searchParams.has("sent")) {
+    url.searchParams.delete("sent");
+    history.replaceState(null, "", url);
+  }
 }
 </script>
 </body>

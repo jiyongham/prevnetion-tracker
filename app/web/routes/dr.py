@@ -21,7 +21,7 @@ from app.core.jira_client import jira
 from app.core.scheduler import get_jobs_info
 from app.core.teams_client import send_teams_dm, send_teams_message
 from app.models.db import get_input, get_logs, get_remind_log_summary, log_remind, upsert_input
-from app.services import ai_diagnose, chatbot, dr_data, evidence_check
+from app.services import ai_diagnose, chatbot, dr_data, evidence_check, last_report
 from app.services.completion import build_ticket_summary, calc_completion, group_by
 from app.services.owner_check import (
     collect_targets_with_tickets,
@@ -83,6 +83,7 @@ def dashboard(
     q: str | None = None,
     mode: str | None = None,
     report_warning: str | None = None,
+    sent: str | None = None,
 ):
     half = half or get_current_half()
     today = date.today()
@@ -167,6 +168,8 @@ def dashboard(
         "evidence_warn_cnt": evidence_warn_cnt,
         "by_team": dict(sorted(by_team.items(), key=lambda x: x[1]["rate"])),
         "report_warning": report_warning,
+        # 발송 직후에만(sent=1) 방금 나간 본문을 화면에 띄운다
+        "sent_report": last_report.get("dr") if sent else "",
         "half": half,
         "half_label": "상반기" if half == "H1" else "하반기",
         "mode": mode or "",
@@ -545,7 +548,7 @@ def trigger_report(half: str = Form(...)):
     dr_data.invalidate_cache(half)
     # 발송은 하되, 지난주 대비 이상 징후가 있으면 화면에 띄워 확인하게 한다
     warning = send_report(half=half)
-    url = f"/?half={half}"
+    url = f"/?half={half}&sent=1"
     if warning:
         url += f"&report_warning={quote(warning)}"
     return RedirectResponse(url=url, status_code=303)

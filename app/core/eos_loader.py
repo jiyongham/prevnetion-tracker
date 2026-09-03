@@ -124,7 +124,9 @@ def load_eos_items(excel_path: str | None = None) -> list[dict]:
             continue
 
         status_raw = _s(row, "EOS 진행/폐기 예정/제외")
-        is_target = was_originally_target(status_raw)
+        # 분모 판정에서 빠지지만 실제로 조치가 진행돼 집계에 넣어야 하는 건은
+        # EOS_EXTRA_TARGET_KEYS로 하나씩 예외 처리한다 (config 주석 참고).
+        is_target = was_originally_target(status_raw) or insight_key in settings.eos_extra_target_set
         os_val = _s(row, "OS")
         db_val = _s(row, "DB")
         os_eos_date = match_os_eos_date(os_val, product_table)

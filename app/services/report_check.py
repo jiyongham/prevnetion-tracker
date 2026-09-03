@@ -21,7 +21,12 @@ from app.models.db import get_last_report_snapshot, save_report_snapshot
 
 logger = logging.getLogger(__name__)
 
-DOMAIN_LABELS = {"dr": "DR 모의훈련", "capacity": "용량관리(디스크 증설)"}
+DOMAIN_LABELS = {
+    "dr": "DR 모의훈련",
+    "capacity": "용량관리(디스크 증설)",
+    "eos_os": "EoS(노후 OS 전환)",
+    "eos_db": "EoS(노후 DB 전환)",
+}
 
 # 진행률이 이 이상 급변하면 데이터 이상을 의심 (정상 주간 변동폭을 크게 넘는 값)
 RATE_JUMP_THRESHOLD = 20.0

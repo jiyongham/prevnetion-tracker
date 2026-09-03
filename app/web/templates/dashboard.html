@@ -34,6 +34,13 @@
     </div>
   </header>
 
+  {% if sent_report %}
+  <div class="alert sent-report" id="sentReport">
+    <button class="sent-report-close" onclick="closeSentReport()" title="닫기">✕</button>
+    <div class="sent-report-title">📤 방금 Teams로 발송한 내용</div>
+    <pre class="sent-report-body">{{ sent_report }}</pre>
+  </div>
+  {% endif %}
   {% if report_warning %}
   <div class="alert" style="background:#fff4e5;color:#7a4a00;white-space:pre-wrap">{{ report_warning }}</div>
   {% endif %}
@@ -594,6 +601,17 @@ async function diagnoseUnmatched(btn, itemNo) {
   } catch (e) {
     document.getElementById("aiModalBody").textContent = "오류: " + e.message;
   } finally { btn.disabled = false; }
+}
+
+// 발송 본문 패널 닫기. 주소에서 sent=1도 같이 지워 새로고침해도 다시 뜨지 않게 한다.
+function closeSentReport() {
+  const el = document.getElementById("sentReport");
+  if (el) el.remove();
+  const url = new URL(location.href);
+  if (url.searchParams.has("sent")) {
+    url.searchParams.delete("sent");
+    history.replaceState(null, "", url);
+  }
 }
 </script>
 </body>
