@@ -18,7 +18,11 @@
   </nav>
 
   <main id="main">
+{% extends "_layout.html" %}
 
+{% block title %}DR 모의훈련 진척 관리{% endblock %}
+
+{% block content %}
   <header>
     <h1>🔄 DR 모의훈련 진척 현황</h1>
     <div class="controls">
@@ -264,10 +268,9 @@
       <a href="/api/summary?half={{ half }}" target="_blank">API</a>
     </span>
   </footer>
+{% endblock %}
 
-</main>
-</div>
-
+{% block after %}
 <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
 <!-- 조회 챗봇 위젯 -->
@@ -657,5 +660,4 @@ function closeSentReport() {
   }
 }
 </script>
-</body>
-</html>
+{% endblock %}

@@ -11,7 +11,11 @@
 <a href="#main" class="skip-link">본문으로 건너뛰기</a>
 <div class="container">
   <main id="main">
+{% extends "_layout.html" %}
 
+{% block title %}EoS Teams 리마인드 미리보기{% endblock %}
+
+{% block content %}
   <header>
     <h1>📣 EoS Teams 리마인드 미리보기</h1>
     <a href="/eos" class="btn-sm">← EoS</a>
@@ -114,9 +118,9 @@
       {% endfor %}
     </section>
   </div>
-</main>
-</div>
+{% endblock %}
 
+{% block after %}
 <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
 <script>
@@ -214,5 +218,4 @@ async function testSend(btn) {
   finally { btn.disabled = false; }
 }
 </script>
-</body>
-</html>
+{% endblock %}
