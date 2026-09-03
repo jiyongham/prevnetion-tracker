@@ -56,17 +56,17 @@ def _eos_summary(today: date) -> tuple[int, int, str | None]:
 
 _MODULES = (
     {
-        "code": "DR", "icon": "🔄", "label": "DR 모의훈련", "href": "/dr",
+        "code": "DR", "label": "DR 모의훈련", "href": "/dr",
         "desc": "재해복구 대상의 실전환·무중단 수행률을 추적합니다.",
         "summarize": _dr_summary,
     },
     {
-        "code": "CAP", "icon": "💾", "label": "용량관리", "href": "/capacity",
+        "code": "CAP", "label": "용량관리", "href": "/capacity",
         "desc": "ASM·파일시스템 디스크 증설 대상의 진행 현황을 관리합니다.",
         "summarize": _capacity_summary,
     },
     {
-        "code": "EOS", "icon": "💻", "label": "EoS 전환", "href": "/eos",
+        "code": "EOS", "label": "EoS 전환", "href": "/eos",
         "desc": "노후 OS·DB 시스템의 전환 완료 여부를 점검합니다.",
         "summarize": _eos_summary,
     },
@@ -85,15 +85,20 @@ def portal_home(request: Request):
             logger.warning(f"포털 홈 {m['code']} 요약 실패: {e}")
             done, total, error = 0, 0, str(e)
 
+        pct = round(done / total * 100) if total else None
         modules.append({
             "code": m["code"],
-            "icon": m["icon"],
             "label": m["label"],
             "href": m["href"],
             "desc": m["desc"],
             "done": done,
             "total": total,
-            "pct": round(done / total * 100) if total else None,
+            "pct": pct,
+            # 신호등 배색: 80%+ 정상, 50~79% 진행중, 그 아래 주의 (개별 화면 배지의
+            # ==100/그외 2단계 기준과 달리 포털 카드는 3단계로 더 세분화해서 보여준다)
+            "band": "ok" if pct is not None and pct >= 80 else "mid" if pct is not None and pct >= 50 else "bad",
+            # 세그먼트 바(20칸) 중 채울 칸 수
+            "bar_filled": round(pct / 5) if pct is not None else 0,
             "error": error,
         })
 
