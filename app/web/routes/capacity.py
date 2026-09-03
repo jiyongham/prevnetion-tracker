@@ -23,7 +23,7 @@ from app.services.capacity import (
     calc_capacity_completion,
     filter_tickets_by_sheet,
 )
-from app.services import ai_diagnose, capacity_chatbot
+from app.services import ai_diagnose, capacity_chatbot, last_report
 from app.services.capacity_reminder import group_capacity_no_reply, group_capacity_unplanned
 from app.services.capacity_report import send_capacity_report
 from app.services.completion import group_by
@@ -65,6 +65,7 @@ def capacity_dashboard(
     status: str | None = None,
     q: str | None = None,
     report_warning: str | None = None,
+    sent: str | None = None,
 ):
     if sheet not in ("DATA", "ARCH"):
         sheet = "DATA"
@@ -116,6 +117,8 @@ def capacity_dashboard(
         "excluded_cnt": excluded_cnt,
         "by_team": dict(sorted(by_team.items(), key=lambda x: x[1]["rate"])),
         "report_warning": report_warning,
+        # 발송 직후에만(sent=1) 방금 나간 본문을 화면에 띄운다
+        "sent_report": last_report.get("capacity") if sent else "",
         "sheet": sheet,
         "sheet_label": "DATA (ASM/파일시스템)" if sheet == "DATA" else "ARCH (아카이브)",
         "as_of": today,
@@ -293,7 +296,7 @@ async def api_capacity_remind_dm(request: Request):
 def trigger_capacity_report(sheet: str = Form("DATA")):
     # 발송은 하되, 지난주 대비 이상 징후가 있으면 화면에 띄워 확인하게 한다
     warning = send_capacity_report()
-    url = f"/capacity?sheet={sheet}"
+    url = f"/capacity?sheet={sheet}&sent=1"
     if warning:
         url += f"&report_warning={quote(warning)}"
     return RedirectResponse(url=url, status_code=303)

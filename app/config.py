@@ -59,6 +59,12 @@ class Settings(BaseSettings):
     capacity_excel_path: str = "data/capacity.xlsx"   # 용량관리(ASM/파일시스템 증설) - DATA/ARCH 시트
     eos_excel_path: str = "data/eos.xlsx"             # EoS(노후 OS/DB 전환) 대상
 
+    # 분모 판정에서 빠지지만 대상으로 넣어야 하는 예외 (Insight Key 콤마 구분).
+    # EoS 대상(분모)은 '최초 산정 시 EOS 진행'이었는지로 정하는데(eos_loader.was_originally_target),
+    # '미응답 → EOS 진행'처럼 나중에 확정된 건은 그 기준에서 빠진다. 그중 실제로 조치가
+    # 진행돼 집계에 넣어야 하는 건만 여기에 하나씩 적는다. 실제 키라 기본값은 비워두고 .env에서만 설정.
+    eos_extra_target_keys: str = ""
+
     db_path: str = "data/tracker.db"
 
     # app/config.py 에 필드 추가
@@ -155,6 +161,10 @@ class Settings(BaseSettings):
     @property
     def eos_admin_set(self) -> set[str]:
         return {a.strip() for a in self.eos_admin_users.split(",") if a.strip()}
+
+    @property
+    def eos_extra_target_set(self) -> set[str]:
+        return {k.strip() for k in self.eos_extra_target_keys.split(",") if k.strip()}
 
 
 settings = Settings()

@@ -55,6 +55,13 @@ select, input[type="date"], input[type="text"] {
 }
 .btn-sm:hover { background: #f4f6f8; }
 
+/* 배지 옆에 붙는 아주 작은 정정 버튼 (Polestar 관측 기록 삭제 등) */
+.btn-xs {
+  padding: 0 4px; margin-left: 2px; background: none; border: none;
+  cursor: pointer; font-size: 11px; color: #999; line-height: 1;
+}
+.btn-xs:hover { color: #c62828; }
+
 .btn-exclude { color: #c62828; border-color: #f0c4c4; }
 .btn-exclude:hover { background: #fdecea; }
 
@@ -62,6 +69,24 @@ select, input[type="date"], input[type="text"] {
   background: #fff4e5; border: 1px solid #ffd59e; color: #8a5300;
   padding: 10px 14px; border-radius: 6px; margin-bottom: 16px; font-size: 13px;
 }
+
+/* 발송 직후 화면에 띄우는 리포트 본문 (닫기 버튼으로 제거) */
+.sent-report {
+  position: relative; background: #eef6ff; border-color: #bcd9f5; color: #1c4e80;
+  padding-right: 36px;
+}
+.sent-report-title { font-weight: 600; margin-bottom: 8px; }
+.sent-report-body {
+  margin: 0; white-space: pre-wrap; word-break: break-all;
+  font-family: ui-monospace, "D2Coding", Consolas, monospace; font-size: 12.5px;
+  line-height: 1.6; color: #24405c; max-height: 340px; overflow-y: auto;
+}
+.sent-report-close {
+  position: absolute; top: 6px; right: 8px;
+  background: none; border: none; cursor: pointer;
+  font-size: 14px; color: #7fa5c8; line-height: 1; padding: 4px;
+}
+.sent-report-close:hover { color: #1c4e80; }
 
 /* 요약 카드 */
 .cards {

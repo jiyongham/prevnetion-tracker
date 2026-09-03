@@ -2,6 +2,7 @@
 """EoS(노후 OS/DB 전환 - [예방1]) 관련 라우트"""
 import logging
 from datetime import date, datetime
+from urllib.parse import quote
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -12,6 +13,7 @@ from app.core.eos_loader import load_eos_items_merged
 from app.core.teams_client import send_teams_dm
 from app.models.db import (
     add_eos_next_week_plan,
+    delete_eos_polestar_seen,
     get_eos_input,
     get_eos_next_week_plan,
     get_eos_remind_log_summary,
@@ -21,10 +23,11 @@ from app.models.db import (
 )
 from app.services.completion import group_by
 from app.services.eos import build_no_reply_details, calc_eos_completion, filter_track
-from app.services import eos_chatbot, evidence_check
+from app.services import eos_chatbot, evidence_check, last_report
 from app.services.eos_data import (
     cached_at,
     get_eos_data,
+    polestar_error,
     invalidate_cache as invalidate_eos_cache,
     prewarm as prewarm_eos,
 )
@@ -66,6 +69,8 @@ def eos_dashboard(
     team: str | None = None,
     status: str | None = None,
     q: str | None = None,
+    report_warning: str | None = None,
+    sent: str | None = None,
 ):
     if track not in ("ALL", "OS", "DB"):
         track = "ALL"
@@ -128,6 +133,10 @@ def eos_dashboard(
         "teams": sorted(by_team.keys()),
         "admins": sorted(settings.eos_admin_set),
         "jira_error": jira_error,
+        "polestar_error": polestar_error(),
+        "report_warning": report_warning,
+        # 발송 직후에만(sent=1) 방금 나간 본문을 화면에 띄운다
+        "sent_report": last_report.get("eos") if sent else "",
         "jira_base": settings.jira_url.rstrip("/"),
         "data_as_of": external_as_of(),
     })
@@ -180,6 +189,31 @@ async def api_eos_bulk_save(request: Request):
             updated_by=updated_by,
         )
     return JSONResponse({"ok": True, "count": len(rows)})
+
+
+@router.post("/api/eos/clear-polestar")
+async def api_eos_clear_polestar(request: Request):
+    """
+    Polestar '_OLD' 관측 기록 삭제 (관리자만).
+    한 번 확인된 '_OLD'는 CI가 폐기돼도 완료 근거로 계속 인정되므로, 오탐이었다고
+    판단되면 이 기록을 지워야 판정에서 빠진다. 다음 조회에서 다시 확인되면 재기록된다.
+    """
+    data = await request.json()
+    item_no = (data.get("item_no") or "").strip()
+    updated_by = (data.get("updated_by") or "").strip()
+
+    if not item_no:
+        return JSONResponse({"ok": False, "error": "대상이 지정되지 않았습니다."}, status_code=400)
+    if updated_by not in settings.eos_admin_set:
+        return JSONResponse(
+            {"ok": False, "error": "관측 기록 삭제는 관리자만 가능합니다."}, status_code=403
+        )
+
+    delete_eos_polestar_seen(item_no)
+    logger.info(f"Polestar 관측 기록 삭제: {item_no} (by {updated_by})")
+    invalidate_eos_cache()
+    prewarm_eos()
+    return JSONResponse({"ok": True})
 
 
 # ─────────────────────────────────────────────
@@ -292,8 +326,12 @@ async def api_eos_save_owner(request: Request):
 # ─────────────────────────────────────────────
 @router.post("/eos/send-report")
 def trigger_eos_report():
-    send_eos_report()
-    return RedirectResponse(url="/eos", status_code=303)
+    # 발송은 하되, 지난주 대비 이상 징후가 있으면 화면에 띄워 확인하게 한다 (DR훈련과 동일)
+    warning = send_eos_report()
+    url = "/eos?sent=1"
+    if warning:
+        url += f"&report_warning={quote(warning)}"
+    return RedirectResponse(url=url, status_code=303)
 
 
 # ─────────────────────────────────────────────

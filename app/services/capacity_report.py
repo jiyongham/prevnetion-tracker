@@ -6,6 +6,7 @@ from app.core.capacity_loader import load_capacity_items_merged
 from app.core.date_utils import week_ranges
 from app.core.jira_client import jira
 from app.core.teams_client import send_teams_message
+from app.services import last_report
 from app.services.capacity import (
     build_capacity_ticket_summary,
     calc_capacity_completion,
@@ -148,5 +149,6 @@ def send_capacity_report(use_jira: bool = True) -> str | None:
     print("-" * 60)
 
     send_teams_message(text)
+    last_report.remember("capacity", text)   # 발송 직후 화면에서 확인할 수 있게
     record_sent("capacity", metrics)
     return warning
