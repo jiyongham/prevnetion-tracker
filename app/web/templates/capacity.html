@@ -1,24 +1,9 @@
 <!-- app/web/templates/capacity.html -->
-<!DOCTYPE html>
-<html lang="ko">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>용량관리 진척 현황</title>
-  <link rel="stylesheet" href="/static/style.css?v=15">
-</head>
-<body>
-<a href="#main" class="skip-link">본문으로 건너뛰기</a>
-<div class="container">
+{% extends "_layout.html" %}
 
-  <nav class="top-nav">
-    <a href="/" class="top-nav-item">🔄 DR훈련</a>
-    <a href="/capacity" class="top-nav-item active">💾 용량관리</a>
-    <a href="/eos" class="top-nav-item">💻 EoS</a>
-  </nav>
+{% block title %}용량관리 진척 현황{% endblock %}
 
-  <main id="main">
-
+{% block content %}
   <header>
     <h1>💾 용량관리 진척 현황 (ASM/파일시스템 증설)</h1>
     <div class="controls">
@@ -231,10 +216,9 @@
   <footer>
     <span>기준일 {{ as_of }}</span>
   </footer>
+{% endblock %}
 
-</main>
-</div>
-
+{% block after %}
 <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
 <!-- AI 진단 결과 모달 (매칭 미확인 원인) -->
@@ -633,5 +617,4 @@ function closeSentReport() {
   }
 }
 </script>
-</body>
-</html>
+{% endblock %}

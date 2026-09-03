@@ -1,15 +1,9 @@
 <!-- app/web/templates/logs.html -->
-<!DOCTYPE html>
-<html lang="ko">
-<head>
-  <meta charset="UTF-8">
-  <title>변경 이력</title>
-  <link rel="stylesheet" href="/static/style.css?v=15">
-</head>
-<body>
-<a href="#main" class="skip-link">본문으로 건너뛰기</a>
-<div class="container">
-  <main id="main">
+{% extends "_layout.html" %}
+
+{% block title %}변경 이력{% endblock %}
+
+{% block content %}
   <header>
     <h1>📝 변경 이력</h1>
     <a href="/" class="btn-sm">← 대시보드</a>
@@ -38,7 +32,4 @@
     아직 변경 이력이 없습니다. 대시보드에서 일정·완료·증적을 저장하면 여기에 기록됩니다.
   </p>{% endif %}
   </section>
-</main>
-</div>
-</body>
-</html>
+{% endblock %}
