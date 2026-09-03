@@ -416,6 +416,70 @@ tr.row-done { background: var(--color-status-success-bg-subtle); }
 
 table.editable td { padding: 5px 6px; }
 
+/* ══ 대형 편집 표 (DR훈련·용량관리·EoS 대상 목록) ══
+   14~16열이라 가로 스크롤이 길고 행이 수백 개다. 스크롤해도
+   (1) 무슨 열인지 (2) 어느 시스템인지 (3) 저장/제외 버튼이
+   항상 보이도록 머리글과 양끝 열을 고정한다.
+   :has() 로 큰 표에만 걸어서 작은 표(운영팀별·스케줄 등)는 건드리지 않는다. */
+.table-scroll:has(table.editable) {
+  /* 세로도 이 안에서 스크롤해야 머리글 sticky 가 화면에 붙는다.
+     max() 로 하한을 두면 200% 확대나 낮은 창에서도 최소 320px 은 보이고,
+     반대로 행이 몇 개뿐인 필터 결과에서는 빈 공간이 생기지 않는다
+     (min-height 를 쓰면 짧은 표까지 320px 로 늘어난다). */
+  max-height: max(320px, calc(100dvh - 160px));
+  overflow-y: auto;
+}
+
+/* sticky 셀은 스크롤된 내용 위를 덮으므로 불투명해야 한다.
+   행에 배경을 깔아두고 고정 셀이 inherit 하면 완료 행·hover 색이 그대로 따라온다. */
+table.editable tbody tr { background: var(--color-bg-surface); }
+table.editable tbody tr.row-done { background: var(--color-status-success-bg-subtle); }
+table.editable tbody tr:hover { background: var(--color-bg-hover); }
+
+/* (1) 머리글 고정. border-collapse 와 sticky 를 같이 쓰면 크롬에서 테두리가
+   같이 스크롤돼 사라지므로 밑줄은 inset box-shadow 로 그린다. */
+table.editable thead th {
+  position: sticky; top: 0; z-index: 3;
+  border-bottom: none;
+  box-shadow: inset 0 -1px 0 var(--color-divider);
+}
+
+/* (2) 시스템명 열 고정 + 한 줄 유지.
+   두 줄로 접히던 이름 때문에 행 높이가 들쭉날쭉했다. 잘라내지 않고 한 줄로 편다. */
+table.editable tbody td:first-child,
+table.editable thead th:first-child {
+  position: sticky; inset-inline-start: 0; z-index: 2;
+  white-space: nowrap;
+  box-shadow: inset -1px 0 0 var(--color-divider);
+  background: inherit;
+}
+table.editable thead th:first-child { z-index: 4; background: var(--color-bg-subtle); }
+
+/* (3) 저장·제외 열 고정. 제외는 관리자에게만 보이므로(admin-only)
+   저장의 오른쪽 오프셋이 달라진다 — 두 경우를 따로 잡는다. */
+table.editable tbody td:last-child,
+table.editable thead th:last-child,
+table.editable tbody td:nth-last-child(2),
+table.editable thead th:nth-last-child(2) {
+  position: sticky; z-index: 2;
+  box-shadow: inset 1px 0 0 var(--color-divider);
+  background: inherit;
+}
+table.editable thead th:last-child,
+table.editable thead th:nth-last-child(2) { z-index: 4; background: var(--color-bg-subtle); }
+
+/* 비관리자: 제외 열이 display:none 이라 저장이 마지막 */
+table.editable tbody td:nth-last-child(2),
+table.editable thead th:nth-last-child(2) { inset-inline-end: 0; }
+table.editable tbody td:last-child,
+table.editable thead th:last-child { inset-inline-end: 0; }
+/* 관리자: 제외(60px)가 끝, 저장은 그만큼 안쪽 */
+body.is-admin table.editable tbody td:nth-last-child(2),
+body.is-admin table.editable thead th:nth-last-child(2) { inset-inline-end: 60px; }
+
+/* 이름 열이 지나치게 넓어지지 않도록 최소폭만 확보 */
+table.editable td:first-child { min-width: 9rem; }
+
 /* 편집 셀 */
 input.cell, select.cell {
   width: 100%; padding: 5px 7px; border: 1px solid var(--color-border-subtle);
@@ -485,8 +549,22 @@ tr.saved { animation: flash 1.2s; }
 .bad { color: var(--color-status-danger-text); font-weight: 600; }
 
 .badge {
+  display: inline-block;
   padding: 3px 9px; border-radius: 10px;
   font-size: var(--text-caption); font-weight: 600; white-space: nowrap;
+  /* 칸 높이는 상태와 무관하게 같아야 열이 흔들리지 않는다 */
+  min-width: 4.5em; text-align: center;
+}
+/* 500행을 훑을 때 "손이 가야 하는 것"이 먼저 보여야 한다.
+   조치 필요(미완료·지연·미계획)는 칩 + 테두리 + 굵게,
+   이미 끝났거나 볼 게 없는 상태(완료·미응답)는 배경을 걷고 글자만 남겨 물러나게 한다.
+   색 말고도 굵기·테두리·존재감이 같이 달라지므로 색맹이어도 우선순위가 읽힌다. */
+.badge.bad, .badge.warn {
+  font-weight: 700;
+  box-shadow: inset 0 0 0 1px currentColor;
+}
+.badge.ok, .badge.muted {
+  background: none; font-weight: 500;
 }
 /* 상태 열에는 이 여섯이 한꺼번에 나타난다. 색상각이 서로 충분히 벌어져 있어야 한다. */
 .badge.ok    { background: var(--color-status-success-bg); color: var(--color-status-success-text); }
