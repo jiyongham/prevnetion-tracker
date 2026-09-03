@@ -61,9 +61,9 @@ def _build(half: str | None = None, use_jira: bool = True) -> tuple[str, dict]:
     lines = [
         "[DR훈련]",
         "",
-        "1. 전체 대상",
-        f"-  총 {total_all}대 中 {target_cnt}대, 제외 {excluded}대",
-        f"    ※ {settings.dr_excluded_reason}으로 대상 제외 {excluded}대",
+        "전체 대상",
+        f"- 총 {total_all}대 中 {target_cnt}대, 제외 {excluded}대",
+        f"   ※ {settings.dr_excluded_reason} (대상 제외 {excluded}대)",
         "",
     ]
 
@@ -87,9 +87,9 @@ def _build(half: str | None = None, use_jira: bool = True) -> tuple[str, dict]:
     h1_rate = round(h1_done / h1_total * 100, 1) if h1_total else 0.0
 
     lines += [
-        f"2. '{year2}년 상반기 DR 모의 훈련 진행",
-        f"   1) 총 {h1_total}대 中 {h1_done}대 완료 (진행률 {fmt_rate(h1_rate)}%)",
-        f"       ※ 실전환 : {h1_real}대, 무중단 : {h1_nonstop}대",
+        f"'{year2}년 상반기 DR 모의 훈련 진행",
+        f"1) 총 {h1_total}대 中 {h1_done}대 완료 (진행률 {fmt_rate(h1_rate)}%)",
+        f"   ※ 실전환 : {h1_real}대, 무중단 : {h1_nonstop}대",
         "",
     ]
 
@@ -122,25 +122,13 @@ def _build(half: str | None = None, use_jira: bool = True) -> tuple[str, dict]:
         if d["schedule"] and plan_start <= d["schedule"] <= plan_end
     )
 
-    # 이번 달 일정: 한 건도 없으면 "N월 일정 없음"으로 알린다
-    month_cnt = sum(
-        1 for d in h2_result["details"]
-        if d["schedule"] and d["schedule"].year == today.year
-        and d["schedule"].month == today.month
-    )
-    month_line = (
-        f"   2) {today.month}월 일정 없음" if not month_cnt
-        else f"   2) {today.month}월 일정 : {month_cnt}대"
-    )
-
     lines += [
-        f"3. '{year2}년 하반기 DR 모의 훈련",
-        f"   1) 총 {h2_result['total']}대 中 {projected_done}대 완료 "
+        f"'{year2}년 하반기 DR 모의 훈련",
+        f"1) 총 {h2_result['total']}대 中 {projected_done}대 완료 "
         f"(진행률 {fmt_rate(projected_rate)}%)",
-        month_line,
-        "   3) 실적",
-        f"      - 금주 실적 ({perf_start.month}/{perf_start.day} ~ {perf_end.month}/{perf_end.day}) : {perf_cnt}대",
-        f"      - 차주 계획 ({plan_start.month}/{plan_start.day} ~ {plan_end.month}/{plan_end.day}) : {plan_cnt}대",
+        "2) 실적",
+        f"   - 금주 실적 ({perf_start.month}/{perf_start.day} ~ {perf_end.month}/{perf_end.day}) : {perf_cnt}대",
+        f"   - 차주 계획 ({plan_start.month}/{plan_start.day} ~ {plan_end.month}/{plan_end.day}) : {plan_cnt}대",
         "",
     ]
 
@@ -148,7 +136,7 @@ def _build(half: str | None = None, use_jira: bool = True) -> tuple[str, dict]:
     by_team = group_by(h2_result, "ops_team")
     summary = generate_weekly_summary("DR 모의훈련 하반기 진척 현황", h2_result, by_team)
     if summary:
-        lines += ["4. 이번 주 특이사항", f"   {summary}", ""]
+        lines += ["이번 주 특이사항", f"   {summary}", ""]
 
     # 구성 스냅샷: 주차별로 '변하면 안 되는' 값만 담는다. 진척(완료 대수 등)을 넣으면
     # 매주 정상적으로 움직여서 경고가 무의미해진다. 여기 값이 바뀌었다 = 원본 엑셀이 수정됐다.
