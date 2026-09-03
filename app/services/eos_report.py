@@ -6,6 +6,8 @@ from app.config import settings
 from app.core.date_utils import week_ranges
 from app.core.eos_loader import get_targets
 from app.core.teams_client import send_teams_message
+from app.services import last_report
+from app.services.report_check import check_report, record_sent
 from app.models.db import get_eos_next_week_plan
 from app.services.eos import calc_eos_completion, filter_track
 from app.services.eos_confluence import get_week_plan_count
@@ -63,7 +65,7 @@ def _track_section(
     polestar_confirmed: set[str] | None = None,
     perf_matched: dict | None = None,
     plan_saved: dict | None = None,
-) -> list[str]:
+) -> tuple[list[str], dict]:
     result = calc_eos_completion(items, ticket_map, today, polestar_confirmed=polestar_confirmed)
     rate = round(result["done"] / fixed_total * 100) if fixed_total else 0
 
@@ -94,10 +96,22 @@ def _track_section(
         f"    - 차주 계획 ({plan_start:%m/%d} ~ {plan_end:%m/%d}) : {plan_cnt}대",
         "",
     ]
-    return lines
+
+    # 발송 전 점검용 집계. 분모는 리포트에 실제로 쓰는 고정값(fixed_total)으로 맞춘다 -
+    # 화면에 나간 숫자와 다른 값으로 비교하면 경고가 엉뚱하게 뜬다.
+    metrics = {
+        "total": fixed_total,
+        "done": result["done"],
+        "rate": rate,
+        "no_schedule": result["no_schedule"],
+        "perf_cnt": perf_cnt,
+        "plan_cnt": plan_cnt,
+        "composition": {f"{title} 월별": {f"{today.month}월 목표": month_target, f"{today.month}월 완료": month_done}},
+    }
+    return lines, metrics
 
 
-def build_eos_report(use_jira: bool = True) -> str:
+def build_eos_report(use_jira: bool = True) -> tuple[str, dict]:
     today = date.today()
     perf_start, perf_end, plan_start, plan_end = week_ranges(today)
 
@@ -122,20 +136,40 @@ def build_eos_report(use_jira: bool = True) -> str:
     plan_saved = get_eos_next_week_plan(plan_start.isoformat())
 
     lines = ["[EoS]", ""]
-    lines += _track_section(
+    os_lines, os_metrics = _track_section(
         "OS", 1, OS_TOTAL_FIXED, os_items, ticket_map, today, perf_start, perf_end,
         plan_start, plan_end, polestar_confirmed, perf_matched, plan_saved,
     )
-    lines += _track_section(
+    db_lines, db_metrics = _track_section(
         "DB", 2, DB_TOTAL_FIXED, db_items, ticket_map, today, perf_start, perf_end,
         plan_start, plan_end, polestar_confirmed, perf_matched, plan_saved,
     )
+    lines += os_lines + db_lines
 
-    return "\n".join(lines)
+    # 트랙별로 따로 점검한다. OS/DB를 합쳐서 보면 한쪽이 0이 돼도 다른 쪽에 묻힌다.
+    return "\n".join(lines), {"eos_os": os_metrics, "eos_db": db_metrics}
 
 
-def send_eos_report(use_jira: bool = True):
-    text = build_eos_report(use_jira=use_jira)
+def send_eos_report(use_jira: bool = True) -> str | None:
+    """
+    리포트 발송. 발송 전 지난주 대비 이상 징후를 점검하고, 이상이 있어도 정기 보고라
+    발송 자체는 막지 않고 경고만 반환한다 (DR훈련/용량관리와 동일).
+
+    특히 완료 대수 감소를 여기서 잡는다 - EoS 완료 근거 중 Polestar '_OLD'는 CI가
+    폐기되면 사라질 수 있어(eos_data.merge_polestar_latch가 기록으로 막고 있지만),
+    다른 소스가 조용히 실패해도 같은 증상이 나온다.
+    """
+    text, metrics = build_eos_report(use_jira=use_jira)
+
+    warnings = [w for w in (check_report(d, m) for d, m in metrics.items()) if w]
+    warning = "\n".join(warnings) if warnings else None
+
     print(text)
+    if warning:
+        print(warning)
     print("-" * 60)
     send_teams_message(text)
+    last_report.remember("eos", text)   # 발송 직후 화면에서 확인할 수 있게
+    for domain, m in metrics.items():
+        record_sent(domain, m)
+    return warning
