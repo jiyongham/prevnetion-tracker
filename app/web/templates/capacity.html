@@ -19,7 +19,11 @@
   </nav>
 
   <main id="main">
+{% extends "_layout.html" %}
 
+{% block title %}용량관리 진척 현황{% endblock %}
+
+{% block content %}
   <header>
     <h1>💾 용량관리 진척 현황 (ASM/파일시스템 증설)</h1>
     <div class="controls">
@@ -232,10 +236,9 @@
   <footer>
     <span>기준일 {{ as_of }}</span>
   </footer>
+{% endblock %}
 
-</main>
-</div>
-
+{% block after %}
 <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
 <!-- AI 진단 결과 모달 (매칭 미확인 원인) -->
@@ -634,5 +637,4 @@ function closeSentReport() {
   }
 }
 </script>
-</body>
-</html>
+{% endblock %}
