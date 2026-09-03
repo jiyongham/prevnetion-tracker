@@ -342,24 +342,29 @@ def eos_plan_chat_page(request: Request):
     today = date.today()
     perf_start, perf_end, plan_start, plan_end = week_ranges(today)
 
-    saved = get_eos_next_week_plan(plan_start.isoformat())
     items = load_eos_items_merged()
     by_no = {i["item_no"]: i for i in items}
-    saved_list = [
-        {
-            "item_no": item_no,
-            "label": (by_no.get(item_no) or {}).get("system_name", item_no),
-            "input_by": row.get("input_by", ""),
-            "input_at": row.get("input_at", ""),
-        }
-        for item_no, row in saved.items()
-    ]
+
+    def saved_rows(week_start: date, kind: str) -> list[dict]:
+        saved = get_eos_next_week_plan(week_start.isoformat(), kind=kind)
+        return [
+            {
+                "item_no": item_no,
+                "label": (by_no.get(item_no) or {}).get("system_name", item_no),
+                "input_by": row.get("input_by", ""),
+                "input_at": row.get("input_at", ""),
+            }
+            for item_no, row in saved.items()
+        ]
 
     return templates.TemplateResponse("eos_plan_chat.html", {
         "request": request,
-        "week_start": plan_start,
-        "week_end": plan_end,
-        "saved_list": saved_list,
+        "plan_start": plan_start,
+        "plan_end": plan_end,
+        "perf_start": perf_start,
+        "perf_end": perf_end,
+        "plan_saved": saved_rows(plan_start, "plan"),
+        "perf_saved": saved_rows(perf_start, "perf"),
         "admins": sorted(settings.eos_admin_set),
     })
 
@@ -385,21 +390,25 @@ async def api_eos_plan_chat_parse(request: Request):
 
 @router.post("/api/eos/plan-chat/save")
 async def api_eos_plan_chat_save(request: Request):
-    """확인된 후보들을 그 주 차주 계획 대상으로 저장 (관리자만)"""
+    """확인된 후보들을 그 주 차주 계획(plan) 또는 금주 실적(perf) 대상으로 저장 (관리자만)"""
     data = await request.json()
     updated_by = require_updated_by(data.get("updated_by", ""))
     if updated_by not in settings.eos_admin_set:
         return JSONResponse(
-            {"ok": False, "error": "차주 계획 입력은 관리자만 가능합니다."}, status_code=403
+            {"ok": False, "error": "계획·실적 입력은 관리자만 가능합니다."}, status_code=403
         )
 
+    kind = (data.get("kind") or "plan").strip()
     item_nos = data.get("item_nos") or []
     week_start = (data.get("week_start") or "").strip()
     week_end = (data.get("week_end") or "").strip()
     if not item_nos or not week_start or not week_end:
         return JSONResponse({"ok": False, "error": "필수 값이 없습니다."}, status_code=400)
 
-    add_eos_next_week_plan(item_nos, week_start, week_end, updated_by)
+    try:
+        add_eos_next_week_plan(item_nos, week_start, week_end, updated_by, kind=kind)
+    except ValueError as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
     return JSONResponse({"ok": True, "count": len(item_nos)})
 
 
@@ -410,15 +419,19 @@ async def api_eos_plan_chat_remove(request: Request):
     updated_by = require_updated_by(data.get("updated_by", ""))
     if updated_by not in settings.eos_admin_set:
         return JSONResponse(
-            {"ok": False, "error": "차주 계획 수정은 관리자만 가능합니다."}, status_code=403
+            {"ok": False, "error": "계획·실적 수정은 관리자만 가능합니다."}, status_code=403
         )
 
+    kind = (data.get("kind") or "plan").strip()
     item_no = (data.get("item_no") or "").strip()
     week_start = (data.get("week_start") or "").strip()
     if not item_no or not week_start:
         return JSONResponse({"ok": False, "error": "필수 값이 없습니다."}, status_code=400)
 
-    remove_eos_next_week_plan(item_no, week_start)
+    try:
+        remove_eos_next_week_plan(item_no, week_start, kind=kind)
+    except ValueError as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
     return JSONResponse({"ok": True})
 
 

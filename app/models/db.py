@@ -147,6 +147,22 @@ def init_db():
 
         CREATE INDEX IF NOT EXISTS idx_eos_next_week_plan_week ON eos_next_week_plan(week_start);
 
+        -- 금주 실적 수동 입력. 계획(eos_next_week_plan)과 같은 모양이지만 테이블을 나눈 이유:
+        -- 한 대상이 '9/14 주 계획'으로 먼저 등록되고 그 주가 지나 '9/14 주 실적'으로도
+        -- 등록되는 게 정상인데, 한 테이블에 두면 UNIQUE(item_no, week_start)에 걸려
+        -- 나중 것이 앞의 것을 덮어써 버린다.
+        CREATE TABLE IF NOT EXISTS eos_week_perf (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            item_no     TEXT NOT NULL,
+            week_start  TEXT NOT NULL,   -- 'YYYY-MM-DD' (월요일)
+            week_end    TEXT NOT NULL,   -- 'YYYY-MM-DD' (금요일)
+            input_by    TEXT,
+            input_at    TEXT DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(item_no, week_start)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_eos_week_perf_week ON eos_week_perf(week_start);
+
         -- Polestar에서 '_OLD'를 확인한 관측 기록.
         -- 전환이 끝난 AS-IS 서버는 한동안 '_OLD'로 남아 있다가 결국 폐기(CI 삭제)된다.
         -- 판정은 매번 '지금 상태'를 다시 보기 때문에, 이 기록이 없으면 CI가 지워지는 순간
@@ -556,21 +572,35 @@ def log_eos_remind(
         """, (ops_team, recipient_name, recipient_team, int(ok), error or ""))
 
 
-def get_eos_next_week_plan(week_start: str) -> dict[str, dict]:
-    """특정 주(월요일 기준) 수동 입력된 차주 계획 대상 -> {item_no: row}"""
+# 주간 수동 입력 종류 -> 테이블. SQL에 테이블명을 직접 넣어야 해서(파라미터 바인딩 불가)
+# 반드시 이 사전을 거쳐 이름을 얻는다.
+_WEEK_TABLES = {"plan": "eos_next_week_plan", "perf": "eos_week_perf"}
+
+
+def _week_table(kind: str) -> str:
+    if kind not in _WEEK_TABLES:
+        raise ValueError(f"kind는 {'/'.join(_WEEK_TABLES)} 중 하나여야 합니다: {kind}")
+    return _WEEK_TABLES[kind]
+
+
+def get_eos_next_week_plan(week_start: str, kind: str = "plan") -> dict[str, dict]:
+    """특정 주(월요일 기준) 수동 입력된 대상 -> {item_no: row}. kind: 'plan'(차주 계획) | 'perf'(금주 실적)"""
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT * FROM eos_next_week_plan WHERE week_start = ?", (week_start,)
+            f"SELECT * FROM {_week_table(kind)} WHERE week_start = ?", (week_start,)
         ).fetchall()
     return {r["item_no"]: dict(r) for r in rows}
 
 
-def add_eos_next_week_plan(item_nos: list[str], week_start: str, week_end: str, input_by: str):
-    """챗봇에서 확인된 항목들을 그 주 차주 계획 대상으로 추가 (이미 있으면 입력자/시각만 갱신)."""
+def add_eos_next_week_plan(
+    item_nos: list[str], week_start: str, week_end: str, input_by: str, kind: str = "plan"
+):
+    """챗봇에서 확인된 항목들을 그 주 대상으로 추가 (이미 있으면 입력자/시각만 갱신)."""
+    table = _week_table(kind)
     with get_conn() as conn:
         for item_no in item_nos:
-            conn.execute("""
-                INSERT INTO eos_next_week_plan (item_no, week_start, week_end, input_by, input_at)
+            conn.execute(f"""
+                INSERT INTO {table} (item_no, week_start, week_end, input_by, input_at)
                 VALUES (?, ?, ?, ?, datetime('now', 'localtime'))
                 ON CONFLICT(item_no, week_start) DO UPDATE SET
                     input_by = excluded.input_by,
@@ -578,11 +608,11 @@ def add_eos_next_week_plan(item_nos: list[str], week_start: str, week_end: str, 
             """, (item_no, week_start, week_end, input_by))
 
 
-def remove_eos_next_week_plan(item_no: str, week_start: str):
+def remove_eos_next_week_plan(item_no: str, week_start: str, kind: str = "plan"):
     """잘못 추가된 항목 제거"""
     with get_conn() as conn:
         conn.execute(
-            "DELETE FROM eos_next_week_plan WHERE item_no = ? AND week_start = ?",
+            f"DELETE FROM {_week_table(kind)} WHERE item_no = ? AND week_start = ?",
             (item_no, week_start),
         )
 

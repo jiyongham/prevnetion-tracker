@@ -131,9 +131,13 @@ def build_eos_report(use_jira: bool = True) -> tuple[str, dict]:
     except Exception as e:
         print(f"⚠️ EoS Confluence 조회 실패 (금주 실적 0으로 표시): {e}")
 
-    # 차주 계획(발송 기준 차차주): 아직 취합 자체가 어려운 시점이라, 관리자가 챗봇
-    # (/eos/plan-chat)으로 확인해서 수동 입력해둔 값을 쓴다.
+    # 관리자가 챗봇(/eos/plan-chat)으로 확인해서 수동 입력해둔 값.
+    # - 차주 계획: 아직 취합 자체가 어려운 시점이라 이 값이 유일한 근거다.
+    # - 금주 실적: Confluence 집계를 '보완'한다. 작업계획서 PDF가 리포트 발송 뒤에
+    #   올라오는 경우가 있어, 그런 건은 담당자가 아는 대로 넣어 합집합으로 센다.
     plan_saved = get_eos_next_week_plan(plan_start.isoformat())
+    perf_saved = get_eos_next_week_plan(perf_start.isoformat(), kind="perf")
+    perf_matched = {**perf_matched, **perf_saved}
 
     lines = ["[EoS]", ""]
     os_lines, os_metrics = _track_section(

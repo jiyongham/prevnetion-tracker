@@ -4,22 +4,36 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>EoS 차주 계획 입력</title>
+  <title>EoS 계획·실적 입력</title>
   <link rel="stylesheet" href="/static/style.css?v=11">
 </head>
 <body>
 <div class="container">
 
   <header>
-    <h1>💬 EoS 차주 계획 입력</h1>
+    <h1>💬 EoS 계획·실적 입력</h1>
     <a href="/eos" class="btn-sm">← EoS</a>
   </header>
 
+  <div class="tabs">
+    <a href="#" class="tab active" id="tabPlan" onclick="return setMode('plan')">
+      차주 계획 ({{ plan_start }} ~ {{ plan_end }})</a>
+    <a href="#" class="tab" id="tabPerf" onclick="return setMode('perf')">
+      금주 실적 ({{ perf_start }} ~ {{ perf_end }})</a>
+  </div>
+
   <div class="alert" style="background:#eef4ff;color:#334">
-    JIRA/Confluence로 아직 취합이 안 되는 주(<strong>{{ week_start }} ~ {{ week_end }}</strong>)의
-    작업 예정을, 아는 대로 자유롭게 말씀해주세요. 예: <em>"다음주에 A사 SAP,
-    B사 생산성시스템 예정이야"</em> — AI가 대상 시스템 후보를 찾아드리면,
-    맞는 것만 체크하고 저장하시면 됩니다.
+    <span id="guidePlan">
+      JIRA/Confluence로 아직 취합이 안 되는 주(<strong>{{ plan_start }} ~ {{ plan_end }}</strong>)의
+      작업 <strong>예정</strong>을, 아는 대로 자유롭게 말씀해주세요.
+      예: <em>"다음주에 A사 SAP, B사 생산성시스템 예정이야"</em>
+    </span>
+    <span id="guidePerf" style="display:none">
+      Confluence 집계로 안 잡힌 주(<strong>{{ perf_start }} ~ {{ perf_end }}</strong>)의
+      <strong>완료 실적</strong>을 아는 대로 말씀해주세요. 작업계획서가 리포트 발송 뒤에
+      올라온 건이 여기 해당합니다. 예: <em>"이번주에 A사 SAP, B사 WEB 전환 끝났어"</em>
+    </span>
+    — AI가 대상 시스템 후보를 찾아드리면, 맞는 것만 체크하고 저장하시면 됩니다.
   </div>
 
   <div class="user-input">
@@ -43,32 +57,36 @@
   <div class="panel" id="candidatePanel" style="display:none">
     <div class="panel-head">
       <h2>후보 확인 (체크된 것만 저장됩니다)</h2>
-      <button class="btn-sm" onclick="saveCandidates()">💾 선택 항목 저장</button>
+      <button class="btn-sm" id="saveBtn" onclick="saveCandidates()">💾 선택 항목을 차주 계획으로 저장</button>
     </div>
     <div id="candidateList"></div>
   </div>
 
+  {% for block in [
+       {"kind": "plan", "title": "차주 계획", "start": plan_start, "end": plan_end, "rows": plan_saved},
+       {"kind": "perf", "title": "금주 실적", "start": perf_start, "end": perf_end, "rows": perf_saved}] %}
   <div class="panel">
-    <h2>현재 등록된 차주 계획 대상 ({{ week_start }} ~ {{ week_end }}) — {{ saved_list|length }}건</h2>
+    <h2>등록된 {{ block.title }} ({{ block.start }} ~ {{ block.end }}) — {{ block.rows|length }}건</h2>
     <table>
       <thead>
         <tr><th>시스템명</th><th>입력자</th><th>입력시각</th><th style="width:60px"></th></tr>
       </thead>
-      <tbody id="savedBody">
-      {% for s in saved_list %}
-        <tr data-item-no="{{ s.item_no }}">
-          <td class="strong">{{ s.label }}</td>
-          <td class="small">{{ s.input_by }}</td>
-          <td class="small">{{ s.input_at }}</td>
+      <tbody>
+      {% for r in block.rows %}
+        <tr data-item-no="{{ r.item_no }}" data-kind="{{ block.kind }}">
+          <td class="strong">{{ r.label }}</td>
+          <td class="small">{{ r.input_by }}</td>
+          <td class="small">{{ r.input_at }}</td>
           <td><button class="btn-sm" onclick="removeSaved(this)">삭제</button></td>
         </tr>
       {% endfor %}
-      {% if not saved_list %}
-        <tr id="savedEmptyRow"><td colspan="4" class="muted" style="text-align:center;padding:16px">아직 등록된 대상이 없습니다.</td></tr>
+      {% if not block.rows %}
+        <tr><td colspan="4" class="muted" style="text-align:center;padding:16px">아직 등록된 대상이 없습니다.</td></tr>
       {% endif %}
       </tbody>
     </table>
   </div>
+  {% endfor %}
 
 </div>
 
@@ -76,8 +94,28 @@
 
 <script>
 const ADMINS = {{ admins | tojson }};
-const WEEK_START = "{{ week_start }}";
-const WEEK_END = "{{ week_end }}";
+// 계획/실적은 대상 주가 다르다 (실적=발송 다음 주, 계획=그 다음 주)
+const WEEKS = {
+  plan: { start: "{{ plan_start }}", end: "{{ plan_end }}", label: "차주 계획" },
+  perf: { start: "{{ perf_start }}", end: "{{ perf_end }}", label: "금주 실적" },
+};
+let MODE = "plan";
+
+function setMode(mode) {
+  MODE = mode;
+  document.getElementById("tabPlan").classList.toggle("active", mode === "plan");
+  document.getElementById("tabPerf").classList.toggle("active", mode === "perf");
+  document.getElementById("guidePlan").style.display = mode === "plan" ? "" : "none";
+  document.getElementById("guidePerf").style.display = mode === "perf" ? "" : "none";
+  document.getElementById("chatInput").placeholder = mode === "plan"
+    ? "예: A사 SAP, B사 생산성시스템 다음주 예정이야"
+    : "예: A사 SAP, B사 WEB 이번주에 전환 끝났어";
+  // 모드를 바꾸면 앞 모드에서 찾아둔 후보가 남아 엉뚱한 주에 저장될 수 있어 비운다
+  document.getElementById("candidateList").innerHTML = "";
+  document.getElementById("candidatePanel").style.display = "none";
+  document.getElementById("saveBtn").textContent = `💾 선택 항목을 ${WEEKS[mode].label}으로 저장`;
+  return false;
+}
 
 function isAdmin() {
   const name = (document.getElementById("updatedBy").value || "").trim();
@@ -168,11 +206,14 @@ async function saveCandidates() {
     const res = await fetch("/api/eos/plan-chat/save", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ item_nos: itemNos, week_start: WEEK_START, week_end: WEEK_END, updated_by: name }),
+      body: JSON.stringify({
+        item_nos: itemNos, kind: MODE,
+        week_start: WEEKS[MODE].start, week_end: WEEKS[MODE].end, updated_by: name,
+      }),
     });
     const data = await res.json();
     if (data.ok) {
-      showToast(`${data.count}건 저장 완료`);
+      showToast(`${WEEKS[MODE].label} ${data.count}건 저장 완료`);
       setTimeout(() => location.reload(), 700);
     } else {
       showToast("저장 실패: " + (data.error || ""), false);
@@ -187,13 +228,14 @@ async function removeSaved(btn) {
   if (name.length < 2) { showToast("입력자명을 2글자 이상 입력해주세요", false); return; }
   const tr = btn.closest("tr");
   const itemNo = tr.dataset.itemNo;
-  if (!confirm("이 대상을 차주 계획에서 삭제할까요?")) return;
+  const kind = tr.dataset.kind;
+  if (!confirm(`이 대상을 ${WEEKS[kind].label}에서 삭제할까요?`)) return;
 
   try {
     const res = await fetch("/api/eos/plan-chat/remove", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ item_no: itemNo, week_start: WEEK_START, updated_by: name }),
+      body: JSON.stringify({ item_no: itemNo, kind, week_start: WEEKS[kind].start, updated_by: name }),
     });
     const data = await res.json();
     if (data.ok) {
