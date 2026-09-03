@@ -5,17 +5,19 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>EoS Teams 리마인드 미리보기</title>
-  <link rel="stylesheet" href="/static/style.css?v=12">
+  <link rel="stylesheet" href="/static/style.css?v=14">
 </head>
 <body>
+<a href="#main" class="skip-link">본문으로 건너뛰기</a>
 <div class="container">
+  <main id="main">
 
   <header>
     <h1>📣 EoS Teams 리마인드 미리보기</h1>
     <a href="/eos" class="btn-sm">← EoS</a>
   </header>
 
-  <div class="alert" style="background:#eef4ff;color:#334">
+  <div class="alert alert-info">
     운영팀별 <strong>{{ total_unplanned }}건</strong> · 아래는 <strong>발송 전 초안</strong>입니다.
     (아직 실제 발송은 하지 않습니다. 내용·대상 확인용)
   </div>
@@ -32,7 +34,7 @@
     </a>
   </div>
   {% if dm_enabled and not selected and groups %}
-  <div class="alert" style="background:#fff8e6;color:#664;display:flex;align-items:center;justify-content:space-between;gap:12px">
+  <div class="alert alert-bar">
     <span>담당자 <strong>{{ groups|length }}명</strong> 전체에게 순서대로 개인 DM을 보낼 수 있습니다.</span>
     <button class="btn-sm" onclick="sendAllDM(this)">🚀 전체 일괄 DM 발송</button>
   </div>
@@ -95,7 +97,7 @@
         <pre class="msg">안녕하세요, <span class="greet-name">{{ g.given }}</span>{{ g.greeting_suffix }}</pre>
         <table class="editable">
           <thead>
-            <tr><th>시스템명</th><th>호스트명</th><th>IP</th><th>운영팀</th></tr>
+            <tr><th scope="col">시스템명</th><th scope="col">호스트명</th><th scope="col">IP</th><th scope="col">운영팀</th></tr>
           </thead>
           <tbody>
           {% for d in g.targets %}
@@ -112,17 +114,24 @@
       {% endfor %}
     </section>
   </div>
+</main>
 </div>
 
-<div id="toast" class="toast"></div>
+<div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
 <script>
+// 성공은 잠시 뒤 사라지지만, 오류는 놓치면 안 되므로 직접 닫을 때까지 남는다.
+let _toastTimer = null;
 function showToast(msg, ok = true) {
   const t = document.getElementById("toast");
-  t.textContent = msg;
+  clearTimeout(_toastTimer);
+  t.textContent = msg + (ok ? "" : "  (클릭해서 닫기)");
   t.className = "toast show " + (ok ? "ok" : "err");
-  setTimeout(() => { t.className = "toast"; }, 1800);
+  if (ok) _toastTimer = setTimeout(() => { t.className = "toast"; }, 1800);
 }
+document.getElementById("toast").addEventListener("click", e => {
+  e.currentTarget.className = "toast";
+});
 
 function changeRecipient(sel) {
   const draft = sel.closest(".draft");
@@ -131,7 +140,7 @@ function changeRecipient(sel) {
 
 function copyMsg(btn) {
   const pre = btn.closest(".draft").querySelector(".msg");
-  navigator.clipboard.writeText(pre.textContent).then(() => showToast("초안 복사됨"));
+  navigator.clipboard.writeText(pre.textContent).then(() => showToast("초안 복사 완료"));
 }
 
 function setStatus(draft, ok, label) {
@@ -155,7 +164,7 @@ async function doSendDM(draft) {
       body: JSON.stringify({ name, team, message, ops_team: opsTeam }),
     });
     const data = await res.json();
-    setStatus(draft, data.ok, data.ok ? "발송완료 (새로고침하면 이력 표시)" : (data.error || "발송 실패"));
+    setStatus(draft, data.ok, data.ok ? "발송 완료 (새로고침하면 이력에 표시됩니다)" : (data.error || "발송 실패"));
     return { name, ok: data.ok, error: data.error };
   } catch (e) {
     setStatus(draft, false, e.message);
@@ -168,7 +177,7 @@ async function sendDM(btn) {
   const sel = draft.querySelector(".recipient-pick select");
   const opt = sel.options[sel.selectedIndex];
   const who = opt.dataset.name + (opt.dataset.team ? " (" + opt.dataset.team + ")" : "");
-  if (!confirm(`${who} 님에게 Teams 개인 DM을 보냅니다. 계속할까요?`)) return;
+  if (!confirm(`${who} 님에게 Teams 개인 DM을 발송할까요?`)) return;
   btn.disabled = true;
   const r = await doSendDM(draft);
   showToast(r.ok ? `${r.name} 님에게 DM 발송 완료` : ("발송 실패: " + (r.error || "")), r.ok);
@@ -177,7 +186,7 @@ async function sendDM(btn) {
 
 async function sendAllDM(btn) {
   const drafts = Array.from(document.querySelectorAll(".draft"));
-  if (!confirm(`담당자 ${drafts.length}명 전체에게 순서대로 개인 DM을 보냅니다. 계속할까요?`)) return;
+  if (!confirm(`담당자 ${drafts.length}명에게 순서대로 개인 DM을 발송할까요?`)) return;
   btn.disabled = true;
   let ok = 0, fail = 0;
   for (const draft of drafts) {
@@ -191,7 +200,7 @@ async function sendAllDM(btn) {
 
 async function testSend(btn) {
   const pre = btn.closest(".draft").querySelector(".msg");
-  if (!confirm("설정된 Teams 웹훅 채널로 이 초안을 테스트 발송합니다.\n(개인 DM이 아니라 채널로 전송됩니다) 계속할까요?")) return;
+  if (!confirm("이 초안을 Teams 채널로 테스트 발송할까요?\n\n개인 DM이 아니라 설정된 웹훅 채널로 전송됩니다.")) return;
   btn.disabled = true;
   try {
     const res = await fetch("/api/remind-test", {
@@ -201,7 +210,7 @@ async function testSend(btn) {
     });
     const data = await res.json();
     showToast(data.ok ? "테스트 발송 완료" : ("발송 실패: " + (data.error || "")), data.ok);
-  } catch (e) { showToast("오류: " + e.message, false); }
+  } catch (e) { showToast("저장하지 못했습니다. 네트워크 연결을 확인하고 다시 시도해주세요. (" + e.message + ")", false); }
   finally { btn.disabled = false; }
 }
 </script>

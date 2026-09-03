@@ -5,10 +5,12 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>EoS 계획·실적 입력</title>
-  <link rel="stylesheet" href="/static/style.css?v=12">
+  <link rel="stylesheet" href="/static/style.css?v=14">
 </head>
 <body>
+<a href="#main" class="skip-link">본문으로 건너뛰기</a>
 <div class="container">
+  <main id="main">
 
   <header>
     <h1>💬 EoS 계획·실적 입력</h1>
@@ -22,7 +24,7 @@
       금주 실적 ({{ perf_start }} ~ {{ perf_end }})</a>
   </div>
 
-  <div class="alert" style="background:#eef4ff;color:#334">
+  <div class="alert alert-info">
     <span id="guidePlan">
       JIRA/Confluence로 아직 취합이 안 되는 주(<strong>{{ plan_start }} ~ {{ plan_end }}</strong>)의
       작업 <strong>예정</strong>을, 아는 대로 자유롭게 말씀해주세요.
@@ -37,15 +39,16 @@
   </div>
 
   <div class="user-input">
-    <strong>입력자명:</strong>
-    <input type="text" id="updatedBy" placeholder="이름 입력">
+    <label for="updatedBy"><strong>입력자명:</strong></label>
+    <input type="text" id="updatedBy" placeholder="예: 홍길동"
+           autocomplete="name" autocorrect="off" spellcheck="false">
     <span class="hint">※ 저장은 관리자만 가능합니다.</span>
     <span id="adminHint" class="hint"></span>
   </div>
 
   <div class="panel">
     <h2>대상 시스템 찾기</h2>
-    <div id="chatMsgs" class="chat-msgs" style="height:280px;border:1px solid #eee;border-radius:8px;margin-bottom:10px">
+    <div id="chatMsgs" class="chat-msgs chat-msgs-inline">
       <div class="chat-msg bot">어떤 작업이 예정되어 있나요? 관계사/시스템명을 편하게 말씀해주세요.</div>
     </div>
     <form id="chatForm" class="chat-form" onsubmit="return sendChat(event)" style="border-top:none">
@@ -69,7 +72,7 @@
     <h2>등록된 {{ block.title }} ({{ block.start }} ~ {{ block.end }}) — {{ block.rows|length }}건</h2>
     <table>
       <thead>
-        <tr><th>시스템명</th><th>입력자</th><th>입력시각</th><th style="width:60px"></th></tr>
+        <tr><th scope="col">시스템명</th><th scope="col">입력자</th><th scope="col">입력시각</th><th scope="col" style="width:60px"></th></tr>
       </thead>
       <tbody>
       {% for r in block.rows %}
@@ -81,16 +84,20 @@
         </tr>
       {% endfor %}
       {% if not block.rows %}
-        <tr><td colspan="4" class="muted" style="text-align:center;padding:16px">아직 등록된 대상이 없습니다.</td></tr>
+        <tr><td colspan="4" class="muted" style="text-align:center;padding:16px">
+          아직 등록된 {{ block.title }}이 없습니다. 위 <strong>대상 시스템 찾기</strong>에서
+          작업을 말씀해주시면 후보를 찾아드립니다.
+        </td></tr>
       {% endif %}
       </tbody>
     </table>
   </div>
   {% endfor %}
 
+</main>
 </div>
 
-<div id="toast" class="toast"></div>
+<div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
 <script>
 const ADMINS = {{ admins | tojson }};
@@ -126,15 +133,22 @@ function applyAdminState() {
   const admin = isAdmin();
   const hint = document.getElementById("adminHint");
   hint.textContent = admin ? "🔓 관리자: 저장 가능" : "🔒 저장은 관리자만 가능";
-  hint.style.color = admin ? "#2e7d32" : "#b26a00";
+  hint.classList.toggle("is-admin", admin);
+  hint.classList.toggle("is-locked", !admin);
 }
 
+// 성공은 2초 뒤 사라지지만, 오류는 놓치면 안 되므로 직접 닫을 때까지 남는다.
+let _toastTimer = null;
 function showToast(msg, ok = true) {
   const t = document.getElementById("toast");
-  t.textContent = msg;
+  clearTimeout(_toastTimer);
+  t.textContent = msg + (ok ? "" : "  (클릭해서 닫기)");
   t.className = "toast show " + (ok ? "ok" : "err");
-  setTimeout(() => { t.className = "toast"; }, 2000);
+  if (ok) _toastTimer = setTimeout(() => { t.className = "toast"; }, 2000);
 }
+document.getElementById("toast").addEventListener("click", e => {
+  e.currentTarget.className = "toast";
+});
 
 function addChatMsg(text, who) {
   const box = document.getElementById("chatMsgs");
@@ -154,7 +168,7 @@ async function sendChat(e) {
 
   addChatMsg(message, "me");
   input.value = "";
-  const pending = addChatMsg("찾는 중...", "bot");
+  const pending = addChatMsg("찾는 중…", "bot");
 
   try {
     const res = await fetch("/api/eos/plan-chat/parse", {
@@ -219,7 +233,7 @@ async function saveCandidates() {
       showToast("저장 실패: " + (data.error || ""), false);
     }
   } catch (e) {
-    showToast("오류: " + e.message, false);
+    showToast("저장하지 못했습니다. 네트워크 연결을 확인하고 다시 시도해주세요. (" + e.message + ")", false);
   }
 }
 
@@ -245,7 +259,7 @@ async function removeSaved(btn) {
       showToast("삭제 실패: " + (data.error || ""), false);
     }
   } catch (e) {
-    showToast("오류: " + e.message, false);
+    showToast("저장하지 못했습니다. 네트워크 연결을 확인하고 다시 시도해주세요. (" + e.message + ")", false);
   }
 }
 
