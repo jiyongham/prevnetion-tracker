@@ -5,6 +5,10 @@ metadata:
   namespace: dr-tracker
 spec:
   replicas: 1   # sqlite 파일 하나를 여러 파드가 동시에 쓰면 깨질 수 있어 1로 고정
+  strategy:
+    rollingUpdate:
+      maxSurge: 0        # 옛 파드를 먼저 내리고 새 파드를 띄움
+      maxUnavailable: 1
   selector:
     matchLabels:
       app: dr-tracker
