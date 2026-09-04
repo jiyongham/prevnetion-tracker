@@ -65,6 +65,11 @@
   --purple-200: #efe8f7;
   --purple-700: #69488f;
 
+  /* 연두  H=88° — 포털 홈 용량관리 카드 전용. 기존 성공(초록, H=144.2°)과는
+     56° 떨어져 있어 '완료' 배지로 오인되지 않으면서, 액센트(H=195°)와도 확실히 갈린다 */
+  --lime-100: #f1f8e4;
+  --lime-700: #5a8f1f;
+
   /* ── 시맨틱: 컴포넌트가 참조하는 유일한 계층 ── */
 
   /* 표면 */
@@ -988,7 +993,11 @@ footer a:hover {
 .ev-flag { margin-inline-start: 2px; cursor: help; font-size: var(--text-caption); }
 .warn-text { color: var(--color-status-warning-text); font-weight: 600; }
 
-/* 포털 홈 - DR/용량관리/EoS 중 하나를 고르는 진입 카드 */
+/* 포털 홈 - DR/용량관리/EoS 중 하나를 고르는 진입 카드.
+   .container 기본값(1600px)은 표가 넓은 화면들 기준이라, 카드 3장짜리 이
+   화면에 그대로 쓰면 카드가 화면 끝까지 늘어나 확대된 것처럼 보인다.
+   그래서 이 화면만 폭을 좁혀서 가운데 정렬한다. */
+.portal-container { max-width: 1080px; }
 .portal-lead { color: var(--color-text-tertiary); font-size: var(--text-md); margin-bottom: 20px; }
 .module-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
 @media (max-width: 860px) { .module-grid { grid-template-columns: 1fr; } }
