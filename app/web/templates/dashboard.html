@@ -116,7 +116,6 @@
       <thead>
         <tr>
           <th scope="col">시스템명</th><th scope="col">호스트명</th><th scope="col">운영팀</th><th scope="col">담당자</th>
-          <th scope="col" style="width:80px">입력자명</th>
           <th scope="col" style="width:90px">일정 ✏️</th>
           <th scope="col" style="width:110px">방식 ✏️</th>
           <th scope="col" style="width:50px">완료 ✏️</th>
@@ -138,7 +137,6 @@
             <input type="text" class="cell owner-edit" value="{{ d.owner }}"
                    aria-label="{{ d.system_name }} 담당자">
           </td>
-          <td class="small updated-by">{{ d.updated_by }}</td>
 
           <td><input type="text" class="cell sched {{ 'edited' if d.input_source == 'web' else '' }}" value="{{ d.schedule_disp }}" placeholder="O/O"
                  aria-label="{{ d.system_name }} 일정"></td>
@@ -404,8 +402,9 @@ async function saveRow(btn) {
     });
     if (res.ok) {
       showToast(`NO.${payload.item_no} 저장 완료`);
-      const ubCell = tr.querySelector(".updated-by");
-      if (ubCell) ubCell.textContent = payload.updated_by;
+      // 입력자는 열을 따로 두지 않고 행 툴팁으로만 보여준다 - 저장하면 그 툴팁을 갱신한다
+      tr.title = `웹 입력 (${payload.updated_by}, 방금)`;
+      tr.classList.add("src-web");
       // 같은 행을 1.2초 안에 다시 저장하면 클래스가 이미 붙어 있어 애니메이션이
       // 다시 안 돈다. 지웠다가 리플로우를 강제한 뒤 붙여 매번 처음부터 재생시킨다.
       tr.classList.remove("saved");
