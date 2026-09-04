@@ -202,6 +202,11 @@
 
   <footer>
     <span>기준일 {{ as_of }}</span>
+    <span>
+      <a href="/capacity/export?sheet={{ sheet }}">📥 엑셀 다운로드</a> ·
+      <a href="/logs">변경이력</a> ·
+      <a href="/capacity/api/summary?sheet={{ sheet }}" target="_blank">API</a>
+    </span>
   </footer>
 {% endblock %}
 

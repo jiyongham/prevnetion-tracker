@@ -1,11 +1,18 @@
 # app/web/routes/capacity.py
 """용량관리(ASM/파일시스템 증설 - [예방4]) 관련 라우트"""
+import io
 import logging
 from datetime import date
 from urllib.parse import quote
 
 from fastapi import APIRouter, Form, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+import pandas as pd
+from fastapi.responses import (
+    HTMLResponse,
+    JSONResponse,
+    RedirectResponse,
+    StreamingResponse,
+)
 
 from app.config import settings
 from app.core.capacity_loader import load_capacity_items_merged
@@ -422,3 +429,60 @@ async def api_capacity_chat(request: Request):
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=502)
     return JSONResponse({"ok": True, "reply": reply})
+
+
+# ─────────────────────────────────────────────
+# 엑셀 다운로드 / API (DR훈련과 같은 구성)
+# ─────────────────────────────────────────────
+@router.get("/capacity/export")
+def export_capacity_excel(sheet: str = "DATA"):
+    """현재 시트의 대상 목록을 엑셀로. 화면에서 보는 값 그대로 담는다."""
+    as_of_date = date.today()
+    result, _ = get_capacity_dashboard_data(sheet, as_of_date)
+
+    rows = [{
+        "NO": d["no"],
+        "CI명": d["ci_name"],
+        "호스트명": d["hostname"],
+        "IP": d["ip"],
+        "운영팀": d["ops_team"],
+        "담당자": d["owner"],
+        "구분": d.get("sheet", ""),
+        "파일시스템": d.get("fs_type", ""),
+        "전체(GB)": d.get("total_gb", ""),
+        "잔여(GB)": d.get("remaining_gb", ""),
+        "사용률(%)": d.get("usage_pct", ""),
+        "증설필요(GB)": d.get("required_gb", ""),
+        "일정": d["schedule_disp"],
+        "완료": "O" if d["completed"] else "",
+        "JIRA": d.get("jira_key", ""),
+        "판정근거": d.get("reason", ""),
+    } for d in result["details"]]
+
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+        pd.DataFrame(rows).to_excel(writer, index=False, sheet_name=f"용량_{sheet}")
+    buf.seek(0)
+
+    fname = f"용량관리_진척_{sheet}_{as_of_date}.xlsx"
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f'attachment; filename="capacity_export_{sheet}_{as_of_date}.xlsx"; '
+            f"filename*=UTF-8''{quote(fname)}"
+        },
+    )
+
+
+@router.get("/capacity/api/summary")
+def api_capacity_summary(sheet: str = "DATA"):
+    result, _ = get_capacity_dashboard_data(sheet, date.today())
+    return {
+        "sheet": sheet,
+        "as_of": str(result["as_of"]),
+        "total": result["total"],
+        "done": result["done"],
+        "rate": result["rate"],
+        "by_team": group_by(result, "ops_team"),
+    }

@@ -1,11 +1,18 @@
 # app/web/routes/eos.py
 """EoS(노후 OS/DB 전환 - [예방1]) 관련 라우트"""
+import io
 import logging
 from datetime import date, datetime
 from urllib.parse import quote
 
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+import pandas as pd
+from fastapi.responses import (
+    HTMLResponse,
+    JSONResponse,
+    RedirectResponse,
+    StreamingResponse,
+)
 
 from app.config import eos_sender, settings
 from app.core.date_utils import week_ranges
@@ -496,3 +503,63 @@ async def api_eos_exclude(request: Request):
     invalidate_eos_cache()
     prewarm_eos()
     return JSONResponse({"ok": True})
+
+
+# ─────────────────────────────────────────────
+# 엑셀 다운로드 / API (DR훈련과 같은 구성)
+# ─────────────────────────────────────────────
+@router.get("/eos/export")
+def export_eos_excel(track: str = "ALL"):
+    """현재 트랙(전체/OS/DB)의 대상 목록을 엑셀로. 화면에서 보는 값 그대로 담는다."""
+    if track not in ("ALL", "OS", "DB"):
+        track = "ALL"
+    as_of_date = date.today()
+    result, _, _ = get_eos_dashboard_data(as_of_date, track=track)
+
+    rows = [{
+        "Insight Key": d["item_no"],
+        "시스템명": d["system_name"],
+        "호스트명": d["hostname"],
+        "IP": d["ip"],
+        "운영팀": d["ops_team"],
+        "담당자": d["owner"],
+        "OS": d.get("os", ""),
+        "DB": d.get("db", ""),
+        "조치계획": d["schedule_disp"],
+        "완료": "O" if d["completed"] else "",
+        "JIRA": d.get("jira_key", ""),
+        "Polestar": d.get("polestar", ""),
+        "판정근거": d.get("reason", ""),
+        "증적": d.get("evidence", ""),
+        "비고": d.get("note", ""),
+    } for d in result["details"]]
+
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+        pd.DataFrame(rows).to_excel(writer, index=False, sheet_name=f"EoS_{track}")
+    buf.seek(0)
+
+    fname = f"EoS_진척_{track}_{as_of_date}.xlsx"
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f'attachment; filename="eos_export_{track}_{as_of_date}.xlsx"; '
+            f"filename*=UTF-8''{quote(fname)}"
+        },
+    )
+
+
+@router.get("/eos/api/summary")
+def api_eos_summary(track: str = "ALL"):
+    if track not in ("ALL", "OS", "DB"):
+        track = "ALL"
+    result, _, _ = get_eos_dashboard_data(date.today(), track=track)
+    return {
+        "track": track,
+        "as_of": str(result["as_of"]),
+        "total": result["total"],
+        "done": result["done"],
+        "rate": result["rate"],
+        "by_team": group_by(result, "ops_team"),
+    }
