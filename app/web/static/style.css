@@ -660,17 +660,39 @@ tr.saved { animation: flash 1.2s; }
    :not()으로 감춰야 관리자일 때 각 요소의 원래 display(inline-block/table-cell 등)가 유지된다. */
 body:not(.is-admin) .admin-only { display: none !important; }
 
-/* 미계획 리마인드 미리보기 */
+/* 운영팀별 현황 표 — 완료/전체/완료율은 세로로 비교하는 숫자라 오른쪽 정렬해
+   자릿수를 맞춘다 (tabular-nums 는 table 규칙에서 이미 걸려 있다). */
+.team-table td:nth-child(2),
+.team-table td:nth-child(3),
+.team-table td:nth-child(4),
+.team-table th:nth-child(2),
+.team-table th:nth-child(3),
+.team-table th:nth-child(4) { text-align: end; }
+.team-table td:nth-child(4) { font-weight: 600; }
+/* 진행바 칸은 숫자 옆 눈금 역할이라 좌우 여백을 조금 더 준다 */
+.team-table td:last-child { padding-inline: 14px; }
+.team-table tbody tr:hover .bar { filter: saturate(1.15); }
+
+/* 리마인드 미리보기 */
 .remind-layout { display: flex; gap: 16px; align-items: flex-start; }
-.remind-side { width: 220px; flex: 0 0 220px; }
+/* 초안이 길어 아래로 스크롤해도 서비스 목록은 붙어 있어야 다음 대상으로 넘어가기 쉽다 */
+.remind-side {
+  width: 240px; flex: 0 0 240px;
+  position: sticky; top: 20px;
+  max-height: calc(100dvh - 40px); overflow-y: auto;
+}
 .remind-main { flex: 1; min-width: 0; }
 .owner-item {
-  display: flex; justify-content: space-between; align-items: center;
-  padding: 8px 12px; border-radius: 8px; text-decoration: none;
-  color: inherit; margin-bottom: 4px;
+  display: flex; justify-content: space-between; align-items: center; gap: 8px;
+  padding: 9px 10px 9px 12px; border-radius: 8px; text-decoration: none;
+  color: inherit; margin-bottom: 2px;
+  border-inline-start: 3px solid transparent;   /* 활성 표시 자리를 미리 비워 목록이 밀리지 않게 */
 }
 .owner-item:hover { background: var(--color-bg-hover); }
-.owner-item.active { background: var(--color-accent-bg); font-weight: 600; }
+.owner-item.active {
+  background: var(--color-accent-bg); font-weight: 600;
+  border-inline-start-color: var(--color-accent-solid);
+}
 .owner-item .cnt {
   background: var(--color-status-warning-bg); color: var(--color-status-warning-text);
   border-radius: 10px;
@@ -685,11 +707,15 @@ body:not(.is-admin) .admin-only { display: none !important; }
 .send-status { font-size: var(--text-sm); font-weight: 600; margin-inline-start: 8px; }
 .send-status.ok { color: var(--color-status-success-text); }
 .send-status.err { color: var(--color-status-danger-text); }
+/* 보낼 메시지 그대로를 보여주는 자리. 편집 필드가 아니라 '이대로 나간다'는 미리보기라
+   말풍선처럼 왼쪽에 액센트 선을 두고 흰 바탕에 올린다. */
 .draft .msg {
   white-space: pre-wrap; overflow-wrap: break-word;
-  background: var(--color-bg-subtle); border: 1px solid var(--color-border-subtle);
-  border-radius: 8px; max-width: 70ch;
-  padding: 12px 14px; font-size: var(--text-base); line-height: 1.6; margin: 0 0 12px;
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border-subtle);
+  border-inline-start: 3px solid var(--color-accent-border);
+  border-radius: 0 10px 10px 0; max-width: 70ch;
+  padding: 14px 16px; font-size: var(--text-base); line-height: 1.7; margin: 0 0 12px;
 }
 @media (max-width: 720px) {
   .remind-layout { flex-direction: column; }
