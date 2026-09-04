@@ -203,6 +203,11 @@
 
   <footer>
     <span>기준일 {{ as_of }}</span>
+    <span>
+      <a href="/eos/export?track={{ track }}">📥 엑셀 다운로드</a> ·
+      <a href="/logs">변경이력</a> ·
+      <a href="/eos/api/summary?track={{ track }}" target="_blank">API</a>
+    </span>
   </footer>
 {% endblock %}
 
