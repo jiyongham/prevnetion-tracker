@@ -125,13 +125,13 @@
   /* 깊이는 테두리 대신 겹친 그림자로. 투명도라 배경색이 달라져도 자연스럽게 얹힌다.
      구분선(테이블 경계, 헤더 밑줄 등)은 구조를 나타내므로 테두리 그대로 둔다. */
   --shadow-border:
-    0 0 0 1px rgba(0, 0, 0, .06),
-    0 1px 2px -1px rgba(0, 0, 0, .06),
-    0 2px 4px 0 rgba(0, 0, 0, .04);
+    0 0 0 1px rgba(0, 0, 0, .05),
+    0 1px 2px -1px rgba(0, 0, 0, .07),
+    0 4px 10px -3px rgba(0, 0, 0, .07);
   --shadow-border-hover:
-    0 0 0 1px rgba(0, 0, 0, .08),
-    0 1px 2px -1px rgba(0, 0, 0, .08),
-    0 2px 4px 0 rgba(0, 0, 0, .06);
+    0 0 0 1px rgba(0, 0, 0, .07),
+    0 2px 4px -2px rgba(0, 0, 0, .09),
+    0 8px 18px -6px rgba(0, 0, 0, .11);
   --ease-out: cubic-bezier(0.2, 0, 0, 1);
 
   /* ── 타입 스케일 ──
@@ -359,7 +359,7 @@ select, input[type="date"], input[type="text"] {
 }
 .card {
   background: var(--color-bg-surface); box-shadow: var(--shadow-border);
-  border-radius: 10px; padding: 18px;
+  border-radius: 12px; padding: 18px;
 }
 .card .label { font-size: var(--text-sm); color: var(--color-text-tertiary); margin-bottom: 6px; }
 /* 완료율 숫자는 클릭할 수 없다. 액센트를 입히면 눌러야 할 것처럼 보이므로
@@ -389,8 +389,8 @@ select, input[type="date"], input[type="text"] {
 
 /* 패널 */
 .panel {
-  background: var(--color-bg-surface); box-shadow: var(--shadow-border); border-radius: 10px;
-  padding: 18px; margin-bottom: 20px;
+  background: var(--color-bg-surface); box-shadow: var(--shadow-border); border-radius: 12px;
+  padding: 20px; margin-bottom: 20px;
 }
 .panel-head {
   display: flex; justify-content: space-between; align-items: center;
@@ -633,19 +633,25 @@ tr.saved { animation: flash 1.2s; }
    조치 필요(미완료·지연·미계획)는 칩 + 테두리 + 굵게,
    이미 끝났거나 볼 게 없는 상태(완료·미응답)는 배경을 걷고 글자만 남겨 물러나게 한다.
    색 말고도 굵기·테두리·존재감이 같이 달라지므로 색맹이어도 우선순위가 읽힌다. */
-.badge.bad, .badge.warn {
-  font-weight: 700;
-  box-shadow: inset 0 0 0 1px currentColor;
-}
-.badge.ok, .badge.muted {
-  background: none; font-weight: 500;
-}
 /* 상태 열에는 이 여섯이 한꺼번에 나타난다. 색상각이 서로 충분히 벌어져 있어야 한다. */
 .badge.ok    { background: var(--color-status-success-bg); color: var(--color-status-success-text); }
 .badge.bad   { background: var(--color-status-danger-bg);  color: var(--color-status-danger-text); }
 .badge.warn  { background: var(--color-status-warning-bg); color: var(--color-status-warning-text); }
 .badge.muted { background: var(--color-status-neutral-bg); color: var(--color-status-neutral-text); }
 .badge.info  { background: var(--color-status-info-bg);    color: var(--color-status-info-text); }
+
+/* 위계. 500행을 훑을 때 눈에 걸려야 하는 건 '손대야 하는 것'뿐이다.
+   지연·미완료·미계획은 테두리와 굵기로 앞으로 당기고, 이미 끝났거나(완료)
+   이 화면에서 할 일이 없는 것(미응답)은 배경을 빼서 뒤로 물린다.
+   ※ 이 두 규칙은 반드시 위 색 지정 '뒤'에 와야 한다 - 앞에 두면 같은 특정도라
+     아래 색 규칙이 배경을 되살려 조용해지지 않는다 (실제로 그렇게 죽어 있었다). */
+.badge.bad, .badge.warn {
+  font-weight: 700;
+  box-shadow: inset 0 0 0 1px currentColor;
+}
+.badge.ok, .badge.muted {
+  background: transparent; font-weight: 500;
+}
 /* 대략적 일정만 등록된 상태 (미계획과 구분) */
 .badge.soft  { background: var(--color-status-partial-bg); color: var(--color-status-partial-text); }
 
