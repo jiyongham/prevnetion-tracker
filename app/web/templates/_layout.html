@@ -21,6 +21,8 @@
 {% elif path.startswith('/capacity') %}{% set section = 'capacity' %}
 {% elif path.startswith('/eos') %}{% set section = 'eos' %}
 {% else %}{% set section = 'dr' %}{% endif %}
+{# '/' 는 포털 홈(portal.html)이 따로 쓰므로 여기 오지 않는다.
+   DR훈련 화면들(/dr, /remind-preview, /owner-check, /export)이 기본값이다. #}
 <!DOCTYPE html>
 <html lang="ko">
 <head>
