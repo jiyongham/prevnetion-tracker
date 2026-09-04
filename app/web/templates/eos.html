@@ -59,9 +59,9 @@
   </section>
 
   <!-- 운영팀별 -->
-  <section class="panel">
-    <h2>운영팀별 현황</h2>
-    <table class="team-table">
+  <details class="panel">
+    <summary><h2>운영팀별 현황</h2></summary>
+    <table>
       <thead>
         <tr><th scope="col">시스템 운영팀</th><th scope="col">완료</th><th scope="col">전체</th><th scope="col">완료율</th><th scope="col" style="width:35%">진행</th></tr>
       </thead>
@@ -77,7 +77,7 @@
       {% endfor %}
       </tbody>
     </table>
-  </section>
+  </details>
 
   <!-- 상세 목록 (편집 가능) -->
   <section class="panel">
@@ -96,18 +96,8 @@
           <a href="/eos?track={{ track }}&status=unplanned" class="chip {% if filter_status == 'unplanned' %}active{% endif %}">미계획</a>
           <a href="/eos?track={{ track }}&status=done" class="chip {% if filter_status == 'done' %}active{% endif %}">완료</a>
         </div>
+        <button id="bulkSaveBtn" class="btn-sm" onclick="bulkSave()">💾 현재 목록 일괄 저장</button>
       </div>
-    </div>
-
-    <div class="user-input">
-      <label for="updatedBy"><strong>입력자명:</strong></label>
-      <input type="text" id="updatedBy" placeholder="예: 홍길동"
-             autocomplete="name" autocorrect="off" spellcheck="false">
-      <span class="hint">※ 수정 이력에 기록됩니다. 엑셀 원본은 변경되지 않습니다.</span>
-      <span id="adminHint" class="hint"></span>
-      <button id="bulkSaveBtn" class="btn-sm" onclick="bulkSave()">
-        💾 현재 목록 일괄 저장
-      </button>
     </div>
 
     <div class="table-scroll">
@@ -184,8 +174,8 @@
   </section>
 
   {% if web_excluded %}
-  <section class="panel">
-    <h2>🚫 제외 대상 ({{ web_excluded|length }}건) <span class="muted small">— 관리자가 사유와 함께 제외한 대상</span></h2>
+  <details class="panel">
+    <summary><h2>🚫 제외 대상 ({{ web_excluded|length }}건) <span class="muted small">— 관리자가 사유와 함께 제외한 대상</span></h2></summary>
     <div class="table-scroll">
     <table>
       <thead>
@@ -208,7 +198,7 @@
       </tbody>
     </table>
     </div>
-  </section>
+  </details>
   {% endif %}
 
   <footer>
@@ -397,7 +387,7 @@ applyAdminState();
 <script>
 async function excludeRow(btn) {
   const name = (document.getElementById("updatedBy").value || "").trim();
-  if (name.length < 2) { alert("입력자명을 2글자 이상 입력해주세요."); return; }
+  if (name.length < 2) { alert("사이드바에서 입력자명을 2글자 이상 입력해주세요."); return; }
   const tr = btn.closest("tr");
   const sys = tr.querySelector("td.strong").textContent;
   const reason = (prompt(`${sys}\n\nEoS 전환 대상에서 제외합니다.\n제외 사유를 입력해주세요. (예: 폐기 예정, 내년 이관)`) || "").trim();
@@ -407,7 +397,7 @@ async function excludeRow(btn) {
 
 async function restoreRow(btn) {
   const name = (document.getElementById("updatedBy").value || "").trim();
-  if (name.length < 2) { alert("입력자명을 2글자 이상 입력해주세요."); return; }
+  if (name.length < 2) { alert("사이드바에서 입력자명을 2글자 이상 입력해주세요."); return; }
   if (!confirm("제외를 해제하고 대상 목록으로 되돌릴까요?")) return;
   await postExclude(btn, { item_no: btn.dataset.no, updated_by: name, excluded: false });
 }
@@ -429,7 +419,7 @@ async function postExclude(btn, body) {
 // Polestar '_OLD' 관측 기록 삭제 (오탐 정정)
 async function clearPolestar(btn) {
   const name = (document.getElementById("updatedBy").value || "").trim();
-  if (name.length < 2) { alert("입력자명을 2글자 이상 입력해주세요."); return; }
+  if (name.length < 2) { alert("사이드바에서 입력자명을 2글자 이상 입력해주세요."); return; }
   const tr = btn.closest("tr");
   const sys = tr.querySelector("td.strong").textContent;
   if (!confirm(`${sys}\n\nPolestar '_OLD' 확인 기록을 지웁니다.\n완료 근거에서 빠지며, 다음 조회에서 다시 확인되면 재기록됩니다.`)) return;
