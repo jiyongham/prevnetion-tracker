@@ -1,0 +1,260 @@
+{% extends "_layout.html" %}
+
+{% block title %}커널패치 담당자 불일치 후보{% endblock %}
+
+{% block content %}
+  <header>
+    <h1>🔍 커널패치 담당자 불일치 후보 <span class="muted small">({{ scope_label }})</span></h1>
+    <a href="/kernel?scope={{ scope }}" class="btn-sm">← 커널패치</a>
+  </header>
+
+  {# 입력자명 칸은 사이드바(_layout.html)에 하나만 둔다. 화면마다 따로 두면
+     같은 id 가 두 개가 되어 스크립트가 어느 쪽을 읽는지 알 수 없게 된다. #}
+
+  <div class="alert alert-info">
+    <strong>CMDB(Insight) 시스템운영팀</strong>이 엑셀상 팀과 다른 대상
+    <strong>{{ candidates|length }}건</strong>입니다 (점검 대상 {{ checked }}대).
+    CMDB는 호스트명이 구/신으로 중복 등록된 경우 상태가 "운영"인 자산을 우선 사용합니다.
+    조직변경 등으로 담당(팀)이 바뀌었을 가능성이 있어 검토용으로만 보여줍니다 —
+    <strong>자동으로 수정되지 않습니다.</strong>
+  </div>
+
+  <div class="alert">
+    ℹ️ 다른 도메인과 달리 <strong>근거가 CMDB 한 축뿐</strong>입니다. JIRA
+    '작업 구분: 커널패치' 필터가 아직 없어 티켓의 JSM요청자와는 대조하지 못합니다.
+    '비교 기준'이 <strong>운영팀</strong>인 행은 담당자 칸에 팀 표기가 없어 운영팀 컬럼으로
+    대조한 것이라 근거가 한 단계 약합니다.
+  </div>
+
+  {% if candidates %}
+  <div class="alert alert-bar">
+    <span>AI로 각 행이 오탈자/표기누락인지, 실제 조직변경인지 판단해서 우선순위 태그를 달 수 있습니다.</span>
+    <button class="btn-sm" onclick="diagnoseAll(this)">🤖 전체 판단 실행</button>
+  </div>
+  {% endif %}
+
+  <div class="panel" style="overflow-x:auto">
+    <table class="editable">
+      <thead>
+        <tr>
+          <th scope="col">시스템명</th><th scope="col">호스트명</th>
+          <th scope="col">엑셀 운영팀</th>
+          <th scope="col">현재 담당자(엑셀)</th>
+          <th scope="col" style="width:70px">비교 기준</th>
+          <th scope="col">CMDB 시스템운영팀</th><th scope="col">CMDB 시스템담당자</th>
+          <th scope="col">AI 판단</th>
+          <th scope="col" style="width:200px">담당자 수정 ✏️</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for c in candidates %}
+        <tr class="mismatch-row" data-no="{{ c.item_no }}"
+            data-system_name="{{ c.system_name }}"
+            data-current_owner="{{ c.current_owner }}"
+            data-cmdb_ops_team="{{ c.cmdb_ops_team }}"
+            data-cmdb_owners="{{ c.cmdb_owners }}">
+          <td class="strong">{{ c.system_name }}</td>
+          <td class="mono small">{{ c.hostname }}</td>
+          <td class="small">{{ c.ops_team }}</td>
+          <td class="owner-current">{{ c.current_owner }}</td>
+          <td class="small">
+            {% if c.compare_basis == '운영팀' %}
+              <span class="badge warn" title="담당자 칸에 팀 표기가 없어 운영팀 컬럼으로 대조했습니다">운영팀</span>
+            {% else %}<span class="muted">담당자</span>{% endif %}
+          </td>
+          <td class="{% if c.cmdb_mismatch %}strong{% endif %}">
+            {% if c.cmdb_ops_team %}
+              {{ c.cmdb_ops_team }}
+              {% if c.cmdb_dup > 1 %}<span class="muted small">(중복 {{ c.cmdb_dup }}건 中 운영)</span>{% endif %}
+            {% else %}<span class="muted">-</span>{% endif %}
+          </td>
+          <td class="small">{{ c.cmdb_owners or "" }}</td>
+          <td class="ai-tag-cell">
+            <button class="btn-ai" title="AI로 오탈자/조직변경 여부 판단" onclick="diagnoseMismatch(this)">🤖</button>
+          </td>
+          <td>
+            <input type="text" class="cell owner-edit" placeholder="예: 홍길동-OO팀"
+                   value="{{ c.cmdb_owners }}"
+                   aria-label="{{ c.system_name }} 담당자 수정">
+            <button class="btn-sm" onclick="saveOwner(this)">저장</button>
+          </td>
+        </tr>
+      {% endfor %}
+      {% if not candidates %}
+        <tr><td colspan="9" class="muted" style="text-align:center;padding:24px">불일치 후보가 없습니다. 🎉</td></tr>
+      {% endif %}
+      </tbody>
+    </table>
+  </div>
+{% endblock %}
+
+{% block after %}
+<!-- AI 진단 결과 모달 -->
+<div id="aiModal" class="ai-modal hidden" onclick="if(event.target===this) closeAiModal()">
+  <div class="ai-modal-box">
+    <div class="ai-modal-head">
+      <span>🤖 AI 진단</span>
+      <button class="chat-close" onclick="closeAiModal()" aria-label="진단 결과 닫기">✕</button>
+    </div>
+    <div id="aiModalBody" class="ai-modal-body">…</div>
+  </div>
+</div>
+
+<script>
+const ADMINS = {{ admins | tojson }};
+
+function isAdmin() {
+  const name = (document.getElementById("updatedBy").value || "").trim();
+  return name !== "" && ADMINS.includes(name);
+}
+
+function applyAdminState() {
+  const admin = isAdmin();
+  document.querySelectorAll(".owner-edit").forEach(el => { el.disabled = !admin; });
+  document.querySelectorAll(".owner-edit + .btn-sm").forEach(btn => { btn.disabled = !admin; });
+  const hint = document.getElementById("adminHint");
+  hint.textContent = admin ? "🔓 관리자: 담당자 수정 가능" : "🔒 담당자 수정은 관리자만 가능";
+  hint.classList.toggle("is-admin", admin);
+  hint.classList.toggle("is-locked", !admin);
+  document.body.classList.toggle("is-admin", admin);
+}
+
+async function saveOwner(btn) {
+  const tr = btn.closest("tr");
+  const input = tr.querySelector(".owner-edit");
+  const owner = input.value.trim();
+  const updatedBy = (document.getElementById("updatedBy").value || "").trim();
+  if (updatedBy.length < 2) {
+    showAiModal("사이드바에서 입력자명을 2글자 이상 입력해주세요.");
+    return;
+  }
+  if (!owner) return;
+  btn.disabled = true;
+  try {
+    const res = await fetch("/api/kernel/save-owner", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ item_no: tr.dataset.no, owner, updated_by: updatedBy }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      // 현재 담당자 칸도 같이 갱신 - 열 위치가 아니라 클래스로 찾는다
+      // (열 순서가 바뀌면 nth-child 는 조용히 엉뚱한 칸을 고친다)
+      tr.querySelector(".owner-current").textContent = owner;
+      input.classList.add("saved-ok");
+    } else {
+      showAiModal("저장 실패: " + (data.error || ""));
+    }
+  } catch (e) {
+    showAiModal("오류: " + e.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+const ub = document.getElementById("updatedBy");
+ub.value = localStorage.getItem("updatedBy") || "";
+ub.addEventListener("input", applyAdminState);
+ub.addEventListener("change", () => {
+  localStorage.setItem("updatedBy", ub.value);
+  applyAdminState();
+});
+applyAdminState();
+
+// 모달: 열 때 배경을 inert 로 막고 안으로 포커스를 옮긴 뒤,
+// 닫을 때 원래 눌렀던 버튼으로 되돌린다. Esc 로도 닫힌다.
+let _modalReturnFocus = null;
+function showAiModal(text) {
+  const modal = document.getElementById("aiModal");
+  _modalReturnFocus = document.activeElement;
+  document.getElementById("aiModalBody").textContent = text;
+  modal.classList.remove("hidden");
+  document.querySelector("main").inert = true;
+  modal.querySelector(".chat-close").focus();
+}
+function closeAiModal() {
+  document.getElementById("aiModal").classList.add("hidden");
+  document.querySelector("main").inert = false;
+  if (_modalReturnFocus) { _modalReturnFocus.focus(); _modalReturnFocus = null; }
+}
+document.addEventListener("keydown", e => {
+  if (e.key !== "Escape") return;
+  const modal = document.getElementById("aiModal");
+  if (modal && !modal.classList.contains("hidden")) closeAiModal();
+});
+
+function classifyReply(text) {
+  const t = text || "";
+  let type = "unknown", label = "판단불가";
+  if (/\[조직변경\]/.test(t)) { type = "org"; label = "조직변경 추정"; }
+  else if (/\[오탈자\]/.test(t)) { type = "typo"; label = "오탈자 추정"; }
+  else if (/\[불명확\]/.test(t)) { type = "unknown"; label = "판단불가"; }
+  else if (t.includes("조직개편") || t.includes("조직변경") || t.includes("바뀐")) { type = "org"; label = "조직변경 추정"; }
+  else if (t.includes("오탈자") || t.includes("표기") || t.includes("등록 오류") || t.includes("미업데이트")) { type = "typo"; label = "오탈자 추정"; }
+  const m = t.match(/확신\s*(정도)?\s*[:：\(]?\s*(높음|보통|낮음)/) || t.match(/(높음|보통|낮음)/);
+  const confidence = m ? m[m.length - 1] : "";
+  return { type, label, confidence };
+}
+
+function renderTag(cell, text) {
+  const { type, label, confidence } = classifyReply(text);
+  const icon = type === "org" ? "🔴" : type === "typo" ? "🟡" : "⚪";
+  cell.innerHTML = "";
+  const tag = document.createElement("span");
+  tag.className = "ai-tag ai-tag-" + type;
+  tag.title = text;
+  tag.textContent = `${icon} ${label}${confidence ? " (" + confidence + ")" : ""}`;
+  tag.onclick = () => showAiModal(text);
+  cell.appendChild(tag);
+}
+
+async function runDiagnoseMismatch(tr) {
+  const cell = tr.querySelector(".ai-tag-cell");
+  const payload = {
+    system_name: tr.dataset.system_name,
+    current_owner: tr.dataset.current_owner,
+    cmdb_ops_team: tr.dataset.cmdb_ops_team,
+    cmdb_owners: tr.dataset.cmdb_owners,
+    // 커널패치는 JIRA 축이 없어 빈 값으로 보낸다 (판단은 CMDB 근거만으로)
+    jsm_requester_name: "",
+    jsm_requester_team: "",
+  };
+  try {
+    const res = await fetch("/api/diagnose-mismatch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (data.ok) { renderTag(cell, data.reply); return true; }
+    cell.textContent = "오류: " + (data.error || "");
+    return false;
+  } catch (e) {
+    cell.textContent = "오류: " + e.message;
+    return false;
+  }
+}
+
+async function diagnoseMismatch(btn) {
+  btn.disabled = true;
+  await runDiagnoseMismatch(btn.closest("tr"));
+}
+
+async function diagnoseAll(btn) {
+  const rows = Array.from(document.querySelectorAll("tr.mismatch-row"))
+    .filter(tr => tr.querySelector(".btn-ai"));
+  if (!rows.length) return;
+  if (!confirm(`${rows.length}건을 AI로 판단할까요?\n\n건별로 순차 호출하므로 시간이 걸립니다.`)) return;
+  btn.disabled = true;
+  let done = 0;
+  for (const tr of rows) {
+    btn.textContent = `🤖 판단 중… (${done}/${rows.length})`;
+    await runDiagnoseMismatch(tr);
+    done++;
+    await new Promise(res => setTimeout(res, 300));
+  }
+  btn.textContent = "🤖 전체 판단 실행";
+  btn.disabled = false;
+}
+</script>
+{% endblock %}
