@@ -14,13 +14,15 @@
 {% elif path.startswith('/eos') %}{% set section = 'eos' %}
 {% elif path.startswith('/logs') %}{% set section = 'logs' %}
 {% else %}{% set section = 'dr' %}{% endif %}
+{# '/' 는 포털 홈(portal.html)이 따로 쓰므로 여기 오지 않는다.
+   DR훈련 화면들(/dr, /remind-preview, /owner-check, /export)이 기본값이다. #}
 <!DOCTYPE html>
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}장애예방 활동 진척 관리{% endblock %}</title>
-  <link rel="stylesheet" href="/static/style.css?v=17">
+  <link rel="stylesheet" href="/static/style.css?v=18">
 </head>
 <body>
 <a href="#main" class="skip-link">본문으로 건너뛰기</a>
@@ -33,7 +35,9 @@
     </div>
 
     <nav class="side-nav" aria-label="주요 영역">
-      <a href="/" class="side-nav-item {{ 'active' if section == 'dr' }}"
+      <a href="/" class="side-nav-item subtle">
+        <span class="side-nav-icon" aria-hidden="true">🏠</span>홈</a>
+      <a href="/dr" class="side-nav-item {{ 'active' if section == 'dr' }}"
          {{ 'aria-current=page' if section == 'dr' }}>
         <span class="side-nav-icon" aria-hidden="true">🔄</span>DR훈련</a>
       <a href="/capacity" class="side-nav-item {{ 'active' if section == 'capacity' }}"
