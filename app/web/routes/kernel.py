@@ -30,6 +30,7 @@ from app.models.db import get_kernel_input, upsert_kernel_input
 from app.services.completion import group_by
 from app.services.kernel import calc_kernel_completion
 from app.services.kernel_patched import patched_hosts_for, read_patched_export
+from app.services.owner_check import collect_kernel_targets, find_owner_mismatches
 from app.web.deps import require_updated_by, resolve_owner, templates
 
 logger = logging.getLogger(__name__)
@@ -202,6 +203,60 @@ async def api_kernel_exclude(request: Request):
         updated_by=updated_by,
         is_excluded=excluded,
         exclude_reason=reason if excluded else "",
+    )
+    return JSONResponse({"ok": True})
+
+
+# ─────────────────────────────────────────────
+# 담당자 확인 (CMDB 대조)
+# ─────────────────────────────────────────────
+@router.get("/kernel/owner-check", response_class=HTMLResponse)
+def kernel_owner_check(request: Request, scope: str | None = None):
+    """
+    엑셀 담당자/운영팀이 CMDB와 어긋난 대상을 찾아준다.
+
+    다른 도메인과 달리 근거가 CMDB 한 축뿐이다 (JIRA '작업 구분: 커널패치' 필터가
+    아직 없어 티켓맵이 비어 있다). 대신 담당자 칸에 팀 표기가 없는 행은 운영팀 컬럼으로
+    비교한다 - 그 규칙이 없으면 426대 중 99대가 통째로 미점검으로 빠진다.
+    """
+    scope = resolve_scope(scope)
+    targets = collect_kernel_targets(scope)
+    candidates = find_owner_mismatches(targets, {}, use_ops_team_fallback=True)
+
+    return templates.TemplateResponse("kernel_owner_check.html", {
+        "request": request,
+        "candidates": candidates,
+        "checked": len(targets),
+        "scope": scope,
+        "scope_label": SCOPE_LABELS.get(scope, scope),
+        "admins": sorted(settings.kernel_admin_set),
+    })
+
+
+@router.post("/api/kernel/save-owner")
+async def api_kernel_save_owner(request: Request):
+    """담당자 수정 (관리자만). 엑셀 원본은 그대로 두고 DB에 덮어쓴다."""
+    data = await request.json()
+    item_no = (data.get("item_no") or "").strip()
+    owner = (data.get("owner") or "").strip()
+    updated_by = (data.get("updated_by") or "").strip()
+
+    if not item_no or not owner:
+        return JSONResponse({"ok": False, "error": "필수 값이 없습니다."}, status_code=400)
+    if updated_by not in settings.kernel_admin_set:
+        return JSONResponse(
+            {"ok": False, "error": "담당자 수정은 관리자만 가능합니다."}, status_code=403
+        )
+
+    existing = get_kernel_input(item_no) or {}
+    upsert_kernel_input(
+        item_no=item_no,
+        schedule=existing.get("schedule") or "",
+        is_done=bool(existing.get("is_done")),
+        evidence=existing.get("evidence") or "",
+        note=existing.get("note") or "",
+        updated_by=updated_by,
+        owner=owner,
     )
     return JSONResponse({"ok": True})
 
