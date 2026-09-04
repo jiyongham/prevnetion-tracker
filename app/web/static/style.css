@@ -998,6 +998,7 @@ footer a:hover {
    화면에 그대로 쓰면 카드가 화면 끝까지 늘어나 확대된 것처럼 보인다.
    그래서 이 화면만 폭을 좁혀서 가운데 정렬한다. */
 .portal-container { max-width: 1080px; }
+.portal-clock { color: var(--color-text-tertiary); font-size: var(--text-sm); }
 .portal-lead { color: var(--color-text-tertiary); font-size: var(--text-md); margin-bottom: 20px; }
 .module-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
 @media (max-width: 860px) { .module-grid { grid-template-columns: 1fr; } }
