@@ -20,6 +20,8 @@ from app.core.eos_loader import get_targets as get_eos_targets
 from app.core.excel_loader import get_targets, load_dr_items_merged, scope_h2_targets
 from app.core.insight_client import get_server_assets
 from app.core.jira_client import jira
+from app.core.kernel_loader import get_targets as get_kernel_targets
+from app.core.kernel_loader import load_kernel_items_merged
 from app.services.capacity import build_capacity_ticket_summary, filter_tickets_by_sheet
 from app.services.completion import build_ticket_summary
 from app.services.eos_data import get_eos_data
@@ -69,6 +71,15 @@ def collect_eos_targets_with_tickets(use_jira: bool = True):
     """
     items, ticket_map, _, jira_error = get_eos_data(use_external=use_jira)
     return get_eos_targets(items), ticket_map, jira_error
+
+
+def collect_kernel_targets(scope: str = "dev"):
+    """
+    OS 커널 패치 대상 목록. 티켓맵이 없다 - JIRA '작업 구분: 커널패치' 필터가 아직
+    없어서 비교 근거가 CMDB 한 축뿐이다. 그 필터가 생기면 다른 도메인처럼
+    (targets, ticket_map) 을 돌려주도록 넓히면 된다.
+    """
+    return get_kernel_targets(load_kernel_items_merged(scope=scope))
 
 
 def collect_capacity_targets_with_tickets(sheet: str, use_jira: bool = True):
@@ -135,7 +146,11 @@ def lookup_cmdb_assets(targets: list[dict]) -> dict[str, dict]:
     return results
 
 
-def find_owner_mismatches(targets: list[dict], ticket_map: dict) -> list[dict]:
+def find_owner_mismatches(
+    targets: list[dict],
+    ticket_map: dict,
+    use_ops_team_fallback: bool = False,
+) -> list[dict]:
     """
     CMDB 시스템운영팀 및/또는 JIRA 티켓 JSM요청자 팀이, 현재 엑셀 담당자들의
     팀 어디에도 없는 대상을 '불일치 후보'로 반환 (둘 중 하나만 걸려도 포함).
@@ -143,6 +158,11 @@ def find_owner_mismatches(targets: list[dict], ticket_map: dict) -> list[dict]:
     담당자 칸 자체에 팀 정보가 전혀 없는 행(예: "이름-팀" 포맷이 아니라 이름만
     콤마로 나열된 경우)은 비교 기준(current_teams)이 비어서 항상 불일치로 오판되므로,
     그런 행은 애초에 비교 대상에서 제외한다 (팀 정보 누락이지 실제 불일치가 아님).
+
+    use_ops_team_fallback: 그렇게 제외되는 행을 '운영팀' 컬럼으로 대신 비교한다.
+    커널 패치 엑셀은 운영팀이 별도 컬럼으로 항상 채워져 오는데(담당자 칸에 팀이 없는
+    99대도 전부 채워져 있다), 기본 규칙만 쓰면 그 23%가 통째로 미점검으로 빠진다.
+    다른 도메인은 이 컬럼의 신뢰도가 확인되지 않아 기본값은 끈 채로 둔다.
     """
     cmdb_map = lookup_cmdb_assets(targets)
 
@@ -150,6 +170,10 @@ def find_owner_mismatches(targets: list[dict], ticket_map: dict) -> list[dict]:
     for item in targets:
         owners = parse_owners(item.get("owner", ""))
         current_teams = {o["team"] for o in owners if o["team"]}
+        basis = "담당자"
+        if not current_teams and use_ops_team_fallback and (item.get("ops_team") or "").strip():
+            current_teams = {item["ops_team"].strip()}
+            basis = "운영팀"
         if not current_teams:
             continue
 
@@ -161,6 +185,9 @@ def find_owner_mismatches(targets: list[dict], ticket_map: dict) -> list[dict]:
             "ip": item["ip"],
             "ops_team": item["ops_team"],
             "current_owner": item.get("owner", ""),
+            # 어느 값과 대조했는지. 담당자 칸에 팀 표기가 없어 운영팀으로 비교한 행은
+            # 근거가 한 단계 약하므로 화면에서 구분해 보여준다.
+            "compare_basis": basis,
             "cmdb_status": "", "cmdb_ops_team": "", "cmdb_owners": "",
             "cmdb_key": "", "cmdb_dup": 0, "cmdb_mismatch": False,
             "jsm_requester_name": "", "jsm_requester_team": "",
