@@ -38,13 +38,17 @@
   <div class="alert">⚠️ JIRA 연동 실패 (엑셀 기준 표시): {{ jira_error[:100] }}</div>
   {% endif %}
 
-  <!-- 수행방식 탭 -->
+  <!-- 수행방식 탭 (실제 이동) + 제외 대상(클라이언트 전환, 아래 mainView/excludedView 참고) -->
   <div class="tabs">
-    <a href="/dr?half={{ half }}" class="tab {% if not mode %}active{% endif %}">전체 {{ mode_counts[''] }}대</a>
-    <a href="/dr?half={{ half }}&mode=real" class="tab {% if mode == 'real' %}active{% endif %}">실전환 {{ mode_counts['real'] }}대</a>
-    <a href="/dr?half={{ half }}&mode=nonstop" class="tab {% if mode == 'nonstop' %}active{% endif %}">무중단 {{ mode_counts['nonstop'] }}대</a>
+    <a href="/dr?half={{ half }}" class="tab {% if not mode %}active{% endif %}" data-mode-active="{{ '1' if not mode else '' }}">전체 {{ mode_counts[''] }}대</a>
+    <a href="/dr?half={{ half }}&mode=real" class="tab {% if mode == 'real' %}active{% endif %}" data-mode-active="{{ '1' if mode == 'real' else '' }}">실전환 {{ mode_counts['real'] }}대</a>
+    <a href="/dr?half={{ half }}&mode=nonstop" class="tab {% if mode == 'nonstop' %}active{% endif %}" data-mode-active="{{ '1' if mode == 'nonstop' else '' }}">무중단 {{ mode_counts['nonstop'] }}대</a>
+    {% if excluded_items %}
+    <button type="button" id="excludedTabBtn" class="tab" onclick="showExcludedTab()">🚫 제외 대상 {{ excluded_items|length }}건</button>
+    {% endif %}
   </div>
 
+  <div id="mainView">
   <!-- 요약 카드 -->
   <section class="cards">
     <div class="card big">
@@ -185,10 +189,14 @@
     </table>
     </div>
   </section>
+  </div><!-- /mainView -->
 
   {% if excluded_items %}
-  <details class="panel">
-    <summary><h2>🚫 제외 대상 ({{ excluded_items|length }}건) <span class="muted small">— 관리자가 사유와 함께 X 처리한 대상</span></h2></summary>
+  <section class="panel hidden" id="excludedView">
+    <div class="panel-head">
+      <h2>🚫 제외 대상 ({{ excluded_items|length }}건) <span class="muted small">— 관리자가 사유와 함께 X 처리한 대상</span></h2>
+      <button type="button" class="btn-sm" onclick="showMainTab()">← 대상 목록으로</button>
+    </div>
     <div class="table-scroll">
     <table>
       <thead>
@@ -211,7 +219,7 @@
       </tbody>
     </table>
     </div>
-  </details>
+  </section>
   {% endif %}
 
   {% if jobs %}
@@ -272,6 +280,26 @@
 <script>
 const HALF = "{{ half }}";
 const ADMINS = {{ admins | tojson }};
+
+// ── 제외 대상 탭 ──
+// 수행방식 탭(전체/실전환/무중단)은 실제 이동(mode 필터가 서버 쿼리)이지만,
+// 제외 대상은 같은 화면 안에서 다른 목록을 보여주기만 하면 되므로 새로고침
+// 없이 전환한다. 수행방식 탭을 누르면 페이지가 새로 열리면서 자연히
+// mainView로 돌아오니 따로 처리할 게 없다.
+function showExcludedTab() {
+  document.getElementById("mainView").classList.add("hidden");
+  document.getElementById("excludedView").classList.remove("hidden");
+  document.querySelectorAll(".tabs .tab").forEach(t => t.classList.remove("active"));
+  document.getElementById("excludedTabBtn").classList.add("active");
+}
+function showMainTab() {
+  document.getElementById("excludedView").classList.add("hidden");
+  document.getElementById("mainView").classList.remove("hidden");
+  document.getElementById("excludedTabBtn").classList.remove("active");
+  document.querySelectorAll(".tabs a.tab").forEach(t => {
+    t.classList.toggle("active", t.dataset.modeActive === "1");
+  });
+}
 
 // 변경 저장 시 입력자명 2글자 이상 필수
 function requireName() {
