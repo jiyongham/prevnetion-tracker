@@ -1017,8 +1017,10 @@ footer a:hover {
 .portal-container { max-width: 1080px; }
 .portal-clock { color: var(--color-text-tertiary); font-size: var(--text-sm); }
 .portal-lead { color: var(--color-text-tertiary); font-size: var(--text-md); margin-bottom: 20px; }
-.module-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
-@media (max-width: 860px) { .module-grid { grid-template-columns: 1fr; } }
+/* 모듈이 넷이 되면서 3열이면 3+1로 마지막 한 칸이 떠 버린다.
+   포털 폭(.portal-container 1080px)에 4열은 한 장이 너무 좁아 2x2로 간다. */
+.module-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+@media (max-width: 620px) { .module-grid { grid-template-columns: 1fr; } }
 
 .module-tile {
   display: flex; flex-direction: column; gap: 16px;

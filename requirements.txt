@@ -5,6 +5,7 @@ python-dotenv==1.0.1
 requests==2.32.3
 pandas==2.2.3
 openpyxl==3.1.5
+xlrd==2.0.1          # 레거시 .xls 읽기 (Polestar 내보내기가 이 형식으로 나온다)
 apscheduler==3.10.4
 pydantic==2.9.2
 pydantic-settings==2.5.2

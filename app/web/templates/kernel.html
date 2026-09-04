@@ -1,0 +1,435 @@
+{% extends "_layout.html" %}
+
+{% block title %}OS 커널 패치 진척{% endblock %}
+
+{% block content %}
+  <header>
+    <h1>🧩 OS 커널 패치 진척 <span class="muted small">({{ scope_label }})</span></h1>
+    <div class="controls">
+      <span class="muted small">보안 취약점 CVSS 8~9점대 대상</span>
+    </div>
+  </header>
+
+  {% if scopes|length > 1 or web_excluded %}
+  <div class="tabs">
+    {# 범위 탭은 파일이 준비된 게 둘 이상일 때만 (운영기 확대 전에는 개발기 하나뿐) #}
+    {% if scopes|length > 1 %}
+      {% for code, label in scopes %}
+      <a href="/kernel?scope={{ code }}" class="tab {% if scope == code %}active{% endif %}"
+         data-mode-active="{{ '1' if scope == code else '' }}">{{ label }}</a>
+      {% endfor %}
+    {% endif %}
+    {% if web_excluded %}
+    <button type="button" id="excludedTabBtn" class="tab" onclick="showExcludedTab()">🚫 제외 대상 {{ web_excluded|length }}대</button>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if not patched_source %}
+  <div class="alert alert-warn">
+    ⚠️ 타겟 커널 버전이 아직 확정되지 않아 <strong>완료는 관리자 수동 체크로만</strong> 집계됩니다.
+    Polestar PQL 결과를 근거로 쓰려면 배포판별(RHEL 8.x / 9.x) 타겟 커널이 먼저 정해져야 합니다 —
+    한 패턴으로 뽑으면 패치된 서버가 아니라 그 커널을 쓰는 배포판이 통째로 걸립니다.
+  </div>
+  {% else %}
+  <div class="alert">
+    📄 완료 근거 파일 <strong>{{ patched_source }}</strong> ({{ patched_rows }}행) 반영 중 —
+    이 목록에 있는 서버는 "패치 확인"으로 자동 완료 처리됩니다.
+  </div>
+  {% endif %}
+
+  <div id="mainView">
+
+  <!-- 요약 카드 -->
+  <section class="cards">
+    <div class="card big">
+      <div class="label">패치 완료율 ({{ scope_label }})</div>
+      <div class="rate">{{ result.rate }}%</div>
+      <div class="sub">{{ result.done }} / {{ result.total }}대</div>
+      <div class="progress"><div class="bar" style="width: {{ result.rate }}%"></div></div>
+    </div>
+    <div class="card">
+      <div class="label">기준일</div>
+      <div class="value">{{ as_of }}</div>
+      <div class="sub">엑셀 + 웹 입력 기준</div>
+    </div>
+    <div class="card">
+      <div class="label">미완료</div>
+      <div class="value warn">{{ result.total - result.done }}대</div>
+      <div class="sub">미계획 {{ result.no_schedule }}대 · 제외 {{ web_excluded|length }}대</div>
+    </div>
+  </section>
+
+  <!-- OS 버전별: 타겟 커널이 배포판마다 달라 계획 수립의 첫 기준이 된다 -->
+  <details class="panel" open>
+    <summary><h2>OS 버전별 현황 <span class="muted small">— 타겟 커널이 배포판마다 다릅니다</span></h2></summary>
+    <table>
+      <thead>
+        <tr><th scope="col">OS 버전</th><th scope="col">완료</th><th scope="col">전체</th><th scope="col">완료율</th><th scope="col" style="width:35%">진행</th></tr>
+      </thead>
+      <tbody>
+      {% for os_ver, v in by_os.items() %}
+        <tr>
+          <td class="mono small">{{ os_ver }}</td>
+          <td>{{ v.done }}</td>
+          <td>{{ v.total }}</td>
+          <td class="{% if v.rate == 100 %}ok{% elif v.rate >= 50 %}mid{% else %}bad{% endif %}">{{ v.rate }}%</td>
+          <td><div class="progress sm"><div class="bar" style="width: {{ v.rate }}%"></div></div></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </details>
+
+  <!-- 운영팀별 -->
+  <details class="panel">
+    <summary><h2>운영팀별 현황</h2></summary>
+    <table>
+      <thead>
+        <tr><th scope="col">시스템 운영팀</th><th scope="col">완료</th><th scope="col">전체</th><th scope="col">완료율</th><th scope="col" style="width:35%">진행</th></tr>
+      </thead>
+      <tbody>
+      {% for team, v in by_team.items() %}
+        <tr class="clickable" onclick="location.href='/kernel?scope={{ scope }}&team={{ team }}'">
+          <td><a class="team-link" href="/kernel?scope={{ scope }}&team={{ team }}">{{ team }}</a></td>
+          <td>{{ v.done }}</td>
+          <td>{{ v.total }}</td>
+          <td class="{% if v.rate == 100 %}ok{% elif v.rate >= 50 %}mid{% else %}bad{% endif %}">{{ v.rate }}%</td>
+          <td><div class="progress sm"><div class="bar" style="width: {{ v.rate }}%"></div></div></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </details>
+
+  <!-- 상세 목록 (편집 가능) -->
+  <section class="panel">
+    <div class="panel-head">
+      <h2>대상 목록 ({{ details|length }}대)</h2>
+      <div class="head-right">
+        <form method="get" class="inline-form">
+          <input type="hidden" name="scope" value="{{ scope }}">
+          <label for="q" class="sr-only">목록 검색</label>
+          <input type="text" id="q" name="q" value="{{ q }}" placeholder="운영팀/시스템명/호스트/IP/OS 검색" class="search">
+          <button type="submit" class="btn-sm">검색</button>
+        </form>
+        <div class="filters">
+          <a href="/kernel?scope={{ scope }}" class="chip {% if not filter_status and not filter_team %}active{% endif %}">전체</a>
+          <a href="/kernel?scope={{ scope }}&status=pending" class="chip {% if filter_status == 'pending' %}active{% endif %}">미완료</a>
+          <a href="/kernel?scope={{ scope }}&status=unplanned" class="chip {% if filter_status == 'unplanned' %}active{% endif %}">미계획</a>
+          <a href="/kernel?scope={{ scope }}&status=done" class="chip {% if filter_status == 'done' %}active{% endif %}">완료</a>
+        </div>
+        <button id="bulkSaveBtn" class="btn-sm" onclick="bulkSave()">💾 현재 목록 일괄 저장</button>
+      </div>
+    </div>
+
+    <div class="table-scroll">
+    <table class="editable">
+      <thead>
+        <tr>
+          <th scope="col">시스템명</th><th scope="col">호스트명</th><th scope="col">운영팀</th><th scope="col">담당자</th>
+          <th scope="col" style="width:130px">OS</th>
+          <th scope="col" style="width:90px">조치계획 ✏️</th>
+          <th scope="col" style="width:50px">완료 ✏️</th>
+          <th scope="col" style="width:130px">증적 ✏️</th>
+          <th scope="col" style="width:130px">비고 ✏️</th>
+          <th scope="col" style="width:120px">완료 근거</th>
+          <th scope="col">상태</th>
+          <th scope="col" style="width:60px">저장</th>
+          <th scope="col" class="admin-only" style="width:60px">제외</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for d in details %}
+        <tr data-no="{{ d.item_no }}"
+            class="{% if d.completed %}row-done{% endif %} src-{{ d.input_source }}"
+            title="{% if d.input_source == 'web' %}웹 입력 ({{ d.updated_by }}, {{ d.updated_at }}){% else %}엑셀 원본 (계획 미입력){% endif %}">
+          <td class="strong">{{ d.system_name }}</td>
+          <td class="mono small">{{ d.hostname }}</td>
+          <td class="small">{{ d.ops_team }}</td>
+          <td class="owner-cell">
+            <input type="text" class="cell owner-edit" value="{{ d.owner }}"
+                   aria-label="{{ d.system_name }} 담당자">
+          </td>
+          <td class="mono small">{{ d.os }}</td>
+
+          <td><input type="text" class="cell sched {{ 'edited' if d.input_source == 'web' else '' }}" value="{{ d.schedule_disp }}" placeholder="OO월"
+                 aria-label="{{ d.system_name }} 조치계획"></td>
+          <td class="center"><input type="checkbox" class="cell done" {% if d.completed %}checked{% endif %}
+                   aria-label="{{ d.system_name }} 완료"></td>
+          <td><input type="text" class="cell evidence" value="{{ d.evidence }}" placeholder="증적"
+                 aria-label="{{ d.system_name }} 증적"></td>
+          <td><input type="text" class="cell note" value="{{ d.note }}" placeholder="비고"
+                 aria-label="{{ d.system_name }} 비고"></td>
+
+          <td class="small">
+            {% if d.reason %}<span class="badge ok" title="{{ d.reason }}">{{ d.reason }}</span>
+            {% else %}<span class="muted">-</span>{% endif %}
+          </td>
+          <td>
+            {% if d.status_label == '완료' %}<span class="badge ok">완료</span>
+            {% elif d.status_label == '지연' %}<span class="badge bad">지연</span>
+            {% elif d.status_label == '예정' %}<span class="badge">예정</span>
+            {% elif d.status_label == '대략' %}<span class="badge warn" title="{{ d.schedule_raw }}">대략</span>
+            {% else %}<span class="badge warn">미계획</span>{% endif %}
+          </td>
+          <td><button class="btn-save" onclick="saveRow(this)" aria-label="{{ d.system_name }} 저장">저장</button></td>
+          <td class="admin-only">
+            <button class="btn-sm btn-exclude" onclick="excludeRow(this)"
+                    title="제외 처리 — 사유를 남깁니다">제외</button>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </section>
+
+  </div><!-- /mainView -->
+
+  {% if web_excluded %}
+  <section class="panel hidden" id="excludedView">
+    <div class="panel-head">
+      <h2>🚫 제외 대상 ({{ web_excluded|length }}대) <span class="muted small">— 관리자가 사유와 함께 제외한 대상</span></h2>
+      <button type="button" class="btn-sm" onclick="showMainTab()">← 대상 목록으로</button>
+    </div>
+    <div class="table-scroll">
+    <table>
+      <thead>
+        <tr><th scope="col">시스템명</th><th scope="col">호스트명</th><th scope="col">운영팀</th><th scope="col">담당자</th><th scope="col">제외 사유</th><th scope="col">처리자</th><th scope="col" class="admin-only">복귀</th></tr>
+      </thead>
+      <tbody>
+      {% for d in web_excluded %}
+        <tr>
+          <td class="strong">{{ d.system_name }}</td>
+          <td class="mono small">{{ d.hostname }}</td>
+          <td class="small">{{ d.ops_team }}</td>
+          <td class="small">{{ d.owner }}</td>
+          <td class="small">{{ d.exclude_reason or "(미기재)" }}</td>
+          <td class="small">{{ d.updated_by }}</td>
+          <td class="admin-only">
+            <button class="btn-sm" data-no="{{ d.item_no }}" onclick="restoreRow(this)">↩️ 제외 해제</button>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </section>
+  {% endif %}
+
+  <footer>
+    <span>기준일 {{ as_of }}</span>
+    <span>
+      <a href="/kernel/export?scope={{ scope }}">📥 엑셀 다운로드</a> ·
+      <a href="/logs">변경이력</a> ·
+      <a href="/kernel/api/summary?scope={{ scope }}" target="_blank">API</a>
+    </span>
+  </footer>
+{% endblock %}
+
+{% block after %}
+<div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true"></div>
+
+<script>
+const ADMINS = {{ admins | tojson }};
+
+// ── 제외 대상 탭 ──
+function showExcludedTab() {
+  document.getElementById("mainView").classList.add("hidden");
+  document.getElementById("excludedView").classList.remove("hidden");
+  document.querySelectorAll(".tabs .tab").forEach(t => t.classList.remove("active"));
+  document.getElementById("excludedTabBtn").classList.add("active");
+}
+function showMainTab() {
+  document.getElementById("excludedView").classList.add("hidden");
+  document.getElementById("mainView").classList.remove("hidden");
+  document.getElementById("excludedTabBtn").classList.remove("active");
+  document.querySelectorAll(".tabs a.tab").forEach(t => {
+    t.classList.toggle("active", t.dataset.modeActive === "1");
+  });
+}
+
+function requireName() {
+  const name = (document.getElementById("updatedBy").value || "").trim();
+  if (name.length < 2) {
+    showToast("입력자명을 2글자 이상 입력해주세요", false);
+    document.getElementById("updatedBy").focus();
+    return null;
+  }
+  return name;
+}
+
+function isAdmin() {
+  const name = (document.getElementById("updatedBy").value || "").trim();
+  return name !== "" && ADMINS.includes(name);
+}
+
+let _lastAdminState = null;
+
+function applyAdminState() {
+  const admin = isAdmin();
+  const hint = document.getElementById("adminHint");
+  hint.textContent = admin ? "🔓 관리자: 완료 체크/담당자 수정 가능" : "🔒 완료 체크/담당자 수정은 관리자만 가능";
+  hint.classList.toggle("is-admin", admin);
+  hint.classList.toggle("is-locked", !admin);
+
+  if (admin === _lastAdminState) return; // 상태 변화 없으면 무거운 DOM 순회 생략
+  _lastAdminState = admin;
+
+  document.querySelectorAll("input.cell.done").forEach(cb => {
+    cb.disabled = !admin;
+    cb.title = admin ? "" : "완료 처리는 관리자만 가능합니다";
+  });
+  document.querySelectorAll("input.owner-edit").forEach(el => {
+    el.disabled = !admin;
+    el.title = admin ? "" : "담당자 수정은 관리자만 가능합니다";
+  });
+
+  document.body.classList.toggle("is-admin", admin);   // .admin-only 표시는 CSS가 처리
+}
+
+// 성공은 2초 뒤 사라지지만, 오류는 놓치면 안 되므로 직접 닫을 때까지 남는다.
+let _toastTimer = null;
+function showToast(msg, ok = true) {
+  const t = document.getElementById("toast");
+  clearTimeout(_toastTimer);
+  t.textContent = msg + (ok ? "" : "  (클릭해서 닫기)");
+  t.className = "toast show " + (ok ? "ok" : "err");
+  if (ok) _toastTimer = setTimeout(() => { t.className = "toast"; }, 2000);
+}
+document.getElementById("toast").addEventListener("click", e => {
+  e.currentTarget.className = "toast";
+});
+
+async function saveRow(btn) {
+  const name = requireName();
+  if (!name) return;
+
+  const tr = btn.closest("tr");
+  const payload = {
+    item_no: tr.dataset.no,
+    schedule: tr.querySelector(".sched").value,
+    is_done: tr.querySelector(".done").checked,
+    evidence: tr.querySelector(".evidence").value,
+    note: tr.querySelector(".note").value,
+    owner: tr.querySelector(".owner-edit").value,
+    updated_by: name,
+  };
+
+  btn.disabled = true; btn.textContent = "…";
+  try {
+    const res = await fetch("/api/kernel/save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (res.ok) {
+      showToast("저장 완료");
+      tr.title = `웹 입력 (${payload.updated_by}, 방금)`;
+      tr.classList.add("src-web");
+      tr.classList.remove("saved");
+      void tr.offsetWidth;
+      tr.classList.add("saved");
+      setTimeout(() => tr.classList.remove("saved"), 1200);
+    } else { showToast("저장하지 못했습니다. 잠시 후 다시 시도해주세요.", false); }
+  } catch (e) { showToast("저장하지 못했습니다. 네트워크 연결을 확인하고 다시 시도해주세요. (" + e.message + ")", false); }
+  finally { btn.disabled = false; btn.textContent = "저장"; }
+}
+
+async function bulkSave() {
+  const name = requireName();
+  if (!name) return;
+
+  const rows = Array.from(document.querySelectorAll("tr[data-no]")).map(tr => {
+    const cur = {
+      item_no: tr.dataset.no,
+      schedule: tr.querySelector(".sched").value,
+      is_done: tr.querySelector(".done").checked,
+      evidence: tr.querySelector(".evidence").value,
+      note: tr.querySelector(".note").value,
+    };
+    const changed =
+      cur.schedule !== tr.dataset.origSched ||
+      (cur.is_done ? "1" : "0") !== tr.dataset.origDone ||
+      cur.evidence !== tr.dataset.origEvidence ||
+      cur.note !== tr.dataset.origNote;
+    return changed ? cur : null;
+  }).filter(Boolean);
+
+  if (!rows.length) { showToast("변경된 항목이 없습니다", false); return; }
+  if (!confirm(`변경된 ${rows.length}건을 저장할까요?`)) return;
+
+  const btn = document.getElementById("bulkSaveBtn");
+  btn.disabled = true; btn.textContent = "저장 중…";
+  try {
+    const res = await fetch("/api/kernel/bulk-save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rows, updated_by: name }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      showToast(`${data.count}건 일괄 저장 완료`);
+      setTimeout(() => location.reload(), 700);
+    } else {
+      showToast("처리하지 못했습니다. 잠시 후 다시 시도해주세요." + (data.error ? " (" + data.error + ")" : ""), false);
+    }
+  } catch (e) { showToast("저장하지 못했습니다. 네트워크 연결을 확인하고 다시 시도해주세요. (" + e.message + ")", false); }
+  finally { btn.disabled = false; btn.textContent = "💾 현재 목록 일괄 저장"; }
+}
+
+async function excludeRow(btn) {
+  const name = (document.getElementById("updatedBy").value || "").trim();
+  if (name.length < 2) { alert("사이드바에서 입력자명을 2글자 이상 입력해주세요."); return; }
+  const tr = btn.closest("tr");
+  const sys = tr.querySelector("td.strong").textContent;
+  const reason = (prompt(`${sys}\n\n커널 패치 대상에서 제외합니다.\n제외 사유를 입력해주세요. (예: 폐기 예정, 재설치 대상)`) || "").trim();
+  if (!reason) return;
+  await postExclude(btn, { item_no: tr.dataset.no, updated_by: name, excluded: true, reason });
+}
+
+async function restoreRow(btn) {
+  const name = (document.getElementById("updatedBy").value || "").trim();
+  if (name.length < 2) { alert("사이드바에서 입력자명을 2글자 이상 입력해주세요."); return; }
+  if (!confirm("제외를 해제하고 대상 목록으로 되돌릴까요?")) return;
+  await postExclude(btn, { item_no: btn.dataset.no, updated_by: name, excluded: false });
+}
+
+async function postExclude(btn, body) {
+  btn.disabled = true;
+  try {
+    const res = await fetch("/api/kernel/exclude", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (data.ok) { setTimeout(() => location.reload(), 300); }
+    else { alert("처리하지 못했습니다. 잠시 후 다시 시도해주세요." + (data.error ? "\n\n" + data.error : "")); btn.disabled = false; }
+  } catch (e) { alert("처리하지 못했습니다. 네트워크 연결을 확인하고 다시 시도해주세요.\n\n" + e.message); btn.disabled = false; }
+}
+
+document.querySelectorAll("input.cell").forEach(el => {
+  el.addEventListener("keydown", e => {
+    if (e.key === "Enter") saveRow(e.target.closest("tr").querySelector(".btn-save"));
+  });
+});
+
+document.querySelectorAll("tr[data-no]").forEach(tr => {
+  tr.dataset.origSched = tr.querySelector(".sched").value;
+  tr.dataset.origDone = tr.querySelector(".done").checked ? "1" : "0";
+  tr.dataset.origEvidence = tr.querySelector(".evidence").value;
+  tr.dataset.origNote = tr.querySelector(".note").value;
+});
+
+const ub = document.getElementById("updatedBy");
+ub.value = localStorage.getItem("updatedBy") || "";
+ub.addEventListener("input", applyAdminState);
+ub.addEventListener("change", () => {
+  localStorage.setItem("updatedBy", ub.value);
+  applyAdminState();
+});
+applyAdminState();
+</script>
+{% endblock %}

@@ -58,6 +58,20 @@ class Settings(BaseSettings):
     excel_path: str = "data/targets.xlsx"
     capacity_excel_path: str = "data/capacity.xlsx"   # 용량관리(ASM/파일시스템 증설) - DATA/ARCH 시트
     eos_excel_path: str = "data/eos.xlsx"             # EoS(노후 OS/DB 전환) 대상
+    # OS 커널 패치 - 개발기/운영기가 별도 파일로 온다. 운영기는 파일이 준비되면 경로만 채우면
+    # 화면에 탭이 생긴다 (경로가 비어 있거나 파일이 없으면 그 범위는 조용히 건너뛴다).
+    kernel_dev_excel_path: str = "data/kernel_dev.xlsx"
+    kernel_prod_excel_path: str = ""
+    # Polestar PQL 결과(= 타겟 패치레벨에 걸린 서버) 내보내기 파일.
+    # PQL이 값을 돌려주지 않아 "누가 패치됐나" 목록만 이 파일로 받는다.
+    #
+    # 기본값을 비워둔 이유: 타겟 커널이 아직 확정되지 않았다. 임시로 써 본
+    # `config[OS 패치 레벨]="4.18.0-553%"` 결과는 그 커널을 쓰는 RHEL 8.10 서버가
+    # 통째로 걸려(대상 99대 중 88대) '패치 완료'가 아니라 '원래 그 버전'을 집어냈다.
+    # 즉 한 패턴으로는 배포판이 섞인 대상을 판정할 수 없다(8.x=4.18/9.x=5.14 계열).
+    # 타겟이 정해지면 OS별로 뽑아 합친 파일 경로를 .env에 넣는다. 그때까지는 비워
+    # 두어 수동 완료 체크만으로 판정한다 - 잘못된 근거로 완료가 부풀지 않도록.
+    kernel_patched_export_path: str = ""
 
     # 분모 판정에서 빠지지만 대상으로 넣어야 하는 예외 (Insight Key 콤마 구분).
     # EoS 대상(분모)은 '최초 산정 시 EOS 진행'이었는지로 정하는데(eos_loader.was_originally_target),
@@ -100,6 +114,9 @@ class Settings(BaseSettings):
 
     # EoS 전용 관리자
     eos_admin_users: str
+
+    # OS 커널 패치 전용 관리자 (미설정 시 EoS 관리자와 동일하게 동작)
+    kernel_admin_users: str = ""
 
     # 사내 LLM Agent 게이트웨이 (조회 챗봇용)
     agent_token_url: str = ""
@@ -161,6 +178,12 @@ class Settings(BaseSettings):
     @property
     def eos_admin_set(self) -> set[str]:
         return {a.strip() for a in self.eos_admin_users.split(",") if a.strip()}
+
+    @property
+    def kernel_admin_set(self) -> set[str]:
+        """커널 패치 관리자. 따로 지정하지 않았으면 EoS 관리자를 그대로 쓴다."""
+        names = {a.strip() for a in self.kernel_admin_users.split(",") if a.strip()}
+        return names or self.eos_admin_set
 
     @property
     def eos_extra_target_set(self) -> set[str]:

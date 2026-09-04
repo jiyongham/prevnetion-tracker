@@ -163,6 +163,22 @@ def init_db():
 
         CREATE INDEX IF NOT EXISTS idx_eos_week_perf_week ON eos_week_perf(week_start);
 
+        -- OS 커널 패치 대상의 웹 입력값. 이 엑셀엔 조치계획·완료 컬럼이 아예 없어서
+        -- (자산 목록만 온다) 계획은 전적으로 화면에서 취합한다.
+        CREATE TABLE IF NOT EXISTS kernel_input (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            item_no     TEXT NOT NULL UNIQUE,   -- Insight Key
+            schedule    TEXT,
+            is_done     INTEGER DEFAULT 0,
+            evidence    TEXT,
+            note        TEXT,
+            owner       TEXT,
+            is_excluded INTEGER DEFAULT 0,
+            exclude_reason TEXT,
+            updated_by  TEXT,
+            updated_at  TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+
         -- Polestar에서 '_OLD'를 확인한 관측 기록.
         -- 전환이 끝난 AS-IS 서버는 한동안 '_OLD'로 남아 있다가 결국 폐기(CI 삭제)된다.
         -- 판정은 매번 '지금 상태'를 다시 보기 때문에, 이 기록이 없으면 CI가 지워지는 순간
@@ -705,3 +721,57 @@ def delete_eos_polestar_seen(item_no: str) -> None:
     """오탐으로 판단된 관측 기록 삭제 (관리자용). 다음 조회에서 다시 보이면 또 기록된다."""
     with get_conn() as conn:
         conn.execute("DELETE FROM eos_polestar_seen WHERE item_no = ?", (item_no,))
+
+
+# ─────────────────────────────────────────────
+# OS 커널 패치 입력값 (EoS와 같은 구조)
+# ─────────────────────────────────────────────
+def get_kernel_inputs() -> dict[str, dict]:
+    """{item_no: row} 전체"""
+    with get_conn() as conn:
+        rows = conn.execute("SELECT * FROM kernel_input").fetchall()
+    return {r["item_no"]: dict(r) for r in rows}
+
+
+def get_kernel_input(item_no: str) -> dict | None:
+    with get_conn() as conn:
+        row = conn.execute("SELECT * FROM kernel_input WHERE item_no = ?", (item_no,)).fetchone()
+    return dict(row) if row else None
+
+
+def upsert_kernel_input(
+    item_no: str,
+    schedule: str = "",
+    is_done: bool = False,
+    evidence: str = "",
+    note: str = "",
+    updated_by: str = "",
+    owner: str | None = None,
+    is_excluded: bool | None = None,
+    exclude_reason: str | None = None,
+):
+    """
+    웹 입력 저장. owner/is_excluded/exclude_reason 은 None이면 기존 값을 유지한다
+    (담당자 수정과 제외 처리가 서로의 값을 지우지 않도록).
+    """
+    with get_conn() as conn:
+        conn.execute("""
+            INSERT INTO kernel_input
+                (item_no, schedule, is_done, evidence, note, owner,
+                 is_excluded, exclude_reason, updated_by, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
+            ON CONFLICT(item_no) DO UPDATE SET
+                schedule       = excluded.schedule,
+                is_done        = excluded.is_done,
+                evidence       = excluded.evidence,
+                note           = excluded.note,
+                owner          = COALESCE(excluded.owner, kernel_input.owner),
+                is_excluded    = COALESCE(excluded.is_excluded, kernel_input.is_excluded),
+                exclude_reason = COALESCE(excluded.exclude_reason, kernel_input.exclude_reason),
+                updated_by     = excluded.updated_by,
+                updated_at     = datetime('now', 'localtime')
+        """, (
+            item_no, schedule, int(is_done), evidence, note, owner,
+            None if is_excluded is None else int(is_excluded),
+            exclude_reason, updated_by,
+        ))

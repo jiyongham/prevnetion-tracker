@@ -2,6 +2,13 @@
 __pycache__/
 *.pyc
 data/*.xlsx
+# 원본 데이터는 실제 호스트명/IP/담당자가 그대로 들어 있어 절대 커밋하지 않는다.
+# (.gitignore 는 줄 끝 주석을 지원하지 않으므로 패턴만 적는다)
+data/*.xls
+data/*.pdf
+data/*.doc
+data/*.docx
+data/*.csv
 *.db
 .venv/
 venv/

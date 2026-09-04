@@ -1,6 +1,6 @@
 # app/web/routes/home.py
 """
-포털 홈 - DR훈련/용량관리/EoS 중 어디로 들어갈지 고르는 진입 화면.
+포털 홈 - DR훈련/용량관리/EoS/커널패치 중 어디로 들어갈지 고르는 진입 화면.
 
 기존에는 "/"가 DR 대시보드였는데(DR/용량관리/EoS 세 영역이 생기면서 어느 하나가
 루트를 차지할 이유가 없어짐), 이제 "/"는 이 선택 화면이 차지하고 DR 대시보드는
@@ -17,9 +17,11 @@ from datetime import date
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 
+from app.core.kernel_loader import available_scopes, load_kernel_items_merged
 from app.services import dr_data, eos_data
 from app.services.completion import calc_completion
 from app.services.eos import calc_eos_completion
+from app.services.kernel import calc_kernel_completion
 from app.services.report import get_current_half
 from app.web.deps import templates
 from app.web.routes.capacity import get_capacity_dashboard_data
@@ -54,6 +56,17 @@ def _eos_summary(today: date) -> tuple[int, int, str | None]:
     return result["done"], result["total"], jira_error
 
 
+def _kernel_summary(today: date) -> tuple[int, int, str | None]:
+    """준비된 범위(개발기/운영기)를 합산한다. 파일이 하나도 없으면 0건이 되고
+    카드에는 '대상 없음'으로 뜬다 - 운영기 확대 전까지는 개발기만 잡힌다."""
+    done = total = 0
+    for scope in available_scopes():
+        result = calc_kernel_completion(load_kernel_items_merged(scope=scope), today)
+        done += result["done"]
+        total += result["total"]
+    return done, total, None
+
+
 _MODULES = (
     {
         "code": "DR", "label": "DR 모의훈련", "href": "/dr",
@@ -69,6 +82,11 @@ _MODULES = (
         "code": "EOS", "label": "EoS 전환", "href": "/eos",
         "desc": "노후 OS·DB 시스템의 전환 완료 여부를 점검합니다.",
         "summarize": _eos_summary,
+    },
+    {
+        "code": "KRN", "label": "OS 커널 패치", "href": "/kernel",
+        "desc": "보안 취약점(CVSS 8~9점대) 커널 패치 대상의 계획·완료를 취합합니다.",
+        "summarize": _kernel_summary,
     },
 )
 
@@ -95,7 +113,7 @@ def portal_home(request: Request):
             "total": total,
             "pct": pct,
             # 세그먼트 바(20칸) 중 채울 칸 수. 카드 색 자체는 완료율이 아니라
-            # 모듈별로 고정 - portal.html에서 code(DR/CAP/EOS) 기준으로 정한다.
+            # 모듈별로 고정 - portal.html에서 code(DR/CAP/EOS/KRN) 기준으로 정한다.
             "bar_filled": round(pct / 5) if pct is not None else 0,
             "error": error,
         })

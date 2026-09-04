@@ -20,17 +20,18 @@
     <span id="portalClock" class="portal-clock mono">-</span>
   </header>
 
-  <p class="portal-lead">DR훈련·용량관리·EoS 중 확인할 화면을 선택하세요.</p>
+  <p class="portal-lead">확인할 화면을 선택하세요.</p>
 
   <div class="module-grid">
     {% for m in modules %}
     {# 카드 색은 완료율 밴드가 아니라 모듈마다 고정한다 - 밴드 기준(ok/mid/bad)이면
        우연히 같은 구간에 걸린 두 모듈이 같은 색으로 보인다 (예: DR·EoS 둘 다
        50~99%면 둘 다 액센트색). DR=액센트 블루, 용량관리=연두(액센트와 확실히
-       갈리는 색), EoS=보라. #}
+       갈리는 색), EoS=보라, 커널패치=초록. #}
     {% if m.code == "DR" %}{% set tone = "var(--color-accent-solid)" %}{% set tone_bg = "var(--color-accent-bg)" %}
     {% elif m.code == "CAP" %}{% set tone = "var(--lime-700)" %}{% set tone_bg = "var(--lime-100)" %}
-    {% else %}{% set tone = "var(--purple-700)" %}{% set tone_bg = "var(--purple-200)" %}
+    {% elif m.code == "EOS" %}{% set tone = "var(--purple-700)" %}{% set tone_bg = "var(--purple-200)" %}
+    {% else %}{% set tone = "var(--green-700)" %}{% set tone_bg = "var(--green-200)" %}
     {% endif %}
     <a class="module-tile" href="{{ m.href }}">
       <div class="module-tile-head">
@@ -46,11 +47,16 @@
             <path d="M5 6v6c0 1.4 3.1 2.6 7 2.6s7-1.2 7-2.6V6" />
             <path d="M5 12v6c0 1.4 3.1 2.6 7 2.6s7-1.2 7-2.6v-6" />
           </svg>
-          {% else %}
+          {% elif m.code == "EOS" %}
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
             <rect x="3" y="5" width="7" height="7" rx="1.4" />
             <rect x="14" y="12" width="7" height="7" rx="1.4" />
             <path d="M10 8.5h4.5M14.5 8.5v4" />
+          </svg>
+          {% else %}
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+            <rect x="7" y="7" width="10" height="10" rx="1.6" />
+            <path d="M10 3v4M14 3v4M10 17v4M14 17v4M3 10h4M3 14h4M17 10h4M17 14h4" />
           </svg>
           {% endif %}
         </span>
