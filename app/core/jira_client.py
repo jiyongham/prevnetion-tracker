@@ -53,7 +53,9 @@ class JiraClient:
         걸릴 수 있으므로 key 기준으로 중복을 제거한다.
         """
         url = f"{self.base_url}/rest/api/2/search"
-        fields_param = ",".join(fields) if fields else None
+        # 설정되지 않은 커스텀필드(빈 문자열)는 빼고 보낸다. 빈 값이 그대로 들어가면
+        # 'fields=summary,,status' 가 돼 JIRA 가 400을 내고 검색 전체가 실패한다.
+        fields_param = ",".join(f for f in fields if f) if fields else None
 
         first = self._search_page(url, jql, fields_param, 0, PAGE_SIZE)
         issues = first.get("issues", [])
@@ -84,7 +86,7 @@ class JiraClient:
         DR 티켓 조회 (IP 매칭용 - 본문 포함)
         - 실전환: 제목에 "예방3"
         - 무중단: 제목에 "무중단" (예방3 없음)
-        - 작업 구분(customfield_00002)에 "DR훈련"이 체크된 경우도 포함 (전환기: 제목 태그만으론
+        - 작업 구분 필드(dr_work_type_field)에 "DR훈련"이 체크된 경우도 포함 (전환기: 제목 태그만으론
           안 걸리는 티켓도 놓치지 않기 위해 OR로 추가. 예: 제목에 예방3/무중단이 없어도 이 필드로 걸림)
         """
         jql = (

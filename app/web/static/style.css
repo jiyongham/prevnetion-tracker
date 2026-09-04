@@ -129,13 +129,13 @@
   /* 깊이는 테두리 대신 겹친 그림자로. 투명도라 배경색이 달라져도 자연스럽게 얹힌다.
      구분선(테이블 경계, 헤더 밑줄 등)은 구조를 나타내므로 테두리 그대로 둔다. */
   --shadow-border:
-    0 0 0 1px rgba(0, 0, 0, .06),
-    0 1px 2px -1px rgba(0, 0, 0, .06),
-    0 2px 4px 0 rgba(0, 0, 0, .04);
+    0 0 0 1px rgba(0, 0, 0, .05),
+    0 1px 2px -1px rgba(0, 0, 0, .07),
+    0 4px 10px -3px rgba(0, 0, 0, .07);
   --shadow-border-hover:
-    0 0 0 1px rgba(0, 0, 0, .08),
-    0 1px 2px -1px rgba(0, 0, 0, .08),
-    0 2px 4px 0 rgba(0, 0, 0, .06);
+    0 0 0 1px rgba(0, 0, 0, .07),
+    0 2px 4px -2px rgba(0, 0, 0, .09),
+    0 8px 18px -6px rgba(0, 0, 0, .11);
   --ease-out: cubic-bezier(0.2, 0, 0, 1);
 
   /* ── 타입 스케일 ──
@@ -381,7 +381,7 @@ select, input[type="date"], input[type="text"] {
 }
 .card {
   background: var(--color-bg-surface); box-shadow: var(--shadow-border);
-  border-radius: 10px; padding: 18px;
+  border-radius: 12px; padding: 18px;
 }
 .card .label { font-size: var(--text-sm); color: var(--color-text-tertiary); margin-bottom: 6px; }
 /* 완료율 숫자는 클릭할 수 없다. 액센트를 입히면 눌러야 할 것처럼 보이므로
@@ -411,8 +411,8 @@ select, input[type="date"], input[type="text"] {
 
 /* 패널 */
 .panel {
-  background: var(--color-bg-surface); box-shadow: var(--shadow-border); border-radius: 10px;
-  padding: 18px; margin-bottom: 20px;
+  background: var(--color-bg-surface); box-shadow: var(--shadow-border); border-radius: 12px;
+  padding: 20px; margin-bottom: 20px;
 }
 .panel-head {
   display: flex; justify-content: space-between; align-items: center;
@@ -676,19 +676,25 @@ tr.saved { animation: flash 1.2s; }
    조치 필요(미완료·지연·미계획)는 칩 + 테두리 + 굵게,
    이미 끝났거나 볼 게 없는 상태(완료·미응답)는 배경을 걷고 글자만 남겨 물러나게 한다.
    색 말고도 굵기·테두리·존재감이 같이 달라지므로 색맹이어도 우선순위가 읽힌다. */
-.badge.bad, .badge.warn {
-  font-weight: 700;
-  box-shadow: inset 0 0 0 1px currentColor;
-}
-.badge.ok, .badge.muted {
-  background: none; font-weight: 500;
-}
 /* 상태 열에는 이 여섯이 한꺼번에 나타난다. 색상각이 서로 충분히 벌어져 있어야 한다. */
 .badge.ok    { background: var(--color-status-success-bg); color: var(--color-status-success-text); }
 .badge.bad   { background: var(--color-status-danger-bg);  color: var(--color-status-danger-text); }
 .badge.warn  { background: var(--color-status-warning-bg); color: var(--color-status-warning-text); }
 .badge.muted { background: var(--color-status-neutral-bg); color: var(--color-status-neutral-text); }
 .badge.info  { background: var(--color-status-info-bg);    color: var(--color-status-info-text); }
+
+/* 위계. 500행을 훑을 때 눈에 걸려야 하는 건 '손대야 하는 것'뿐이다.
+   지연·미완료·미계획은 테두리와 굵기로 앞으로 당기고, 이미 끝났거나(완료)
+   이 화면에서 할 일이 없는 것(미응답)은 배경을 빼서 뒤로 물린다.
+   ※ 이 두 규칙은 반드시 위 색 지정 '뒤'에 와야 한다 - 앞에 두면 같은 특정도라
+     아래 색 규칙이 배경을 되살려 조용해지지 않는다 (실제로 그렇게 죽어 있었다). */
+.badge.bad, .badge.warn {
+  font-weight: 700;
+  box-shadow: inset 0 0 0 1px currentColor;
+}
+.badge.ok, .badge.muted {
+  background: transparent; font-weight: 500;
+}
 /* 대략적 일정만 등록된 상태 (미계획과 구분) */
 .badge.soft  { background: var(--color-status-partial-bg); color: var(--color-status-partial-text); }
 
@@ -697,17 +703,39 @@ tr.saved { animation: flash 1.2s; }
    :not()으로 감춰야 관리자일 때 각 요소의 원래 display(inline-block/table-cell 등)가 유지된다. */
 body:not(.is-admin) .admin-only { display: none !important; }
 
-/* 미계획 리마인드 미리보기 */
+/* 운영팀별 현황 표 — 완료/전체/완료율은 세로로 비교하는 숫자라 오른쪽 정렬해
+   자릿수를 맞춘다 (tabular-nums 는 table 규칙에서 이미 걸려 있다). */
+.team-table td:nth-child(2),
+.team-table td:nth-child(3),
+.team-table td:nth-child(4),
+.team-table th:nth-child(2),
+.team-table th:nth-child(3),
+.team-table th:nth-child(4) { text-align: end; }
+.team-table td:nth-child(4) { font-weight: 600; }
+/* 진행바 칸은 숫자 옆 눈금 역할이라 좌우 여백을 조금 더 준다 */
+.team-table td:last-child { padding-inline: 14px; }
+.team-table tbody tr:hover .bar { filter: saturate(1.15); }
+
+/* 리마인드 미리보기 */
 .remind-layout { display: flex; gap: 16px; align-items: flex-start; }
-.remind-side { width: 220px; flex: 0 0 220px; }
+/* 초안이 길어 아래로 스크롤해도 서비스 목록은 붙어 있어야 다음 대상으로 넘어가기 쉽다 */
+.remind-side {
+  width: 240px; flex: 0 0 240px;
+  position: sticky; top: 20px;
+  max-height: calc(100dvh - 40px); overflow-y: auto;
+}
 .remind-main { flex: 1; min-width: 0; }
 .owner-item {
-  display: flex; justify-content: space-between; align-items: center;
-  padding: 8px 12px; border-radius: 8px; text-decoration: none;
-  color: inherit; margin-bottom: 4px;
+  display: flex; justify-content: space-between; align-items: center; gap: 8px;
+  padding: 9px 10px 9px 12px; border-radius: 8px; text-decoration: none;
+  color: inherit; margin-bottom: 2px;
+  border-inline-start: 3px solid transparent;   /* 활성 표시 자리를 미리 비워 목록이 밀리지 않게 */
 }
 .owner-item:hover { background: var(--color-bg-hover); }
-.owner-item.active { background: var(--color-accent-bg); font-weight: 600; }
+.owner-item.active {
+  background: var(--color-accent-bg); font-weight: 600;
+  border-inline-start-color: var(--color-accent-solid);
+}
 .owner-item .cnt {
   background: var(--color-status-warning-bg); color: var(--color-status-warning-text);
   border-radius: 10px;
@@ -722,11 +750,15 @@ body:not(.is-admin) .admin-only { display: none !important; }
 .send-status { font-size: var(--text-sm); font-weight: 600; margin-inline-start: 8px; }
 .send-status.ok { color: var(--color-status-success-text); }
 .send-status.err { color: var(--color-status-danger-text); }
+/* 보낼 메시지 그대로를 보여주는 자리. 편집 필드가 아니라 '이대로 나간다'는 미리보기라
+   말풍선처럼 왼쪽에 액센트 선을 두고 흰 바탕에 올린다. */
 .draft .msg {
   white-space: pre-wrap; overflow-wrap: break-word;
-  background: var(--color-bg-subtle); border: 1px solid var(--color-border-subtle);
-  border-radius: 8px; max-width: 70ch;
-  padding: 12px 14px; font-size: var(--text-base); line-height: 1.6; margin: 0 0 12px;
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border-subtle);
+  border-inline-start: 3px solid var(--color-accent-border);
+  border-radius: 0 10px 10px 0; max-width: 70ch;
+  padding: 14px 16px; font-size: var(--text-base); line-height: 1.7; margin: 0 0 12px;
 }
 @media (max-width: 720px) {
   .remind-layout { flex-direction: column; }
