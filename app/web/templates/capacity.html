@@ -1,24 +1,3 @@
-<!-- app/web/templates/capacity.html -->
-<!DOCTYPE html>
-<html lang="ko">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>용량관리 진척 현황</title>
-  <link rel="stylesheet" href="/static/style.css?v=17">
-</head>
-<body>
-<a href="#main" class="skip-link">본문으로 건너뛰기</a>
-<div class="container">
-
-  <nav class="top-nav">
-    <a href="/" class="top-nav-item">🏠 홈</a>
-    <a href="/dr" class="top-nav-item">🔄 DR훈련</a>
-    <a href="/capacity" class="top-nav-item active">💾 용량관리</a>
-    <a href="/eos" class="top-nav-item">💻 EoS</a>
-  </nav>
-
-  <main id="main">
 {% extends "_layout.html" %}
 
 {% block title %}용량관리 진척 현황{% endblock %}
@@ -135,7 +114,6 @@
           <th scope="col">CI명</th><th scope="col">호스트명</th><th scope="col">운영팀</th><th scope="col">담당자</th>
           <th scope="col" style="width:70px">사용량</th>
           <th scope="col" style="width:90px">증설필요(GB)</th>
-          <th scope="col" style="width:80px">입력자명</th>
           <th scope="col" style="width:90px">일정 ✏️</th>
           <th scope="col" style="width:50px">완료 ✏️</th>
           <th scope="col" style="width:130px">증적 ✏️</th>
@@ -158,7 +136,6 @@
           </td>
           <td class="small">{% if d.usage_pct is not none %}{{ d.usage_pct }}%{% else %}-{% endif %}</td>
           <td class="small">{{ d.required_gb if d.required_gb is not none else "-" }}</td>
-          <td class="small updated-by">{{ d.updated_by }}</td>
 
           <td><input type="text" class="cell sched {{ 'edited' if d.input_source == 'web' else '' }}" value="{{ d.schedule_disp }}" placeholder="OO월OO일"
                  aria-label="{{ d.ci_name }} 일정"></td>
@@ -363,8 +340,9 @@ async function saveRow(btn) {
     });
     if (res.ok) {
       showToast(`저장 완료`);
-      const ubCell = tr.querySelector(".updated-by");
-      if (ubCell) ubCell.textContent = payload.updated_by;
+      // 입력자는 열을 따로 두지 않고 행 툴팁으로만 보여준다 - 저장하면 그 툴팁을 갱신한다
+      tr.title = `웹 입력 (${payload.updated_by}, 방금)`;
+      tr.classList.add("src-web");
       // 같은 행을 1.2초 안에 다시 저장하면 클래스가 이미 붙어 있어 애니메이션이
       // 다시 안 돈다. 지웠다가 리플로우를 강제한 뒤 붙여 매번 처음부터 재생시킨다.
       tr.classList.remove("saved");

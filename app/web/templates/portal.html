@@ -5,8 +5,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>장애 예방 진척 관리</title>
-  <link rel="stylesheet" href="/static/style.css?v=17">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="/static/style.css?v=18">
   <style>
     /*
       포털 홈만의 전용 톤 — 나머지 3개 화면(대시보드/표 편집 중심)과 달리 이 화면은
@@ -14,30 +13,32 @@
       시맨틱 토큰은 그대로 두고 이 페이지 안에서만 다른 배색·타이포를 얹는다
       (기존 3개 화면 톤은 그대로 유지됨 - 이 스타일 블록 밖으로 새지 않음).
     */
+    /* 포털 전용 이름(--hub-*)은 유지하되 값은 본체 시맨틱 토큰에서 가져온다.
+       이 화면만 다른 색·폰트를 쓰면 같은 서비스로 안 읽혀서, 레이아웃은 이 화면 것을
+       그대로 두고 색·타이포만 나머지 화면과 맞춘다. */
     :root {
-      --hub-bg: #f3f5fa;
-      --hub-surface: #ffffff;
-      --hub-surface-2: #ebf0fa;
-      --hub-border: #dce3f0;
-      --hub-text: #101827;
-      --hub-text-dim: #57648a;
-      --hub-text-faint: #8593b8;
-      --hub-accent: #157ea8;
-      --hub-accent-dim: rgba(21, 126, 168, .09);
-      --hub-accent-line: rgba(21, 126, 168, .28);
-      --hub-ok: #178f55;
-      --hub-warn: #a5720c;
-      --hub-shadow: 0 1px 2px rgba(16, 24, 39, .04), 0 8px 24px rgba(16, 24, 39, .06);
-      --hub-shadow-hover: 0 2px 4px rgba(16, 24, 39, .06), 0 12px 32px rgba(16, 24, 39, .09);
+      --hub-bg:          var(--color-bg-page);
+      --hub-surface:     var(--color-bg-surface);
+      --hub-surface-2:   var(--color-bg-subtle);
+      --hub-border:      var(--color-border-subtle);
+      --hub-text:        var(--color-text-primary);
+      --hub-text-dim:    var(--color-text-secondary);
+      --hub-text-faint:  var(--color-text-tertiary);
+      --hub-accent:      var(--color-accent-text);
+      --hub-accent-dim:  var(--color-accent-bg);
+      --hub-accent-line: var(--color-accent-border);
+      --hub-ok:          var(--color-status-success-text);
+      --hub-warn:        var(--color-status-warning-text);
+      --hub-shadow:      var(--shadow-border);
+      --hub-shadow-hover: var(--shadow-border-hover);
     }
     body.portal-page {
       background: var(--hub-bg);
       color: var(--hub-text);
-      font-family: "IBM Plex Sans KR", "Malgun Gothic", "맑은 고딕", sans-serif;
     }
     .portal-page .container { max-width: 1080px; }
     .hub-mono {
-      font-family: "IBM Plex Mono", ui-monospace, Consolas, "D2Coding", monospace;
+      font-family: ui-monospace, Consolas, "D2Coding", monospace;
       font-variant-numeric: tabular-nums;
     }
 
@@ -65,7 +66,7 @@
 
     .hub-hero { display: flex; flex-direction: column; gap: 8px; max-width: 640px; margin-bottom: 28px; }
     .hub-eyebrow {
-      font-family: "IBM Plex Mono", monospace; font-size: 11.5px; font-weight: 500;
+      font-family: ui-monospace, Consolas, "D2Coding", monospace; font-size: 11.5px; font-weight: 500;
       letter-spacing: .14em; text-transform: uppercase; color: var(--hub-accent);
     }
     .hub-hero h1 { font-size: 28px; font-weight: 700; letter-spacing: -.01em; color: var(--hub-text); text-wrap: balance; margin: 0; }
@@ -99,7 +100,7 @@
     }
     .module-tile-icon svg { width: 19px; height: 19px; }
     .module-tile-code {
-      font-family: "IBM Plex Mono", monospace; font-size: 11px; font-weight: 500; letter-spacing: .1em;
+      font-family: ui-monospace, Consolas, "D2Coding", monospace; font-size: 11px; font-weight: 500; letter-spacing: .1em;
       color: var(--hub-text-faint); border: 1px solid var(--hub-border); border-radius: 5px;
       padding: 2px 6px; height: fit-content;
     }
