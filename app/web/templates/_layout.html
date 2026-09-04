@@ -8,19 +8,26 @@
      after   - 본문 밖에 놓여야 하는 것 (토스트, 모달, <script>)
 
    현재 화면이 어느 도메인인지는 request.url.path로 판별한다. 라우트마다 변수를
-   넘기게 하면 새 화면을 추가할 때 빠뜨리기 쉬워서, 경로 하나만 보면 되게 했다. #}
+   넘기게 하면 새 화면을 추가할 때 빠뜨리기 쉬워서, 경로 하나만 보면 되게 했다.
+
+   입력자명(#updatedBy)은 화면마다 목록 위에 따로 두던 걸 여기 사이드바 한 곳으로
+   옮겼다 - 대상 목록/챗봇 양쪽에 중복으로 있던 게 헷갈린다는 피드백. DOM에 한 번만
+   있고 각 화면 스크립트는 그대로 #updatedBy로 찾아 쓰므로 화면별 저장 로직은
+   손대지 않아도 된다. '변경 이력' 사이드바 링크는 이 입력칸 자리에 자리를 내주고
+   빠졌다 (DR의 실제 이력 페이지 /logs 자체는 그대로 있고, 대시보드 하단에서 계속
+   갈 수 있다). #}
 {% set path = request.url.path %}
-{% if path.startswith('/capacity') %}{% set section = 'capacity' %}
+{% if path == '/' %}{% set section = 'home' %}
+{% elif path.startswith('/capacity') %}{% set section = 'capacity' %}
 {% elif path.startswith('/eos') %}{% set section = 'eos' %}
-{% elif path.startswith('/logs') %}{% set section = 'logs' %}
 {% else %}{% set section = 'dr' %}{% endif %}
 <!DOCTYPE html>
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{% block title %}장애예방 활동 진척 관리{% endblock %}</title>
-  <link rel="stylesheet" href="/static/style.css?v=17">
+  <title>{% block title %}예방 관제센터{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css?v=18">
 </head>
 <body>
 <a href="#main" class="skip-link">본문으로 건너뛰기</a>
@@ -28,12 +35,15 @@
 <div class="app">
   <aside class="sidebar">
     <div class="brand">
-      <span class="brand-mark" aria-hidden="true">🛡️</span>
-      <span class="brand-text">장애예방 활동<em>진척 관리</em></span>
+      <span class="brand-mark" aria-hidden="true">🎛️</span>
+      <span class="brand-text">예방 관제센터<em>장애 예방 진척 관리</em></span>
     </div>
 
     <nav class="side-nav" aria-label="주요 영역">
-      <a href="/" class="side-nav-item {{ 'active' if section == 'dr' }}"
+      <a href="/" class="side-nav-item {{ 'active' if section == 'home' }}"
+         {{ 'aria-current=page' if section == 'home' }}>
+        <span class="side-nav-icon" aria-hidden="true">🏠</span>홈</a>
+      <a href="/dr" class="side-nav-item {{ 'active' if section == 'dr' }}"
          {{ 'aria-current=page' if section == 'dr' }}>
         <span class="side-nav-icon" aria-hidden="true">🔄</span>DR훈련</a>
       <a href="/capacity" class="side-nav-item {{ 'active' if section == 'capacity' }}"
@@ -45,8 +55,10 @@
     </nav>
 
     <div class="side-nav-foot">
-      <a href="/logs" class="side-nav-item subtle {{ 'active' if section == 'logs' }}">
-        <span class="side-nav-icon" aria-hidden="true">🧾</span>변경 이력</a>
+      <label for="updatedBy" class="side-input-label">입력자명</label>
+      <input type="text" id="updatedBy" class="side-input" placeholder="예: 홍길동"
+             autocomplete="name" autocorrect="off" spellcheck="false">
+      <span id="adminHint" class="hint side-hint"></span>
     </div>
   </aside>
 
