@@ -384,11 +384,18 @@ select, input[type="date"], input[type="text"] {
   display: grid; grid-template-columns: 2fr 1fr 1fr;
   gap: 14px; margin-bottom: 20px;
 }
+/* 그림자 대신 테두리로 경계를 그린다 - 흰 배경에 뜬 그림자 상자 3개는
+   어느 관리자 템플릿에나 있는 모양이라 눈에 걸리는 게 없다. 라벨도 값 위에서
+   눈에 띄어야 하는 축소판 헤더라, 본문과 같은 굵기로 묻히지 않게 라벨 특유의
+   자간·대문자 처리를 준다 (표 안 카드가 아니라 계기판 눈금이라는 신호). */
 .card {
-  background: var(--color-bg-surface); box-shadow: var(--shadow-border);
-  border-radius: 12px; padding: 18px;
+  background: var(--color-bg-surface); border: 1px solid var(--color-border-subtle);
+  border-radius: 10px; padding: 18px;
 }
-.card .label { font-size: var(--text-sm); color: var(--color-text-tertiary); margin-bottom: 6px; }
+.card .label {
+  font-size: var(--text-caption); font-weight: 600; color: var(--color-text-tertiary);
+  text-transform: uppercase; letter-spacing: .04em; margin-bottom: 8px;
+}
 /* 완료율 숫자는 클릭할 수 없다. 액센트를 입히면 눌러야 할 것처럼 보이므로
    위계는 40px/700 이라는 크기로만 만든다. */
 .card .rate {
@@ -414,9 +421,10 @@ select, input[type="date"], input[type="text"] {
     var(--color-accent-gradient-from), var(--color-accent-gradient-to));
 }
 
-/* 패널 */
+/* 패널 - 카드와 같은 이유로 그림자 대신 테두리 */
 .panel {
-  background: var(--color-bg-surface); box-shadow: var(--shadow-border); border-radius: 12px;
+  background: var(--color-bg-surface); border: 1px solid var(--color-border-subtle);
+  border-radius: 10px;
   padding: 20px; margin-bottom: 20px;
 }
 .panel-head {
@@ -449,36 +457,42 @@ details.panel > summary:focus-visible {
 
 .filters { display: flex; gap: 6px; }
 .chip {
-  padding: 5px 12px; border: 1px solid var(--color-border); border-radius: 14px;
-  font-size: var(--text-sm); text-decoration: none; color: var(--color-text-secondary);
+  padding: 5px 12px; border: 1px solid var(--color-border-subtle); border-radius: 14px;
+  font-size: var(--text-sm); font-weight: 500; text-decoration: none; color: var(--color-text-secondary);
   background: var(--color-bg-surface);
 }
+/* 필터는 탭과 달리 여러 개를 같이 켜둘 수 있는 것처럼 보이면 안 되지만,
+   그렇다고 큼직한 파란 버튼일 필요도 없다 - 옅은 액센트 배경 정도면
+   '지금 이게 골라졌다'는 신호로 충분하고 화면이 덜 시끄럽다. */
 .chip.active {
-  background: var(--color-accent-solid); color: var(--color-text-on-solid);
-  border-color: var(--color-accent-solid);
+  background: var(--color-accent-bg); color: var(--color-accent-text);
+  border-color: var(--color-accent-border); font-weight: 600;
 }
 
 /* 리마인드: 완전 미기입 / 대략적 일정만 있음 탭 */
-.tabs { display: flex; gap: 8px; margin: 12px 0; }
+/* 밑줄 탭 - 예전엔 칠해진 알약 버튼이라 눌러도 되는 액션처럼 보이면서
+   눌린 채로 안 눌러도 될 나머지 탭까지 같은 무게로 눈에 들어왔다.
+   지금 화면(무엇을 보고 있는지)이 어느 탭인지는 밑줄 하나로 충분하다. */
+.tabs { display: flex; gap: 20px; margin: 12px 0; border-bottom: 1px solid var(--color-divider); }
 .tab {
-  padding: 8px 16px; border: 1px solid var(--color-border); border-radius: 8px;
+  padding: 8px 2px; margin-bottom: -1px;
+  border: none; border-bottom: 2px solid transparent; border-radius: 0;
   font-size: var(--text-base); font-weight: 600; text-decoration: none;
-  color: var(--color-text-secondary); background: var(--color-bg-surface);
+  color: var(--color-text-tertiary); background: transparent;
 }
+.tab:hover { color: var(--color-text-primary); }
 .tab .cnt {
   display: inline-block; margin-inline-start: 6px; padding: 1px 7px; border-radius: 10px;
-  background: var(--color-divider); font-size: var(--text-caption); font-weight: 700;
+  background: var(--color-divider); color: var(--color-text-secondary);
+  font-size: var(--text-caption); font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
-.tab.active {
-  background: var(--color-accent-solid); color: var(--color-text-on-solid);
-  border-color: var(--color-accent-solid);
-}
-.tab.active .cnt { background: rgba(255, 255, 255, .25); color: var(--color-text-on-solid); }
+.tab.active { color: var(--color-accent-text); border-bottom-color: var(--color-accent-solid); }
+.tab.active .cnt { background: var(--color-accent-bg); color: var(--color-accent-text); }
 
 /* 입력자명 박스 */
 .user-input {
-  background: var(--color-accent-bg); padding: 10px 14px; border-radius: 16px;
+  background: var(--color-accent-bg); padding: 10px 14px; border-radius: 10px;
   margin-bottom: 12px; font-size: var(--text-base); border: 1px solid var(--color-accent-border);
 }
 .user-input input { width: 140px; padding: 5px 10px; }
@@ -998,6 +1012,7 @@ footer a:hover {
    화면에 그대로 쓰면 카드가 화면 끝까지 늘어나 확대된 것처럼 보인다.
    그래서 이 화면만 폭을 좁혀서 가운데 정렬한다. */
 .portal-container { max-width: 1080px; }
+.portal-clock { color: var(--color-text-tertiary); font-size: var(--text-sm); }
 .portal-lead { color: var(--color-text-tertiary); font-size: var(--text-md); margin-bottom: 20px; }
 .module-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
 @media (max-width: 860px) { .module-grid { grid-template-columns: 1fr; } }
