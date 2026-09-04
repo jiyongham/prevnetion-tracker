@@ -36,7 +36,7 @@ async def lifespan(app: FastAPI):
     stop_scheduler()
 
 
-app = FastAPI(title="장애예방 활동 진척 관리", lifespan=lifespan)
+app = FastAPI(title="장애예방 관제센터", lifespan=lifespan)
 
 app.mount(
     "/static",
