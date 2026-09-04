@@ -1,5 +1,14 @@
 <!-- app/web/templates/portal.html -->
-{% extends "_layout.html" %}
+{# 포털 홈은 사이드바를 쓰지 않는다 - 이 화면 자체가 도메인 진입점이라
+   같은 화면에 진입 경로가 두 벌이 된다. 그래서 공통 레이아웃(_layout.html)을
+   상속하지 않고 독립 문서로 둔다. #}
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>예방 관제센터</title>
+  <link rel="stylesheet" href="/static/style.css?v=19">
 
 {% block title %}장애예방 관제센터{% endblock %}
 
@@ -70,4 +79,8 @@
     </a>
     {% endfor %}
   </div>
-{% endblock %}
+  </main>
+</div>
+
+</body>
+</html>
