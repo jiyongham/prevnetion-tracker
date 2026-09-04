@@ -147,13 +147,39 @@ def ticket_done_date(t: dict) -> date | None:
     return None
 
 
+def excluded_completion_date(item: dict, half_end: date) -> date | None:
+    """
+    '제외 확정' 대상의 완료 인정일. 제외 건이 아니면 None.
+
+    제외는 관리자가 일정 칸에 X를 넣어 확정한다(웹 제외 버튼도 같은 값을 쓴다).
+    비관리자가 넣은 X나 엑셀 원본에 그냥 적힌 X는 누가 왜 뺐는지 확인할 수 없으므로
+    제외로 보지 않는다 - 대시보드의 excluded_nos 와 같은 기준이다.
+
+    인정일은 '반기 종료일'과 '제외 처리일' 중 늦은 쪽이다.
+      - 반기 안에 제외한 건  -> 반기 종료일 (H2면 12/31)
+      - 반기가 끝난 뒤 제외한 건 -> 제외한 그 날
+    반기 도중에는 아직 미완료로 남겨 두어야 하고(훈련을 더 할 수도 있다), 반대로
+    반기가 끝난 뒤 새로 제외한 건을 12/31로 소급하면 이미 나간 결산 숫자와 어긋난다.
+    """
+    if (item.get("schedule_raw") or "").strip().upper() != "X":
+        return None
+    if item.get("updated_by") not in settings.admin_set:
+        return None
+
+    # updated_at 은 SQLite 의 'YYYY-MM-DD HH:MM:SS' 문자열. parse_jira_date 는 앞 10자리를
+    # 날짜로 읽으므로 그대로 쓸 수 있다 (이름만 JIRA 일 뿐 형식은 같다).
+    excluded_on = parse_jira_date(item.get("updated_at") or "")
+    return max(half_end, excluded_on) if excluded_on else half_end
+
+
 def judge(
     item: dict, tickets: list[dict] | None, as_of: date, base_year: int
 ) -> tuple[bool, str, dict | None]:
     """
     완료 판정 (JIRA 티켓 기준). 반환: (완료여부, 사유, 선택된 티켓)
     1) 엑셀/웹 완료 표기 O (수동 완료)
-    2) JIRA 티켓 (해당 반기 창 안 + 기준일 이전)
+    2) 제외 확정 대상 (excluded_completion_date 참고) - 인정일 이후
+    3) JIRA 티켓 (해당 반기 창 안 + 기준일 이전)
        - 실전환(예방3) 우선: 실전환 되면 무중단 불필요
        - 무중단(제목 "무중단"): 실전환 없을 때만
        - 같은 종류 여러 건이면 가장 최근 "생성된" 티켓 선택 (완료일 아님)
@@ -163,6 +189,11 @@ def judge(
         return True, "완료표기", None
 
     start, end = half_window(base_year, item.get("half", "H2"))
+
+    # 제외 확정 대상은 인정일이 되면 완료로 잡는다 (JIRA 티켓보다 먼저 본다 -
+    # 제외된 대상에 티켓이 붙는 경우는 없고, 붙어도 판정 결과는 같다).
+    if (done_on := excluded_completion_date(item, end)) and as_of >= done_on:
+        return True, f"제외 확정 ({done_on})", None
 
     def in_window(t):
         d = ticket_done_date(t)
