@@ -56,9 +56,9 @@
   </section>
 
   <!-- 운영팀별 -->
-  <section class="panel">
-    <h2>운영팀별 현황</h2>
-    <table class="team-table">
+  <details class="panel">
+    <summary><h2>운영팀별 현황</h2></summary>
+    <table>
       <thead>
         <tr><th scope="col">시스템 운영팀</th><th scope="col">완료</th><th scope="col">전체</th><th scope="col">완료율</th><th scope="col" style="width:35%">진행</th></tr>
       </thead>
@@ -74,7 +74,7 @@
       {% endfor %}
       </tbody>
     </table>
-  </section>
+  </details>
 
   <!-- 상세 목록 (편집 가능) -->
   <section class="panel">
@@ -93,18 +93,8 @@
           <a href="/capacity?sheet={{ sheet }}&status=unplanned" class="chip {% if filter_status == 'unplanned' %}active{% endif %}">미계획</a>
           <a href="/capacity?sheet={{ sheet }}&status=done" class="chip {% if filter_status == 'done' %}active{% endif %}">완료</a>
         </div>
+        <button id="bulkSaveBtn" class="btn-sm" onclick="bulkSave()">💾 현재 목록 일괄 저장</button>
       </div>
-    </div>
-
-    <div class="user-input">
-      <label for="updatedBy"><strong>입력자명:</strong></label>
-      <input type="text" id="updatedBy" placeholder="예: 홍길동"
-             autocomplete="name" autocorrect="off" spellcheck="false">
-      <span class="hint">※ 수정 이력에 기록됩니다. 엑셀 원본은 변경되지 않습니다.</span>
-      <span id="adminHint" class="hint"></span>
-      <button id="bulkSaveBtn" class="btn-sm" onclick="bulkSave()">
-        💾 현재 목록 일괄 저장
-      </button>
     </div>
 
     <div class="table-scroll">
@@ -173,8 +163,8 @@
   </section>
 
   {% if excluded_items %}
-  <section class="panel">
-    <h2>🚫 제외 대상 ({{ excluded_items|length }}건) <span class="muted small">— 증설 안 함으로 확정된 대상</span></h2>
+  <details class="panel">
+    <summary><h2>🚫 제외 대상 ({{ excluded_items|length }}건) <span class="muted small">— 증설 안 함으로 확정된 대상</span></h2></summary>
     <div class="table-scroll">
     <table>
       <thead>
@@ -207,7 +197,7 @@
       </tbody>
     </table>
     </div>
-  </section>
+  </details>
   {% endif %}
 
   <footer>
@@ -240,16 +230,12 @@
     <button type="button" class="chat-agent-btn active" data-agent="status" onclick="selectChatAgent('status')">📋 진척 조회</button>
     <button type="button" class="chat-agent-btn" data-agent="calc" onclick="selectChatAgent('calc')">🧮 산정 기준</button>
   </div>
-  <div class="chat-name-row">
-    <label for="chatName" class="sr-only">챗봇 입력자명</label>
-    <input type="text" id="chatName" placeholder="입력자명 (대상 목록과 자동 연동)" autocomplete="off">
-  </div>
   <div id="chatMsgs-status" class="chat-msgs">
-    <div class="chat-msg bot warn">‼️ 입력자명을 먼저 입력해주세요 ‼️</div>
+    <div class="chat-msg bot warn">‼️ 사이드바에서 입력자명을 먼저 입력해주세요 ‼️</div>
     <div class="chat-msg bot">📋 진척 조회를 선택했어요. "내 대상 뭐 있어?", "OO서버 완료됐어?"처럼 물어보세요.</div>
   </div>
   <div id="chatMsgs-calc" class="chat-msgs hidden">
-    <div class="chat-msg bot warn">‼️ 입력자명을 먼저 입력해주세요 ‼️</div>
+    <div class="chat-msg bot warn">‼️ 사이드바에서 입력자명을 먼저 입력해주세요 ‼️</div>
     <div class="chat-msg bot">🧮 산정 기준 설명을 선택했어요. "이 서버는 왜 증설 대상이야?", "80%가 진짜 기준이야?"처럼 물어보세요.</div>
   </div>
   <form id="chatForm" class="chat-form" onsubmit="return sendChat(event)">
@@ -466,22 +452,6 @@ ub.addEventListener("change", () => {
 });
 applyAdminState();
 
-// 대상 목록 입력자명 ↔ 챗봇 입력자명 실시간 연동 - 챗봇 열자마자 바로 물어볼 수 있게
-// (대상 목록까지 스크롤해서 이름 치고 다시 챗봇 여는 게 번거롭다는 피드백으로 추가).
-// 위 updatedBy input 리스너와 별개로 걸어서 두 input 모두 서로를 갱신한다.
-const chatNameInput = document.getElementById("chatName");
-chatNameInput.value = ub.value;
-chatNameInput.addEventListener("input", () => {
-  if (ub.value === chatNameInput.value) return;
-  ub.value = chatNameInput.value;
-  localStorage.setItem("updatedBy", ub.value);
-  applyAdminState();
-});
-ub.addEventListener("input", () => {
-  if (chatNameInput.value === ub.value) return;
-  chatNameInput.value = ub.value;
-});
-
 // ── AI 진단 (매칭 미확인 사유) ──
 // 모달: 열 때 배경을 inert 로 막고 안으로 포커스를 옮긴 뒤,
 // 닫을 때 원래 눌렀던 버튼으로 되돌린다. Esc 로도 닫힌다.
@@ -546,7 +516,7 @@ function selectChatAgent(agent) {
   // 경우(향후 대화 초기화 기능 등)를 대비한 폴백.
   const box = document.getElementById(`chatMsgs-${agent}`);
   if (!box.children.length) {
-    addChatMsg("‼️ 입력자명을 먼저 입력해주세요 ‼️", "bot warn");
+    addChatMsg("‼️ 사이드바에서 입력자명을 먼저 입력해주세요 ‼️", "bot warn");
     addChatMsg(CHAT_GREETINGS[agent], "bot");
   }
 }
@@ -557,10 +527,7 @@ function toggleChat() {
   const opening = panel.classList.contains("hidden");
   panel.classList.toggle("hidden", !opening);
   toggle.classList.toggle("hidden", opening);
-  if (opening) {
-    const name = document.getElementById("chatName").value.trim();
-    document.getElementById(name.length < 2 ? "chatName" : "chatInput").focus();
-  }
+  if (opening) document.getElementById("chatInput").focus();
 }
 
 function addChatMsg(text, who) {
@@ -579,10 +546,10 @@ async function sendChat(e) {
   const query = input.value.trim();
   if (!query) return false;
 
-  const name = (document.getElementById("chatName").value || "").trim();
+  const name = (document.getElementById("updatedBy").value || "").trim();
   if (name.length < 2) {
-    addChatMsg("먼저 위 '입력자명'을 2글자 이상 입력해주세요.", "bot");
-    document.getElementById("chatName").focus();
+    addChatMsg("먼저 사이드바에서 입력자명을 2글자 이상 입력해주세요.", "bot");
+    document.getElementById("updatedBy").focus();
     return false;
   }
 
