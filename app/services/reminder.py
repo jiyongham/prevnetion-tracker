@@ -109,16 +109,16 @@ def greeting_suffix(items: list[dict], kind: str = "blank") -> str:
     """
     if kind == "hinted":
         ask = "다름아니라 공지드린 하반기 DR 훈련 하기 대략적인 일정만 등록되어 있어, 정확한 날짜로 확정해서 알려주실 수 있을까요?"
-        closing = f"DR 모의훈련 진척 현황({settings.dashboard_url})에 기입 요청드립니다."
+        closing = f"DR 모의훈련 진척 현황({settings.dashboard_url}/dr)에 기입 요청드립니다."
     elif kind == "upcoming":
         ask = (
             f"다름아니라 하기 DR 훈련 작업 일정이 {settings.pre_work_remind_days}일 이내로 다가와 "
             "미리 안내드립니다. 변경 티켓 발행이 아직이시라면 사전 승인 기간을 고려해 준비 부탁드립니다."
         )
-        closing = f"진행 상황은 DR 모의훈련 진척 현황({settings.dashboard_url})에서 확인하실 수 있습니다."
+        closing = f"진행 상황은 DR 모의훈련 진척 현황({settings.dashboard_url}/dr)에서 확인하실 수 있습니다."
     else:
         ask = "다름아니라 공지드린 하반기 DR 훈련 하기 계획된 일정 알 수 있을까요?"
-        closing = f"DR 모의훈련 진척 현황({settings.dashboard_url})에 기입 요청드립니다."
+        closing = f"DR 모의훈련 진척 현황({settings.dashboard_url}/dr)에 기입 요청드립니다."
     return (
         f"님. {settings.sender_team} {settings.sender_name}입니다.\n\n"
         f"{ask}\n\n"
