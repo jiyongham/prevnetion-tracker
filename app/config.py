@@ -5,45 +5,45 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
-    # JIRA
-    jira_url: str                    # 예: https://jira.회사.com
+    # JIRA — 주소·프로젝트 키는 사내 식별자라 기본값 없이 .env(운영은 k8s Secret)에서만 받는다
+    jira_url: str
     jira_pat: str                    # Personal Access Token (Bearer 인증)
-    jira_project: str = "IMDC"
+    jira_project: str
 
     # Confluence (EoS 차주 계획 - 별도 계획서 페이지 파싱용)
-    confluence_url: str = ""         # 예: https://confluence.회사.com
+    confluence_url: str = ""
     confluence_pat: str = ""         # Personal Access Token (Bearer 인증)
-    confluence_eos_parent_page_id: str = "486488355"   # 주간 작업계획 페이지들의 부모('YYYY年') 페이지
+    confluence_eos_parent_page_id: str = ""   # 주간 작업계획 페이지들의 부모 페이지 ID
 
     # Polestar (NKIA) - EoS 실제 전환 완료 판정용.
     # 작업이 정상 완료되면 CI명에서 TO-BE의 '_NEW'가 빠지고 AS-IS에 '_OLD'가 붙는데,
     # CMDB(Insight)는 작업자가 늦게 반영하는 경우가 있어 Polestar를 기준으로 삼는다.
-    polestar_url: str = ""
-    polestar_token: str = ""
-
-    # Polestar (NKIA) - EoS 실제 전환 완료 판정용.
-    # 작업이 정상 완료되면 CI명에서 TO-BE의 '_NEW'가 빠지고 AS-IS에 '_OLD'가 붙는데,
-    # CMDB(Insight)는 작업자가 늦게 반영하는 경우가 있어 Polestar를 기준으로 삼는다.
+    # 인증은 polestar_client.login()에서만 쓰고 평소 조회엔 필요 없다.
     polestar_url: str = ""
     polestar_user: str = ""
     polestar_password: str = ""
 
-    # 완료 판정 필드
-    planned_end_date_field: str = "customfield_11360"    # 변경 계획 완료일
-    planned_start_date_field: str = "customfield_11359"  # 변경 계획 시작일 (AI 매칭 진단용)
+    # ── JIRA 커스텀필드 ID ──
+    # 사내 JIRA 스키마 식별자라 기본값을 두지 않는다. 값은 .env(운영은 k8s Secret)에서만 온다.
+    # 비어 있으면 해당 필드를 조회 대상에서 빼고 나머지로 계속 동작한다 - 잘못된 ID로
+    # 조회하면 JIRA가 400을 내며 검색 전체가 실패하기 때문에, 빈 값은 조용히 건너뛴다.
 
-    # 매칭용 추가 필드 (변경작업 대상/완료보고 - 호스트명·IP 포함)
-    match_fields: str = "customfield_11302,customfield_10848"
+    # 완료 판정 필드
+    planned_end_date_field: str = ""     # 변경 계획 완료일
+    planned_start_date_field: str = ""   # 변경 계획 시작일 (AI 매칭 진단용)
+
+    # 매칭용 추가 필드 (변경작업 대상/완료보고 - 호스트명·IP 포함). 콤마 구분
+    match_fields: str = ""
 
     # JSM요청자 (담당자 불일치 후보 판별용 - '이름(비고) - 팀명' 형식)
-    jsm_requester_field: str = "customfield_11500"
+    jsm_requester_field: str = ""
 
     # 작업 구분 (체크박스형 커스텀필드) - DR훈련 완료 판정 보조 기준 ("DR훈련" 값)
-    dr_work_type_field: str = "customfield_19529"
+    dr_work_type_field: str = ""
 
     # 작업 완료(CMDB) - EoS 티켓에서 실제로 전환 완료된 CMDB 대상(Insight Key 포함)을 담는 필드.
     # "[시스템명]_OLD (ASSET-xxxxx)" 형태 - 변경작업내용 텍스트에 호스트명/IP가 없어도 이 필드로 정확히 매칭 가능
-    eos_cmdb_done_field: str = "customfield_14615"
+    eos_cmdb_done_field: str = ""
 
     @property
     def match_field_list(self) -> list[str]:
