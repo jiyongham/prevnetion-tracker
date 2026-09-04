@@ -94,9 +94,8 @@ def portal_home(request: Request):
             "done": done,
             "total": total,
             "pct": pct,
-            # 운영팀별 표(대시보드)와 같은 기준: 100%만 정상, 50%대까지는 진행중, 그 아래는 주의
-            "band": "ok" if pct == 100 else "mid" if pct is not None and pct >= 50 else "bad",
-            # 세그먼트 바(20칸) 중 채울 칸 수
+            # 세그먼트 바(20칸) 중 채울 칸 수. 카드 색 자체는 완료율이 아니라
+            # 모듈별로 고정 - portal.html에서 code(DR/CAP/EOS) 기준으로 정한다.
             "bar_filled": round(pct / 5) if pct is not None else 0,
             "error": error,
         })
