@@ -175,26 +175,41 @@
       <h2>🚫 제외 대상 ({{ excluded_items|length }}건) <span class="muted small">— 증설 안 함으로 확정된 대상</span></h2>
       <button type="button" class="btn-sm" onclick="showMainTab()">← 대상 목록으로</button>
     </div>
+    {# 열 구성을 위 '대상 목록'과 같게 맞춘다 (탭으로 오가는 두 표라 다르게 생기면 안 된다).
+       값은 입력칸이 아니라 텍스트다 - 제외된 행을 여기서 편집하게 두면 저장 경로가 두 벌이 된다. #}
     <div class="table-scroll">
     <table>
       <thead>
-        <tr><th scope="col">CI명</th><th scope="col">호스트명</th><th scope="col">운영팀</th><th scope="col">담당자</th><th scope="col">사유/처리자</th><th scope="col">상태</th><th scope="col" class="admin-only">복귀</th></tr>
+        <tr>
+          <th scope="col">CI명</th><th scope="col">호스트명</th><th scope="col">운영팀</th><th scope="col">담당자</th>
+          <th scope="col" style="width:70px">사용량</th>
+          <th scope="col" style="width:90px">증설필요(GB)</th>
+          <th scope="col" style="width:90px">일정</th>
+          <th scope="col" style="width:130px">증적</th>
+          <th scope="col" style="width:130px">비고</th>
+          <th scope="col">상태</th>
+          <th scope="col">제외 사유</th><th scope="col">처리자</th>
+          <th scope="col" class="admin-only">복귀</th>
+        </tr>
       </thead>
       <tbody>
       {% for d in excluded_items %}
-        <tr>
+        <tr title="{% if d.expand_flag == 'X' %}엑셀 원본에서 증설대상 X{% else %}웹 입력 ({{ d.updated_by }}, {{ d.updated_at }}){% endif %}">
           <td class="strong">{{ d.ci_name }}</td>
           <td class="mono small">{{ d.hostname }}</td>
           <td class="small">{{ d.ops_team }}</td>
           <td class="small">{{ d.owner }}</td>
-          <td class="small">
-            {% if d.expand_flag == 'X' %}
-              {{ d.exclude_reason or "(엑셀 X)" }}
-            {% else %}
-              {{ d.updated_by }} 처리
-            {% endif %}
-          </td>
+          <td class="small">{% if d.usage_pct is not none %}{{ d.usage_pct }}%{% else %}-{% endif %}</td>
+          <td class="small">{{ d.required_gb if d.required_gb is not none else "-" }}</td>
+          <td class="small mono">{{ d.schedule_raw }}</td>
+          <td class="small">{{ d.evidence }}</td>
+          <td class="small">{{ d.note }}</td>
           <td><span class="badge muted">제외</span></td>
+          <td class="small">
+            {% if d.expand_flag == 'X' %}{{ d.exclude_reason or "(엑셀 X)" }}
+            {% else %}{{ d.exclude_reason or "(미기재)" }}{% endif %}
+          </td>
+          <td class="small">{% if d.expand_flag == 'X' %}<span class="muted">엑셀</span>{% else %}{{ d.updated_by }}{% endif %}</td>
           <td class="admin-only">
             {% if d.expand_flag != 'X' %}
             <button class="btn-sm" data-no="{{ d.item_no }}" data-sheet="{{ d.sheet }}" onclick="restoreRow(this)">↩️ 제외 해제</button>

@@ -186,18 +186,37 @@
       <h2>🚫 제외 대상 ({{ web_excluded|length }}건) <span class="muted small">— 관리자가 사유와 함께 제외한 대상</span></h2>
       <button type="button" class="btn-sm" onclick="showMainTab()">← 대상 목록으로</button>
     </div>
+    {# 열 구성을 위 '대상 목록'과 같게 맞춘다 (탭으로 오가는 두 표라 다르게 생기면 안 된다).
+       값은 입력칸이 아니라 텍스트다 - 제외된 행을 여기서 편집하게 두면 저장 경로가 두 벌이 된다. #}
     <div class="table-scroll">
     <table>
       <thead>
-        <tr><th scope="col">시스템명</th><th scope="col">호스트명</th><th scope="col">운영팀</th><th scope="col">담당자</th><th scope="col">제외 사유</th><th scope="col">처리자</th><th scope="col" class="admin-only">복귀</th></tr>
+        <tr>
+          <th scope="col">시스템명</th><th scope="col">호스트명</th><th scope="col">운영팀</th><th scope="col">담당자</th>
+          <th scope="col" style="width:150px">OS / DB</th>
+          <th scope="col" style="width:90px">조치계획</th>
+          <th scope="col" style="width:130px">증적</th>
+          <th scope="col" style="width:130px">비고</th>
+          <th scope="col">상태</th>
+          <th scope="col">제외 사유</th><th scope="col">처리자</th>
+          <th scope="col" class="admin-only">복귀</th>
+        </tr>
       </thead>
       <tbody>
       {% for d in web_excluded %}
-        <tr>
+        <tr title="웹 입력 ({{ d.updated_by }}, {{ d.updated_at }})">
           <td class="strong">{{ d.system_name }}</td>
           <td class="mono small">{{ d.hostname }}</td>
           <td class="small">{{ d.ops_team }}</td>
           <td class="small">{{ d.owner }}</td>
+          <td class="small stack-cell">
+            <span>{{ d.os }}</span>
+            {% if d.db %}<span class="muted">{{ d.db }}</span>{% endif %}
+          </td>
+          <td class="small mono">{{ d.schedule_raw }}</td>
+          <td class="small">{{ d.evidence }}</td>
+          <td class="small">{{ d.note }}</td>
+          <td><span class="badge muted">제외</span></td>
           <td class="small">{{ d.web_exclude_reason or "(미기재)" }}</td>
           <td class="small">{{ d.updated_by }}</td>
           <td class="admin-only">

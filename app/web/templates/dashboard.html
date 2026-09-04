@@ -197,18 +197,46 @@
       <h2>🚫 제외 대상 ({{ excluded_items|length }}건) <span class="muted small">— 관리자가 사유와 함께 X 처리한 대상</span></h2>
       <button type="button" class="btn-sm" onclick="showMainTab()">← 대상 목록으로</button>
     </div>
+    {# 열 구성을 위 '대상 목록'과 같게 맞춘다 - 탭으로 오가는 두 표가 다르게 생기면
+       같은 대상을 보고 있다는 감각이 끊긴다. 다만 값은 입력칸이 아니라 텍스트로 둔다:
+       제외 행의 일정 칸을 고치면 X가 지워져 의도치 않게 제외가 풀린다. #}
     <div class="table-scroll">
     <table>
       <thead>
-        <tr><th scope="col">시스템명</th><th scope="col">호스트명</th><th scope="col">운영팀</th><th scope="col">담당자</th><th scope="col">제외 사유</th><th scope="col">처리자</th><th scope="col" class="admin-only" style="width:44px"></th></tr>
+        <tr>
+          <th scope="col">시스템명</th><th scope="col">호스트명</th><th scope="col">운영팀</th><th scope="col">담당자</th>
+          <th scope="col" style="width:90px">일정</th>
+          <th scope="col" style="width:110px">방식</th>
+          <th scope="col" style="width:50px">완료</th>
+          <th scope="col" style="width:130px">증적</th>
+          <th scope="col" style="width:130px">비고</th>
+          <th scope="col">JIRA</th><th scope="col">상태</th>
+          <th scope="col">제외 사유</th><th scope="col">처리자</th>
+          <th scope="col" class="admin-only" style="width:44px"></th>
+        </tr>
       </thead>
       <tbody>
       {% for d in excluded_items %}
-        <tr>
+        <tr class="{% if d.completed %}row-done{% endif %}"
+            title="웹 입력 ({{ d.updated_by }}, {{ d.updated_at }})">
           <td class="strong">{{ d.system_name }}</td>
           <td class="mono small">{{ d.hostname }}</td>
           <td class="small">{{ d.ops_team }}</td>
           <td class="small">{{ d.owner }}</td>
+          <td class="small mono">{{ d.schedule_disp }}</td>
+          <td class="small">{{ d.mode or "-" }}</td>
+          <td class="center small">{{ "O" if d.completed else "" }}</td>
+          <td class="small">{{ d.evidence }}</td>
+          <td class="small">{{ d.note }}</td>
+          <td>
+            {% if d.jira_key %}
+            <a href="{{ jira_base }}/browse/{{ d.jira_key }}" target="_blank" class="link small">{{ d.jira_key }}</a>
+            {% else %}<span class="muted">-</span>{% endif %}
+          </td>
+          <td>
+            {% if d.completed %}<span class="badge ok" title="{{ d.reason }}">완료</span>
+            {% else %}<span class="badge muted" title="반기 종료일이 지나면 완료로 인정됩니다">제외</span>{% endif %}
+          </td>
           <td class="small">{{ d.web_exclude_reason or d.exclude_reason or "(미기재)" }}</td>
           <td class="small">{{ d.updated_by }}</td>
           <td class="admin-only">
