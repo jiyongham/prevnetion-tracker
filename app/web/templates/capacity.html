@@ -16,8 +16,11 @@
   </header>
 
   <div class="tabs">
-    <a href="/capacity?sheet=DATA" class="tab {% if sheet == 'DATA' %}active{% endif %}">DATA (ASM/파일시스템)</a>
-    <a href="/capacity?sheet=ARCH" class="tab {% if sheet == 'ARCH' %}active{% endif %}">ARCH (아카이브)</a>
+    <a href="/capacity?sheet=DATA" class="tab {% if sheet == 'DATA' %}active{% endif %}" data-mode-active="{{ '1' if sheet == 'DATA' else '' }}">DATA (ASM/파일시스템)</a>
+    <a href="/capacity?sheet=ARCH" class="tab {% if sheet == 'ARCH' %}active{% endif %}" data-mode-active="{{ '1' if sheet == 'ARCH' else '' }}">ARCH (아카이브)</a>
+    {% if excluded_items %}
+    <button type="button" id="excludedTabBtn" class="tab" onclick="showExcludedTab()">🚫 제외 대상 {{ excluded_items|length }}건</button>
+    {% endif %}
   </div>
 
   {% if sent_report %}
@@ -34,6 +37,8 @@
   {% if jira_error %}
   <div class="alert">⚠️ JIRA 연동 실패 (엑셀 기준 표시): {{ jira_error[:100] }}</div>
   {% endif %}
+
+  <div id="mainView">
 
   <!-- 요약 카드 -->
   <section class="cards">
@@ -162,9 +167,14 @@
     </div>
   </section>
 
+  </div><!-- /mainView -->
+
   {% if excluded_items %}
-  <details class="panel">
-    <summary><h2>🚫 제외 대상 ({{ excluded_items|length }}건) <span class="muted small">— 증설 안 함으로 확정된 대상</span></h2></summary>
+  <section class="panel hidden" id="excludedView">
+    <div class="panel-head">
+      <h2>🚫 제외 대상 ({{ excluded_items|length }}건) <span class="muted small">— 증설 안 함으로 확정된 대상</span></h2>
+      <button type="button" class="btn-sm" onclick="showMainTab()">← 대상 목록으로</button>
+    </div>
     <div class="table-scroll">
     <table>
       <thead>
@@ -197,7 +207,7 @@
       </tbody>
     </table>
     </div>
-  </details>
+  </section>
   {% endif %}
 
   <footer>
@@ -253,6 +263,22 @@
 <script>
 const SHEET = "{{ sheet }}";
 const ADMINS = {{ admins | tojson }};
+
+// ── 제외 대상 탭 ──
+function showExcludedTab() {
+  document.getElementById("mainView").classList.add("hidden");
+  document.getElementById("excludedView").classList.remove("hidden");
+  document.querySelectorAll(".tabs .tab").forEach(t => t.classList.remove("active"));
+  document.getElementById("excludedTabBtn").classList.add("active");
+}
+function showMainTab() {
+  document.getElementById("excludedView").classList.add("hidden");
+  document.getElementById("mainView").classList.remove("hidden");
+  document.getElementById("excludedTabBtn").classList.remove("active");
+  document.querySelectorAll(".tabs a.tab").forEach(t => {
+    t.classList.toggle("active", t.dataset.modeActive === "1");
+  });
+}
 
 function requireName() {
   const name = (document.getElementById("updatedBy").value || "").trim();
