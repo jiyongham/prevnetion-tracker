@@ -74,7 +74,7 @@ def get_dashboard_data(half: str, as_of: date, use_jira: bool = True, mode: str 
 # ─────────────────────────────────────────────
 # 대시보드
 # ─────────────────────────────────────────────
-@router.get("/", response_class=HTMLResponse)
+@router.get("/dr", response_class=HTMLResponse)
 def dashboard(
     request: Request,
     half: str | None = None,
@@ -307,7 +307,7 @@ def save_schedule(
     evidence: str = Form(""),
     note: str = Form(""),
     updated_by: str = Form(""),
-    redirect_to: str = Form("/"),
+    redirect_to: str = Form("/dr"),
 ):
     """폼 전송 저장"""
     updated_by = require_updated_by(updated_by)
@@ -548,7 +548,7 @@ def trigger_report(half: str = Form(...)):
     dr_data.invalidate_cache(half)
     # 발송은 하되, 지난주 대비 이상 징후가 있으면 화면에 띄워 확인하게 한다
     warning = send_report(half=half)
-    url = f"/?half={half}&sent=1"
+    url = f"/dr?half={half}&sent=1"
     if warning:
         url += f"&report_warning={quote(warning)}"
     return RedirectResponse(url=url, status_code=303)

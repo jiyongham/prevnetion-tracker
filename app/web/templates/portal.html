@@ -1,0 +1,67 @@
+<!-- app/web/templates/portal.html -->
+{% extends "_layout.html" %}
+
+{% block title %}예방 관제센터{% endblock %}
+
+{% block content %}
+  <header>
+    <h1>🎛️ 예방 관제센터</h1>
+  </header>
+
+  <p class="portal-lead">DR훈련·용량관리·EoS 중 확인할 화면을 선택하세요.</p>
+
+  <div class="module-grid">
+    {% for m in modules %}
+    <a class="module-tile" href="{{ m.href }}">
+      <div class="module-tile-head">
+        <span class="module-tile-icon" aria-hidden="true">
+          {% if m.code == "DR" %}
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+            <path d="M4 12a8 8 0 0 1 14-5.3M20 12a8 8 0 0 1-14 5.3" />
+            <path d="M18 4v3h-3M6 20v-3h3" />
+          </svg>
+          {% elif m.code == "CAP" %}
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+            <ellipse cx="12" cy="6" rx="7" ry="2.6" />
+            <path d="M5 6v6c0 1.4 3.1 2.6 7 2.6s7-1.2 7-2.6V6" />
+            <path d="M5 12v6c0 1.4 3.1 2.6 7 2.6s7-1.2 7-2.6v-6" />
+          </svg>
+          {% else %}
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+            <rect x="3" y="5" width="7" height="7" rx="1.4" />
+            <rect x="14" y="12" width="7" height="7" rx="1.4" />
+            <path d="M10 8.5h4.5M14.5 8.5v4" />
+          </svg>
+          {% endif %}
+        </span>
+        <span class="module-tile-code">{{ m.code }}</span>
+      </div>
+      <div>
+        <h2>{{ m.label }}</h2>
+        <p class="desc">{{ m.desc }}</p>
+      </div>
+      <div class="module-tile-stat">
+        {% if m.error %}
+        <span class="badge-check">확인 필요</span>
+        <span class="count mono">외부 조회 실패</span>
+        {% elif m.pct is not none %}
+        <span class="pct mono {{ m.band }}">{{ m.pct }}%</span>
+        <span class="count mono">{{ m.done }} / {{ m.total }}건</span>
+        {% else %}
+        <span class="count mono">대상 없음</span>
+        {% endif %}
+      </div>
+      {% if not m.error and m.pct is not none %}
+      {% set seg = "var(--color-status-success-solid)" if m.band == "ok" else "var(--color-accent-solid)" if m.band == "mid" else "var(--color-status-warning-solid)" %}
+      <div class="signal-bar" style="--seg-color: {{ seg }}" aria-hidden="true">
+        {% for i in range(20) %}<i class="{{ 'on' if i < m.bar_filled else '' }}"></i>{% endfor %}
+      </div>
+      {% endif %}
+      <div class="module-tile-foot">
+        바로가기
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+{% endblock %}

@@ -1,3 +1,6 @@
+/* 관제/모니터링 톤으로 리스킨하면서 도입 - 한글 UI엔 Sans, 수치·타임스탬프엔 Mono */
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
 /* ══════════════════════════════════════════════════════════════════════════
    색상 시스템 — 두 계층
      1. 프리미티브 (--gray-500 등): 값의 이름. 컴포넌트에서 직접 쓰지 않는다.
@@ -25,12 +28,13 @@
   --gray-800:  #50565e;
   --gray-950:  #1f2226;
 
-  /* 액센트 보라  H=278° — 브랜드색 #5b5fc7 을 600에 앵커 */
-  --violet-100: #f3f5ff;
-  --violet-200: #ebeeff;
-  --violet-500: #9fa9ff;
-  --violet-600: #5b5fc7;
-  --violet-700: #4a4eb0;
+  /* 액센트 텔레메트리 블루  H=195° — 관제 콘솔 톤으로 리스킨하며 #157ea8 을 600에 앵커
+     (기존 보라 #5b5fc7 대비) */
+  --violet-100: #eaf6fa;
+  --violet-200: #d9eef6;
+  --violet-500: #6ab8d3;
+  --violet-600: #157ea8;
+  --violet-700: #0f6389;
 
   /* 정보 파랑  H=248.5° — 액센트와 30° 떨어져 '같은 색'으로 읽히지 않는다 */
   --blue-100: #eff7ff;
@@ -90,7 +94,7 @@
   --color-accent-text:        var(--violet-600);
   --color-accent-bg:          var(--violet-100);
   --color-accent-border:      var(--violet-200);
-  --color-accent-ring:        rgba(91, 95, 199, .12);
+  --color-accent-ring:        rgba(21, 126, 168, .12);
   /* 포커스 링은 인접한 어떤 색 위에서도 보여야 한다.
      기존 12% 알파 링은 흰 배경에서 1.1:1 로 사실상 안 보였다. */
   --color-focus-ring: var(--violet-600);
@@ -151,7 +155,7 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui,
+  font-family: "IBM Plex Sans KR", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui,
                "Malgun Gothic", "맑은 고딕", sans-serif;
   background: var(--color-bg-page);
   color: var(--color-text-primary);
@@ -216,6 +220,18 @@ body {
 .side-nav-item.subtle { font-weight: 500; color: var(--color-text-tertiary); }
 .side-nav-icon { font-size: var(--text-lg); line-height: 1; width: 20px; text-align: center; }
 
+/* 사이드바 하단 입력자명 - 대상 목록/챗봇마다 따로 있던 걸 여기 한 곳으로 모았다 */
+.side-input-label {
+  display: block; padding: 0 10px; margin-bottom: 4px;
+  font-size: var(--text-caption); font-weight: 600; color: var(--color-text-tertiary);
+}
+.side-input {
+  width: 100%; box-sizing: border-box; padding: 7px 10px;
+  border: 1px solid var(--color-border-subtle); border-radius: 8px;
+  font-size: var(--text-sm); font-family: inherit; background: var(--color-bg-surface);
+}
+.side-hint { display: block; margin-inline-start: 0; padding: 4px 10px 0; }
+
 /* 좁은 화면에서는 가로 막대로 접는다 (사내 도구라 데스크톱이 기본이지만
    노트북 분할 화면에서 사이드바가 표를 잡아먹는 걸 막는다) */
 @media (max-width: 900px) {
@@ -228,7 +244,13 @@ body {
   }
   .brand { border-bottom: none; padding: 0 12px 0 0; margin: 0; }
   .side-nav { flex-direction: row; }
-  .side-nav-foot { margin: 0 0 0 auto; padding: 0; border-top: none; }
+  .side-nav-foot {
+    margin: 0 0 0 auto; padding: 0; border-top: none;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .side-input-label { display: none; }   /* 가로 배치에선 placeholder로 충분 */
+  .side-input { width: 140px; }
+  .side-hint { padding: 0; white-space: nowrap; }
   .container { padding: 16px 16px 32px; }
 }
 
@@ -397,6 +419,27 @@ select, input[type="date"], input[type="text"] {
   margin-bottom: 12px; flex-wrap: wrap; gap: 10px;
 }
 .head-right { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+
+/* 접이식 패널 (운영팀별 현황/제외 대상 등 - 기본은 접어 둬서 화면을 가볍게 유지) */
+details.panel > summary {
+  cursor: pointer; list-style: none;
+  display: flex; align-items: center; gap: 6px;
+  margin-bottom: 12px;
+}
+details.panel > summary::-webkit-details-marker { display: none; }
+details.panel > summary h2 { margin: 0; }
+details.panel > summary::before {
+  content: "▸"; display: inline-block; flex-shrink: 0;
+  color: var(--color-text-tertiary); font-size: var(--text-sm);
+  transition: transform 150ms var(--ease-out);
+}
+details.panel[open] > summary::before { transform: rotate(90deg); }
+details.panel > summary:focus-visible {
+  outline: 2px solid var(--color-focus-ring); outline-offset: 2px; border-radius: 4px;
+}
+@media (prefers-reduced-motion: reduce) {
+  details.panel > summary::before { transition: none; }
+}
 .search { width: 180px; }
 
 .filters { display: flex; gap: 6px; }
@@ -606,7 +649,7 @@ tr.saved { animation: flash 1.2s; }
 /* 텍스트 스타일 */
 .strong { font-weight: 600; }
 .mono {
-  font-family: ui-monospace, Consolas, "D2Coding", monospace;
+  font-family: "IBM Plex Mono", ui-monospace, Consolas, "D2Coding", monospace;
   font-size: var(--text-sm); font-variant-numeric: tabular-nums;
 }
 .small { font-size: var(--text-caption); }
@@ -912,3 +955,59 @@ footer a:hover {
 .cell.ev-bad  { border-color: var(--color-status-danger-solid);  background: var(--color-status-danger-bg); }
 .ev-flag { margin-inline-start: 2px; cursor: help; font-size: var(--text-caption); }
 .warn-text { color: var(--color-status-warning-text); font-weight: 600; }
+
+/* 포털 홈 - DR/용량관리/EoS 중 하나를 고르는 진입 카드 */
+.portal-lead { color: var(--color-text-tertiary); font-size: var(--text-md); margin-bottom: 20px; }
+.module-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+@media (max-width: 860px) { .module-grid { grid-template-columns: 1fr; } }
+
+.module-tile {
+  display: flex; flex-direction: column; gap: 16px;
+  background: var(--color-bg-surface); box-shadow: var(--shadow-border);
+  border-radius: 10px; padding: 20px;
+  text-decoration: none; color: inherit;
+  transition: box-shadow 150ms var(--ease-out), transform 150ms var(--ease-out);
+}
+.module-tile:hover { box-shadow: var(--shadow-border-hover); transform: translateY(-2px); }
+.module-tile:focus-visible { outline: 2px solid var(--color-focus-ring); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  .module-tile { transition: none; }
+  .module-tile:hover { transform: none; }
+}
+
+.module-tile-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.module-tile-icon {
+  width: 36px; height: 36px; border-radius: 9px;
+  background: var(--color-accent-bg); color: var(--color-accent-text);
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.module-tile-icon svg { width: 19px; height: 19px; }
+.module-tile-code {
+  font-family: "IBM Plex Mono", monospace; font-size: var(--text-caption); font-weight: 500;
+  letter-spacing: .1em; color: var(--color-text-tertiary);
+  border: 1px solid var(--color-border-subtle); border-radius: 5px;
+  padding: 2px 6px; height: fit-content;
+}
+.module-tile h2 { font-size: var(--text-lg); font-weight: 700; margin: 0 0 4px; color: var(--color-text-primary); }
+.module-tile .desc { font-size: var(--text-base); color: var(--color-text-secondary); line-height: 1.55; margin: 0; }
+
+.module-tile-stat { display: flex; align-items: baseline; justify-content: space-between; margin-top: auto; }
+.module-tile-stat .pct { font-size: var(--text-2xl); font-weight: 700; }
+.module-tile-stat .count { font-size: var(--text-sm); color: var(--color-text-tertiary); }
+.module-tile-stat .badge-check {
+  font-size: var(--text-sm); font-weight: 700; color: var(--color-status-warning-text);
+  background: var(--color-status-warning-bg); border-radius: 10px; padding: 3px 9px;
+}
+
+.signal-bar { display: flex; gap: 2px; height: 14px; }
+.signal-bar i { flex: 1; border-radius: 1px; background: var(--color-divider); display: block; }
+.signal-bar i.on { background: var(--seg-color, var(--color-accent-solid)); }
+
+.module-tile-foot {
+  display: flex; align-items: center; justify-content: flex-end; gap: 4px;
+  font-size: var(--text-sm); color: var(--color-accent-text); font-weight: 600;
+  padding-top: 12px; border-top: 1px solid var(--color-divider);
+}
+.module-tile-foot svg { width: 12px; height: 12px; transition: translate 150ms var(--ease-out); }
+.module-tile:hover .module-tile-foot svg { translate: 3px 0; }
+@media (prefers-reduced-motion: reduce) { .module-tile-foot svg { transition: none; } }
