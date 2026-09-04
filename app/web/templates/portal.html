@@ -1,20 +1,27 @@
 <!-- app/web/templates/portal.html -->
 {% extends "_layout.html" %}
 
-{% block title %}예방 관제센터{% endblock %}
+{% block title %}장애예방 관제센터{% endblock %}
 
 {% block content %}
   <header>
-    <h1>🎛️ 예방 관제센터</h1>
+    <h1>🎛️ 장애예방 관제센터</h1>
   </header>
 
   <p class="portal-lead">DR훈련·용량관리·EoS 중 확인할 화면을 선택하세요.</p>
 
   <div class="module-grid">
     {% for m in modules %}
+    {# 카드 색은 완료율 밴드가 아니라 모듈마다 고정한다 - 밴드 기준(ok/mid/bad)이면
+       우연히 같은 구간에 걸린 두 모듈이 같은 색으로 보인다 (예: DR·EoS 둘 다
+       50~99%면 둘 다 액센트색). 기존 팔레트에서 서로 멀리 떨어진 색상각 셋을 그대로 쓴다. #}
+    {% if m.code == "DR" %}{% set tone = "var(--color-accent-solid)" %}{% set tone_bg = "var(--color-accent-bg)" %}
+    {% elif m.code == "CAP" %}{% set tone = "var(--blue-700)" %}{% set tone_bg = "var(--blue-100)" %}
+    {% else %}{% set tone = "var(--purple-700)" %}{% set tone_bg = "var(--purple-200)" %}
+    {% endif %}
     <a class="module-tile" href="{{ m.href }}">
       <div class="module-tile-head">
-        <span class="module-tile-icon" aria-hidden="true">
+        <span class="module-tile-icon" aria-hidden="true" style="background: {{ tone_bg }}; color: {{ tone }}">
           {% if m.code == "DR" %}
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
             <path d="M4 12a8 8 0 0 1 14-5.3M20 12a8 8 0 0 1-14 5.3" />
@@ -45,15 +52,14 @@
         <span class="badge-check">확인 필요</span>
         <span class="count mono">외부 조회 실패</span>
         {% elif m.pct is not none %}
-        <span class="pct mono {{ m.band }}">{{ m.pct }}%</span>
+        <span class="pct mono" style="color: {{ tone }}">{{ m.pct }}%</span>
         <span class="count mono">{{ m.done }} / {{ m.total }}건</span>
         {% else %}
         <span class="count mono">대상 없음</span>
         {% endif %}
       </div>
       {% if not m.error and m.pct is not none %}
-      {% set seg = "var(--color-status-success-solid)" if m.band == "ok" else "var(--color-accent-solid)" if m.band == "mid" else "var(--color-status-warning-solid)" %}
-      <div class="signal-bar" style="--seg-color: {{ seg }}" aria-hidden="true">
+      <div class="signal-bar" style="--seg-color: {{ tone }}" aria-hidden="true">
         {% for i in range(20) %}<i class="{{ 'on' if i < m.bar_filled else '' }}"></i>{% endfor %}
       </div>
       {% endif %}
