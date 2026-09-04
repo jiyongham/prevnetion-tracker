@@ -94,9 +94,8 @@ def portal_home(request: Request):
             "done": done,
             "total": total,
             "pct": pct,
-            # 신호등 배색: 80%+ 정상, 50~79% 진행중, 그 아래 주의 (개별 화면 배지의
-            # ==100/그외 2단계 기준과 달리 포털 카드는 3단계로 더 세분화해서 보여준다)
-            "band": "ok" if pct is not None and pct >= 80 else "mid" if pct is not None and pct >= 50 else "bad",
+            # 운영팀별 표(대시보드)와 같은 기준: 100%만 정상, 50%대까지는 진행중, 그 아래는 주의
+            "band": "ok" if pct == 100 else "mid" if pct is not None and pct >= 50 else "bad",
             # 세그먼트 바(20칸) 중 채울 칸 수
             "bar_filled": round(pct / 5) if pct is not None else 0,
             "error": error,
