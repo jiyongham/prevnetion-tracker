@@ -194,7 +194,10 @@
       </thead>
       <tbody>
       {% for d in excluded_items %}
-        <tr title="{% if d.expand_flag == 'X' %}엑셀 원본에서 증설대상 X{% else %}웹 입력 ({{ d.updated_by }}, {{ d.updated_at }}){% endif %}">
+        {# 처리자/복귀는 '엑셀 원본이 X인지'가 아니라 '웹에서 실제로 손댄 적 있는지'로 갈린다.
+           웹에서 제외/복귀한 적 없는(순수 엑셀 X) 행만 처리자가 "엑셀"로 뜬다 - 그런 행도
+           복귀 버튼은 항상 눌러서 웹 판단으로 덮어쓸 수 있다 (capacity_loader의 override 참고). #}
+        <tr title="{% if d.updated_by %}웹 입력 ({{ d.updated_by }}, {{ d.updated_at }}){% else %}엑셀 원본에서 증설대상 X{% endif %}">
           <td class="strong">{{ d.ci_name }}</td>
           <td class="mono small">{{ d.hostname }}</td>
           <td class="small">{{ d.ops_team }}</td>
@@ -205,17 +208,10 @@
           <td class="small">{{ d.evidence }}</td>
           <td class="small">{{ d.note }}</td>
           <td><span class="badge muted">제외</span></td>
-          <td class="small">
-            {% if d.expand_flag == 'X' %}{{ d.exclude_reason or "(엑셀 X)" }}
-            {% else %}{{ d.exclude_reason or "(미기재)" }}{% endif %}
-          </td>
-          <td class="small">{% if d.expand_flag == 'X' %}<span class="muted">엑셀</span>{% else %}{{ d.updated_by }}{% endif %}</td>
+          <td class="small">{{ d.exclude_reason or "(미기재)" }}</td>
+          <td class="small">{% if d.updated_by %}{{ d.updated_by }}{% else %}<span class="muted">엑셀</span>{% endif %}</td>
           <td class="admin-only">
-            {% if d.expand_flag != 'X' %}
             <button class="btn-sm" data-no="{{ d.item_no }}" data-sheet="{{ d.sheet }}" onclick="restoreRow(this)">↩️ 제외 해제</button>
-            {% else %}
-            <span class="muted small">-</span>
-            {% endif %}
           </td>
         </tr>
       {% endfor %}

@@ -99,7 +99,7 @@ def load_capacity_items_merged(sheet: str, excel_path: str | None = None) -> lis
         db = inputs.get(item["item_no"])
         item["input_source"] = "excel"
         item["evidence"] = ""
-        is_excluded_web = False
+        db_excluded = None  # None=웹에서 손댄 적 없음(엑셀이 결정), 0/1=웹에서 명시적으로 확정
 
         if db:
             if db.get("schedule"):
@@ -113,7 +113,8 @@ def load_capacity_items_merged(sheet: str, excel_path: str | None = None) -> lis
             if db.get("owner"):
                 item["owner"] = db["owner"]
                 item["input_source"] = "web"
-            is_excluded_web = bool(db.get("is_excluded"))
+            raw = db.get("is_excluded")
+            db_excluded = None if raw is None else bool(raw)
 
             item["note"] = db.get("note", "")
             item["updated_by"] = db.get("updated_by", "")
@@ -123,7 +124,13 @@ def load_capacity_items_merged(sheet: str, excel_path: str | None = None) -> lis
             item["updated_by"] = ""
             item["updated_at"] = ""
 
-        item["is_excluded"] = item["expand_flag"] == "X" or is_excluded_web
+        # 웹에서 명시적으로 제외/해제한 적이 있으면 그 값이 엑셀보다 우선한다.
+        # (예전엔 "해제(0)"와 "손댄 적 없음(None)"을 똑같이 취급해서, 엑셀 원본이 X인
+        #  행은 웹에서 아무리 "제외 해제"를 눌러도 계속 제외 상태로 되돌아갔다.)
+        if db_excluded is not None:
+            item["is_excluded"] = db_excluded
+        else:
+            item["is_excluded"] = item["expand_flag"] == "X"
         if item["is_excluded"]:
             item["is_target"] = False
             item["status_kind"] = "excluded"
