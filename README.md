@@ -10,7 +10,7 @@ Python 3.12 · FastAPI · Jinja2 · SQLite · APScheduler · Kubernetes
 
 <!-- 스크린샷 ①: 포털 홈 또는 도메인 대시보드 전체 (가장 눈에 띄는 자리)
      파일을 docs/screenshots/ 에 넣은 뒤 아래 한 줄의 주석을 풀 것.-->
-     ![대시보드](docs/screenshots/01-dashboard.png)
+![대시보드](docs/screenshots/01-dashboard.png)
 
 
 ---
@@ -40,8 +40,8 @@ Python 3.12 · FastAPI · Jinja2 · SQLite · APScheduler · Kubernetes
 
 ## 화면
 
-<!-- -->┌─ 스크린샷 자리 ─────────────────────────────────────────────────┐
-<!-- docs/screenshots/ 에 아래 이름으로 넣고, 해당 줄의 주석만 풀면 된다.
+<!-- ┌─ 스크린샷 자리 ─────────────────────────────────────────────────┐
+     docs/screenshots/ 에 아래 이름으로 넣고, 해당 줄의 주석만 풀면 된다.
      마스킹 기준은 docs/screenshots/README.md 참고.-->
 
 ![대상 목록](docs/screenshots/02-list.png)
@@ -52,9 +52,9 @@ Python 3.12 · FastAPI · Jinja2 · SQLite · APScheduler · Kubernetes
 
 ![리마인드 미리보기](docs/screenshots/04-remind.png)
 > 발송 전 팀별 초안 확인 후 Teams DM
-
+<!--
      └──────────────────────────────────────────────────────────────┘ 
-
+-->
 ---
 
 ## 아키텍처
