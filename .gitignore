@@ -12,3 +12,4 @@ data/*.csv
 *.db
 .venv/
 venv/
+*-dummy.xlsx
