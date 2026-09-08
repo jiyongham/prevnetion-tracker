@@ -197,7 +197,8 @@ async def api_capacity_exclude(request: Request):
     """
     제외 처리/해제 (관리자만). "증설 안 함"으로 확정된 대상을 대상 목록에서 빼서
     제외 대상 섹션으로 옮긴다. excluded:false로 다시 부르면 해제(복귀) 가능.
-    (엑셀 자체에 "증설 여부"가 X로 적힌 행은 이 버튼으로 해제할 수 없음 - 엑셀이 원본.)
+    엑셀 자체에 "증설 여부"가 X로 적힌 행도 이 버튼으로 해제할 수 있다 - 웹에서 명시적으로
+    처리한 값이 엑셀보다 우선한다 (capacity_loader.load_capacity_items_merged 참고).
     """
     data = await request.json()
     item_no = (data.get("item_no") or "").strip()
