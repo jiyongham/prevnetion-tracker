@@ -205,6 +205,7 @@ async def api_capacity_exclude(request: Request):
     sheet = (data.get("sheet") or "").strip()
     updated_by = (data.get("updated_by") or "").strip()
     excluded = bool(data.get("excluded", True))
+    reason = (data.get("reason") or "").strip()
 
     if not item_no or not sheet:
         return JSONResponse({"ok": False, "error": "필수 값이 없습니다."}, status_code=400)
@@ -212,6 +213,9 @@ async def api_capacity_exclude(request: Request):
         return JSONResponse(
             {"ok": False, "error": "제외 처리는 관리자만 가능합니다."}, status_code=403
         )
+    # 왜 뺐는지가 안 남으면 나중에 아무도 되짚을 수 없다 (제외는 분모를 바꾸는 처리) - DR/EoS와 동일 기준
+    if excluded and not reason:
+        return JSONResponse({"ok": False, "error": "제외 사유를 입력해주세요."}, status_code=400)
 
     existing = get_capacity_input(item_no, sheet) or {}
     upsert_capacity_input(
@@ -223,6 +227,7 @@ async def api_capacity_exclude(request: Request):
         note=existing.get("note") or "",
         updated_by=updated_by,
         excluded=excluded,
+        exclude_reason=reason if excluded else "",  # 복귀 시엔 사유를 지운다
     )
     return JSONResponse({"ok": True})
 

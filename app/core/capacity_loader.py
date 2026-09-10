@@ -115,6 +115,8 @@ def load_capacity_items_merged(sheet: str, excel_path: str | None = None) -> lis
                 item["input_source"] = "web"
             raw = db.get("is_excluded")
             db_excluded = None if raw is None else bool(raw)
+            if db.get("exclude_reason"):
+                item["exclude_reason"] = db["exclude_reason"]
 
             item["note"] = db.get("note", "")
             item["updated_by"] = db.get("updated_by", "")
