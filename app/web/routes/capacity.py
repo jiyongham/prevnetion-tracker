@@ -16,7 +16,6 @@ from fastapi.responses import (
 
 from app.config import settings
 from app.core.capacity_loader import load_capacity_items_merged
-from app.core.jira_client import jira
 from app.core.teams_client import send_teams_dm
 from app.models.db import (
     get_capacity_input,
@@ -25,12 +24,11 @@ from app.models.db import (
     upsert_capacity_input,
 )
 from app.services.capacity import (
-    build_capacity_ticket_summary,
     build_no_reply_details,
     calc_capacity_completion,
     filter_tickets_by_sheet,
 )
-from app.services import ai_diagnose, capacity_chatbot, last_report
+from app.services import ai_diagnose, capacity_chatbot, capacity_data, last_report
 from app.services.capacity_reminder import group_capacity_no_reply, group_capacity_unplanned
 from app.services.capacity_report import send_capacity_report
 from app.services.completion import group_by
@@ -44,21 +42,22 @@ router = APIRouter()
 
 
 def get_capacity_dashboard_data(sheet: str, as_of: date, use_jira: bool = True):
+    """
+    티켓 조회는 capacity_data 캐시(dr_data/eos_data와 같은 stale-while-revalidate)를 탄다.
+    이전엔 여기서 매 요청 jira.get_capacity_tickets()를 직접(동기) 불렀는데, 이 조회가
+    DATA/ARCH 구분 없이 한 번에 오는 걸 시트마다 또 새로 조회하고 있었다 - 포털 홈이 두
+    시트를 순서대로 물어 매 방문 최대 2번, JIRA가 느려지면 그만큼 블로킹됐다.
+    """
     items = load_capacity_items_merged(sheet=sheet)
     ticket_map = {}
     jira_error = None
 
     if use_jira:
-        try:
-            issues = jira.get_capacity_tickets()
-            tickets = build_capacity_ticket_summary(issues, settings.planned_end_date_field)
-            targets = [i for i in items if i["is_target"]]
-            match_result = match_items_by_ip(targets, tickets)
-            # 같은 서버가 DATA/ARCH 양쪽에 다 있을 수 있어, 변경작업내용으로 이 시트 소속만 남김
-            ticket_map = filter_tickets_by_sheet(match_result["matched"], sheet)
-        except Exception as e:
-            jira_error = str(e)
-            logger.warning(f"용량관리 JIRA 조회 실패: {e}")
+        tickets, jira_error = capacity_data.get_tickets()
+        targets = [i for i in items if i["is_target"]]
+        match_result = match_items_by_ip(targets, tickets)
+        # 같은 서버가 DATA/ARCH 양쪽에 다 있을 수 있어, 변경작업내용으로 이 시트 소속만 남김
+        ticket_map = filter_tickets_by_sheet(match_result["matched"], sheet)
 
     result = calc_capacity_completion(items, ticket_map, as_of)
     return result, jira_error
@@ -386,8 +385,7 @@ async def api_capacity_diagnose_unmatched(request: Request):
         return JSONResponse({"ok": False, "error": "대상을 찾을 수 없습니다"}, status_code=404)
 
     try:
-        issues = jira.get_capacity_tickets()
-        tickets = build_capacity_ticket_summary(issues, settings.planned_end_date_field)
+        tickets, _ = capacity_data.get_tickets()
 
         # 시트 필터 적용 전/후를 비교해, 이 서버에 걸렸다가 시트 분류에서 빠진 티켓을 가려낸다
         raw_matched = match_items_by_ip([item], tickets)["matched"].get(item["no"]) or []
