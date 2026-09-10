@@ -387,14 +387,15 @@ async function excludeRow(btn) {
   if (!name) return;
   const tr = btn.closest("tr");
   const ci = tr.querySelector("td.strong").textContent;
-  if (!confirm(`${ci}\n\n이 대상을 제외 처리할까요? (증설 안 함으로 확정)`)) return;
+  const reason = (prompt(`${ci}\n\n이 대상을 제외 처리합니다. (증설 안 함으로 확정)\n제외 사유를 입력해주세요. (예: 자산 반납 예정, 타 시스템으로 이관)`) || "").trim();
+  if (!reason) return;
 
   btn.disabled = true;
   try {
     const res = await fetch("/api/capacity/exclude", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ item_no: tr.dataset.no, sheet: tr.dataset.sheet, updated_by: name, excluded: true }),
+      body: JSON.stringify({ item_no: tr.dataset.no, sheet: tr.dataset.sheet, updated_by: name, excluded: true, reason }),
     });
     const data = await res.json();
     if (data.ok) {
