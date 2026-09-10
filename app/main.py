@@ -8,6 +8,7 @@ from prometheus_fastapi_instrumentator import Instrumentator
 
 from app.core.scheduler import start_scheduler, stop_scheduler
 from app.models.db import init_db
+from app.services.capacity_data import prewarm as prewarm_capacity
 from app.services.dr_data import prewarm as prewarm_dr
 from app.services.eos_data import prewarm as prewarm_eos
 from app.services.report import get_current_half
@@ -29,8 +30,11 @@ async def lifespan(app: FastAPI):
     start_scheduler()
     # 외부 조회(JIRA/Polestar)가 무거워 기동 직후 백그라운드로 캐시를 채운다.
     # DR훈련은 지금 반기만 - 지난 반기 화면은 열어보는 사람이 있을 때 채워도 늦지 않다.
+    # 용량관리는 포털 홈(첫 화면)에서 바로 쓰이므로 특히 중요 - 안 채워두면 서버 기동
+    # 직후 첫 방문자가 그대로 JIRA 조회를 기다린다.
     prewarm_eos()
     prewarm_dr(get_current_half())
+    prewarm_capacity()
     yield
     # shutdown
     stop_scheduler()
