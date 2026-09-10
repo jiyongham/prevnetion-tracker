@@ -359,12 +359,17 @@ select, input[type="date"], input[type="text"] {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
 }
 
-/* 발송 직후 화면에 띄우는 리포트 본문 (닫기 버튼으로 제거) */
+/* 발송 직후 화면에 띄우는 리포트 본문 (닫기 버튼으로 제거).
+   본문(.sent-report-body)이 80ch로 좁게 잡히는데 이 박스 자체는 폭 제한이 없어
+   div 기본값(부모 꽉 채움)대로 늘어나 있었다 - 짧은 리포트일수록 글자 옆에 빈
+   공간만 넓게 남는 문제. 박스를 본문 너비에 맞춰 붙인다. */
 .sent-report {
   position: relative; background: var(--color-info-surface-bg);
   border-color: var(--color-info-surface-border);
   color: var(--color-status-info-text);
   padding-inline-end: 36px;
+  width: fit-content;
+  max-width: 100%;
 }
 .sent-report-title { font-weight: 600; margin-bottom: 8px; }
 .sent-report-body {
