@@ -462,29 +462,6 @@ details.panel > summary:focus-visible {
   details.panel > summary::before { transition: none; }
 }
 
-/* 대상 목록을 관계사별로 나눠 보여주는 접이식 그룹 (DR훈련). 이미 .panel(대상 목록
-   전체) 안에 중첩되므로 테두리 대신 구분선 정도로만 가른다 - 겹박스로 무거워지는
-   것을 피한다. 화살표 아이콘은 details.panel과 같은 패턴을 쓴다. */
-.company-group { border-top: 1px solid var(--color-divider); padding-top: 14px; margin-top: 14px; }
-.company-group:first-of-type { border-top: none; padding-top: 0; margin-top: 0; }
-.company-group > summary {
-  cursor: pointer; list-style: none;
-  display: flex; align-items: center; gap: 6px;
-  margin-bottom: 10px; font-weight: 600; font-size: var(--text-base);
-  color: var(--color-text-secondary);
-}
-.company-group > summary::-webkit-details-marker { display: none; }
-.company-group > summary h3 { margin: 0; font-size: inherit; font-weight: inherit; }
-.company-group > summary::before {
-  content: "▸"; display: inline-block; flex-shrink: 0;
-  color: var(--color-text-tertiary); font-size: var(--text-sm);
-  transition: transform 150ms var(--ease-out);
-}
-.company-group[open] > summary::before { transform: rotate(90deg); }
-@media (prefers-reduced-motion: reduce) {
-  .company-group > summary::before { transition: none; }
-}
-
 .search { width: 180px; }
 
 .filters { display: flex; gap: 6px; }
