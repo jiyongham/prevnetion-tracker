@@ -212,6 +212,10 @@ def init_db():
         cap_cols = {row["name"] for row in conn.execute("PRAGMA table_info(capacity_input)")}
         if "is_excluded" not in cap_cols:
             conn.execute("ALTER TABLE capacity_input ADD COLUMN is_excluded INTEGER DEFAULT 0")
+        # 용량관리도 DR/EoS처럼 제외 시 사유를 남긴다 (그동안은 엑셀 "기타(증설불가사유)"
+        # 칸만 보여줘서, 웹에서 직접 제외한 건은 사유가 영영 "(미기재)"로 남았다)
+        if "exclude_reason" not in cap_cols:
+            conn.execute("ALTER TABLE capacity_input ADD COLUMN exclude_reason TEXT")
 
         # 대상 구성(방식별/팀별 대수) 스냅샷. 총계만 봐서는 "실전환 -6, 무중단 +6"처럼
         # 합계는 그대로인데 구성만 바뀐 엑셀 변경을 놓친다.
@@ -354,31 +358,35 @@ def upsert_capacity_input(
     updated_by: str = "",
     owner: str | None = None,
     excluded: bool | None = None,
+    exclude_reason: str | None = None,
 ):
     """
     용량관리 일정 입력/수정 (변경 이력 기록).
-    owner/excluded는 명시적으로 넘겼을 때만 갱신 (None이면 기존 값 유지) - 일반 행 저장(/api/capacity/save)이
-    이 값들을 매번 안 넘기더라도 덮어써지지 않게 하기 위함.
+    owner/excluded/exclude_reason은 명시적으로 넘겼을 때만 갱신 (None이면 기존 값 유지) -
+    일반 행 저장(/api/capacity/save)이 이 값들을 매번 안 넘기더라도 덮어써지지 않게 하기 위함.
     """
     before = get_capacity_input(item_no, sheet)
 
     with get_conn() as conn:
         conn.execute("""
             INSERT INTO capacity_input
-                (item_no, sheet, schedule, is_done, evidence, note, updated_by, owner, is_excluded, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
+                (item_no, sheet, schedule, is_done, evidence, note, updated_by, owner,
+                 is_excluded, exclude_reason, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
             ON CONFLICT(item_no, sheet) DO UPDATE SET
-                schedule    = excluded.schedule,
-                is_done     = excluded.is_done,
-                evidence    = excluded.evidence,
-                note        = excluded.note,
-                updated_by  = excluded.updated_by,
-                owner       = COALESCE(excluded.owner, capacity_input.owner),
-                is_excluded = COALESCE(excluded.is_excluded, capacity_input.is_excluded),
-                updated_at  = datetime('now', 'localtime')
+                schedule       = excluded.schedule,
+                is_done        = excluded.is_done,
+                evidence       = excluded.evidence,
+                note           = excluded.note,
+                updated_by     = excluded.updated_by,
+                owner          = COALESCE(excluded.owner, capacity_input.owner),
+                is_excluded    = COALESCE(excluded.is_excluded, capacity_input.is_excluded),
+                exclude_reason = COALESCE(excluded.exclude_reason, capacity_input.exclude_reason),
+                updated_at     = datetime('now', 'localtime')
         """, (
             item_no, sheet, schedule, int(is_done), evidence, note, updated_by, owner,
             int(excluded) if excluded is not None else None,
+            exclude_reason,
         ))
 
         new_vals = {
@@ -389,6 +397,8 @@ def upsert_capacity_input(
             new_vals["owner"] = owner
         if excluded is not None:
             new_vals["is_excluded"] = str(int(excluded))
+        if exclude_reason is not None:
+            new_vals["exclude_reason"] = exclude_reason
         for field, new_v in new_vals.items():
             old_v = str(before.get(field, "")) if before else ""
             if old_v != str(new_v):
