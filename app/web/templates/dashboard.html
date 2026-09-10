@@ -115,79 +115,87 @@
       </div>
     </div>
 
-    <div class="table-scroll">
-    <table class="editable">
-      <thead>
-        <tr>
-          <th scope="col">시스템명</th><th scope="col">호스트명</th><th scope="col">운영팀</th><th scope="col">담당자</th>
-          <th scope="col" style="width:90px">일정 ✏️</th>
-          <th scope="col" style="width:110px">방식 ✏️</th>
-          <th scope="col" style="width:50px">완료 ✏️</th>
-          <th scope="col" style="width:130px">증적 ✏️</th>
-          <th scope="col" style="width:130px">비고 ✏️</th>
-          <th scope="col">JIRA</th><th scope="col">상태</th><th scope="col" style="width:60px">저장</th>
-          <th scope="col" class="admin-only" style="width:60px">제외</th>
-        </tr>
-      </thead>
-      <tbody>
-      {% for d in details %}
-        <tr data-no="{{ d.no }}"
-            class="{% if d.completed %}row-done{% endif %} src-{{ d.input_source }}"
-            title="{% if d.input_source == 'web' %}웹 입력 ({{ d.updated_by }}, {{ d.updated_at }}){% else %}엑셀 원본{% endif %}">
-          <td class="strong">{{ d.system_name }}</td>
-          <td class="mono small">{{ d.hostname }}</td>
-          <td class="small">{{ d.ops_team }}</td>
-          <td class="owner-cell">
-            <input type="text" class="cell owner-edit" value="{{ d.owner }}"
-                   aria-label="{{ d.system_name }} 담당자">
-          </td>
+    {# 관계사(엑셀 "관계사" 컬럼)별로 나눠서 보여준다 - 그룹마다 접었다 펼 수 있고,
+       기본은 펼쳐진 채로 시작해 지금까지의 "한 번에 다 보임" 동작을 그대로 유지한다.
+       그룹을 나누기 전 이미 끝난 정렬(상태→일정→이름)은 그룹 안에서 그대로 이어진다. #}
+    {% for company, rows in details_by_company.items() %}
+    <details class="company-group" open>
+      <summary><h3>{{ company }} <span class="muted small">({{ rows|length }}건)</span></h3></summary>
+      <div class="table-scroll">
+      <table class="editable">
+        <thead>
+          <tr>
+            <th scope="col">시스템명</th><th scope="col">호스트명</th><th scope="col">운영팀</th><th scope="col">담당자</th>
+            <th scope="col" style="width:90px">일정 ✏️</th>
+            <th scope="col" style="width:110px">방식 ✏️</th>
+            <th scope="col" style="width:50px">완료 ✏️</th>
+            <th scope="col" style="width:130px">증적 ✏️</th>
+            <th scope="col" style="width:130px">비고 ✏️</th>
+            <th scope="col">JIRA</th><th scope="col">상태</th><th scope="col" style="width:60px">저장</th>
+            <th scope="col" class="admin-only" style="width:60px">제외</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for d in rows %}
+          <tr data-no="{{ d.no }}"
+              class="{% if d.completed %}row-done{% endif %} src-{{ d.input_source }}"
+              title="{% if d.input_source == 'web' %}웹 입력 ({{ d.updated_by }}, {{ d.updated_at }}){% else %}엑셀 원본{% endif %}">
+            <td class="strong">{{ d.system_name }}</td>
+            <td class="mono small">{{ d.hostname }}</td>
+            <td class="small">{{ d.ops_team }}</td>
+            <td class="owner-cell">
+              <input type="text" class="cell owner-edit" value="{{ d.owner }}"
+                     aria-label="{{ d.system_name }} 담당자">
+            </td>
 
-          <td><input type="text" class="cell sched {{ 'edited' if d.input_source == 'web' else '' }}" value="{{ d.schedule_disp }}" placeholder="O/O"
-                 aria-label="{{ d.system_name }} 일정"></td>
-          <td>
-            <select class="cell mode" aria-label="{{ d.system_name }} 수행방식">
-              <option value="" {% if not d.mode %}selected{% endif %}>-</option>
-              <option value="실전환" {% if '실' in d.mode %}selected{% endif %}>실전환</option>
-              <option value="무중단" {% if '무중단' in d.mode %}selected{% endif %}>무중단</option>
-            </select>
-          </td>
-          <td class="center"><input type="checkbox" class="cell done" {% if d.completed %}checked{% endif %}
-                   aria-label="{{ d.system_name }} 완료"></td>
-          <td class="evidence-cell">
-            <input type="text" class="cell evidence {{ 'ev-' ~ d.evidence_level if d.evidence_level }}" value="{{ d.evidence }}" placeholder="증적"
-                   aria-label="{{ d.system_name }} 증적">
-            {% if d.evidence_level %}<span class="ev-flag {{ d.evidence_level }}" title="{{ d.evidence_note }}">{{ '⛔' if d.evidence_level == 'bad' else '⚠️' }}</span>{% endif %}
-          </td>
-          <td><input type="text" class="cell note" value="{{ d.note }}" placeholder="비고"
-                 aria-label="{{ d.system_name }} 비고"></td>
+            <td><input type="text" class="cell sched {{ 'edited' if d.input_source == 'web' else '' }}" value="{{ d.schedule_disp }}" placeholder="O/O"
+                   aria-label="{{ d.system_name }} 일정"></td>
+            <td>
+              <select class="cell mode" aria-label="{{ d.system_name }} 수행방식">
+                <option value="" {% if not d.mode %}selected{% endif %}>-</option>
+                <option value="실전환" {% if '실' in d.mode %}selected{% endif %}>실전환</option>
+                <option value="무중단" {% if '무중단' in d.mode %}selected{% endif %}>무중단</option>
+              </select>
+            </td>
+            <td class="center"><input type="checkbox" class="cell done" {% if d.completed %}checked{% endif %}
+                     aria-label="{{ d.system_name }} 완료"></td>
+            <td class="evidence-cell">
+              <input type="text" class="cell evidence {{ 'ev-' ~ d.evidence_level if d.evidence_level }}" value="{{ d.evidence }}" placeholder="증적"
+                     aria-label="{{ d.system_name }} 증적">
+              {% if d.evidence_level %}<span class="ev-flag {{ d.evidence_level }}" title="{{ d.evidence_note }}">{{ '⛔' if d.evidence_level == 'bad' else '⚠️' }}</span>{% endif %}
+            </td>
+            <td><input type="text" class="cell note" value="{{ d.note }}" placeholder="비고"
+                   aria-label="{{ d.system_name }} 비고"></td>
 
-          <td>
-            {% if d.jira_key %}
-            <a href="{{ jira_base }}/browse/{{ d.jira_key }}" target="_blank"
-               class="link small" title="{{ d.jira_keys | join(', ') }}">{{ d.jira_key }}</a>
-            {% if d.jira_keys | length > 1 %}<span class="muted small">+{{ d.jira_keys | length - 1 }}</span>{% endif %}
-            {% else %}
-            <button class="btn-ai" title="왜 매칭이 안 됐는지 AI로 진단"
-                    onclick="diagnoseUnmatched(this, '{{ d.no }}')">🤖</button>
-            {% endif %}
-          </td>
-          <td>
-            {% if d.status_label == '완료' %}<span class="badge ok" title="{{ d.reason }}">완료</span>
-            {% elif d.status_label == '예정' %}<span class="badge info" title="{{ d.schedule_disp }} 예정">예정</span>
-            {% elif d.status_label == '지연' %}<span class="badge bad" title="{{ d.schedule_disp }} 계획 경과">지연</span>
-            {% elif d.status_label == '대략' %}<span class="badge soft" title="대략적 일정만 등록됨: {{ d.schedule_raw }} — 정확한 날짜 확정 필요">대략</span>
-            {% else %}<span class="badge warn">미계획</span>{% endif %}
-          </td>
-          <td><button class="btn-save" onclick="saveRow(this)" aria-label="{{ d.system_name }} 저장">저장</button></td>
-          <td class="admin-only">
-            <button class="btn-sm btn-exclude" onclick="excludeRow(this)"
-                    title="제외 처리 — 엑셀 일정란에 X로 기록되고 제외 대상으로 이동합니다">제외</button>
-          </td>
-        </tr>
-      {% endfor %}
-      </tbody>
-    </table>
-    </div>
+            <td>
+              {% if d.jira_key %}
+              <a href="{{ jira_base }}/browse/{{ d.jira_key }}" target="_blank"
+                 class="link small" title="{{ d.jira_keys | join(', ') }}">{{ d.jira_key }}</a>
+              {% if d.jira_keys | length > 1 %}<span class="muted small">+{{ d.jira_keys | length - 1 }}</span>{% endif %}
+              {% else %}
+              <button class="btn-ai" title="왜 매칭이 안 됐는지 AI로 진단"
+                      onclick="diagnoseUnmatched(this, '{{ d.no }}')">🤖</button>
+              {% endif %}
+            </td>
+            <td>
+              {% if d.status_label == '완료' %}<span class="badge ok" title="{{ d.reason }}">완료</span>
+              {% elif d.status_label == '예정' %}<span class="badge info" title="{{ d.schedule_disp }} 예정">예정</span>
+              {% elif d.status_label == '지연' %}<span class="badge bad" title="{{ d.schedule_disp }} 계획 경과">지연</span>
+              {% elif d.status_label == '대략' %}<span class="badge soft" title="대략적 일정만 등록됨: {{ d.schedule_raw }} — 정확한 날짜 확정 필요">대략</span>
+              {% else %}<span class="badge warn">미계획</span>{% endif %}
+            </td>
+            <td><button class="btn-save" onclick="saveRow(this)" aria-label="{{ d.system_name }} 저장">저장</button></td>
+            <td class="admin-only">
+              <button class="btn-sm btn-exclude" onclick="excludeRow(this)"
+                      title="제외 처리 — 엑셀 일정란에 X로 기록되고 제외 대상으로 이동합니다">제외</button>
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    </details>
+    {% endfor %}
   </section>
   </div><!-- /mainView -->
 
