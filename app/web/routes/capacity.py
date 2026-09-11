@@ -15,7 +15,6 @@ from fastapi.responses import (
 )
 
 from app.config import settings
-from app.core.capacity_loader import load_capacity_items_merged
 from app.core.teams_client import send_teams_dm
 from app.models.db import (
     get_capacity_input,
@@ -43,44 +42,17 @@ router = APIRouter()
 
 def get_capacity_dashboard_data(sheet: str, as_of: date, use_jira: bool = True):
     """
-    반환: (result, jira_error, items). items는 엑셀+DB 병합 전체 목록(제외/미응답 포함
-    - 아래 미응답 승격 반영 후)을 그대로 넘긴다. 호출 쪽이 이걸 안 받고 따로
-    load_capacity_items_merged()를 다시 부르면, 미응답 승격이 반영 안 된 별도 사본이
-    생겨서 같은 대상이 "완료된 대상"과 "미응답"으로 두 번 보이는 문제가 생긴다.
+    반환: (result, jira_error, items). items는 엑셀+DB 병합 전체 목록(제외/미응답 포함,
+    미응답 target 승격 반영 후) - capacity_data.get_matched_items 참고. 호출 쪽이 이걸
+    안 받고 따로 load_capacity_items_merged()를 다시 부르면, 승격이 반영 안 된 별도
+    사본이 생겨서 같은 대상이 "완료된 대상"과 "미응답" 양쪽에 두 번 보이는 문제가 생긴다.
 
-    티켓 조회는 capacity_data 캐시(dr_data/eos_data와 같은 stale-while-revalidate)를 탄다.
-    이전엔 여기서 매 요청 jira.get_capacity_tickets()를 직접(동기) 불렀는데, 이 조회가
-    DATA/ARCH 구분 없이 한 번에 오는 걸 시트마다 또 새로 조회하고 있었다 - 포털 홈이 두
-    시트를 순서대로 물어 매 방문 최대 2번, JIRA가 느려지면 그만큼 블로킹됐다.
+    엑셀 병합·티켓 매칭·미응답 승격은 capacity_data.get_matched_items()가 도맡는다 -
+    리포트(capacity_report.py)도 같은 함수를 쓰므로 대시보드와 리포트 본문의 대수가
+    항상 일치한다 (예전엔 각자 따로 구현해서, 승격 로직을 한쪽에만 넣었더니 리포트만
+    승격 전 숫자로 남는 문제가 있었다).
     """
-    items = load_capacity_items_merged(sheet=sheet)
-    ticket_map = {}
-    jira_error = None
-
-    if use_jira:
-        tickets, jira_error = capacity_data.get_tickets()
-        targets = [i for i in items if i["is_target"]]
-        match_result = match_items_by_ip(targets, tickets)
-        # 같은 서버가 DATA/ARCH 양쪽에 다 있을 수 있어, 변경작업내용으로 이 시트 소속만 남김
-        ticket_map = filter_tickets_by_sheet(match_result["matched"], sheet)
-
-        # 미응답(증설 여부 O/X 미기입) 대상도 매칭된 [예방4] 티켓이 있으면 target으로
-        # 승격한다. 담당자가 회신 없이 그냥 증설해버리는 경우가 실제로 있어서(예:
-        # 메시징서비스 서버) - "회신이 없다"와 "증설을 안 했다"는 다르다. 실제 증설
-        # 티켓이 있다는 사실 자체가 증설 여부를 확정하는 근거다. 승격 후엔 다른 target과
-        # 완전히 같은 기준(judge_capacity)으로 완료 여부를 판단하므로, 티켓만 있고 아직
-        # 진행 중이면 "미완료"로 뜨고 무조건 완료 처리되는 건 아니다.
-        no_reply = [i for i in items if i["status_kind"] == "no_reply"]
-        if no_reply:
-            no_reply_match = match_items_by_ip(no_reply, tickets)["matched"]
-            no_reply_ticket_map = filter_tickets_by_sheet(no_reply_match, sheet)
-            for item in no_reply:
-                matched = no_reply_ticket_map.get(item["no"])
-                if matched:
-                    item["is_target"] = True
-                    item["status_kind"] = "target"
-                    ticket_map[item["no"]] = matched
-
+    items, ticket_map, jira_error = capacity_data.get_matched_items(sheet, use_jira)
     result = calc_capacity_completion(items, ticket_map, as_of)
     return result, jira_error, items
 
