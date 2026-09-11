@@ -44,7 +44,7 @@ def _capacity_summary(today: date) -> tuple[int, int, str | None]:
     done = total = 0
     error = None
     for sheet in ("DATA", "ARCH"):
-        result, jira_error = get_capacity_dashboard_data(sheet, today)
+        result, jira_error, _ = get_capacity_dashboard_data(sheet, today)
         done += result["done"]
         total += result["total"]
         error = error or jira_error
