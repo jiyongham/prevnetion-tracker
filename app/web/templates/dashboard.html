@@ -95,7 +95,7 @@
     <summary><h2>관계사별 현황</h2></summary>
     <table>
       <thead>
-        <tr><th scope="col" style="width:28px"></th><th scope="col">관계사</th><th scope="col">완료</th><th scope="col">전체</th><th scope="col">완료율</th><th scope="col" style="width:35%">진행</th></tr>
+        <tr><th scope="col" style="width:28px"></th><th scope="col">관계사</th><th scope="col">완료</th><th scope="col">전체</th><th scope="col">서비스</th><th scope="col">완료율</th><th scope="col" style="width:35%">진행</th></tr>
       </thead>
       <tbody>
       {% for company, v in by_company.items() %}
@@ -107,12 +107,13 @@
           <td><a class="team-link" href="/dr?half={{ half }}&company={{ company }}">{{ company }}</a></td>
           <td>{{ v.done }}</td>
           <td>{{ v.total }}</td>
+          <td class="mono small">{{ company_services.get(company, {})|length }}종</td>
           <td class="{% if v.rate == 100 %}ok{% elif v.rate >= 50 %}mid{% else %}bad{% endif %}">{{ v.rate }}%</td>
           <td><div class="progress sm"><div class="bar" style="width: {{ v.rate }}%"></div></div></td>
         </tr>
         <tr class="service-breakdown-row hidden" id="svc-{{ loop.index }}">
           <td></td>
-          <td colspan="5">
+          <td colspan="6">
             <table class="nested">
               <thead>
                 <tr><th scope="col">업무 서비스</th><th scope="col">완료</th><th scope="col">전체</th><th scope="col">완료율</th></tr>
