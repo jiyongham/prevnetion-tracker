@@ -43,6 +43,11 @@ router = APIRouter()
 
 def get_capacity_dashboard_data(sheet: str, as_of: date, use_jira: bool = True):
     """
+    반환: (result, jira_error, items). items는 엑셀+DB 병합 전체 목록(제외/미응답 포함
+    - 아래 미응답 승격 반영 후)을 그대로 넘긴다. 호출 쪽이 이걸 안 받고 따로
+    load_capacity_items_merged()를 다시 부르면, 미응답 승격이 반영 안 된 별도 사본이
+    생겨서 같은 대상이 "완료된 대상"과 "미응답"으로 두 번 보이는 문제가 생긴다.
+
     티켓 조회는 capacity_data 캐시(dr_data/eos_data와 같은 stale-while-revalidate)를 탄다.
     이전엔 여기서 매 요청 jira.get_capacity_tickets()를 직접(동기) 불렀는데, 이 조회가
     DATA/ARCH 구분 없이 한 번에 오는 걸 시트마다 또 새로 조회하고 있었다 - 포털 홈이 두
@@ -59,8 +64,25 @@ def get_capacity_dashboard_data(sheet: str, as_of: date, use_jira: bool = True):
         # 같은 서버가 DATA/ARCH 양쪽에 다 있을 수 있어, 변경작업내용으로 이 시트 소속만 남김
         ticket_map = filter_tickets_by_sheet(match_result["matched"], sheet)
 
+        # 미응답(증설 여부 O/X 미기입) 대상도 매칭된 [예방4] 티켓이 있으면 target으로
+        # 승격한다. 담당자가 회신 없이 그냥 증설해버리는 경우가 실제로 있어서(예:
+        # 메시징서비스 서버) - "회신이 없다"와 "증설을 안 했다"는 다르다. 실제 증설
+        # 티켓이 있다는 사실 자체가 증설 여부를 확정하는 근거다. 승격 후엔 다른 target과
+        # 완전히 같은 기준(judge_capacity)으로 완료 여부를 판단하므로, 티켓만 있고 아직
+        # 진행 중이면 "미완료"로 뜨고 무조건 완료 처리되는 건 아니다.
+        no_reply = [i for i in items if i["status_kind"] == "no_reply"]
+        if no_reply:
+            no_reply_match = match_items_by_ip(no_reply, tickets)["matched"]
+            no_reply_ticket_map = filter_tickets_by_sheet(no_reply_match, sheet)
+            for item in no_reply:
+                matched = no_reply_ticket_map.get(item["no"])
+                if matched:
+                    item["is_target"] = True
+                    item["status_kind"] = "target"
+                    ticket_map[item["no"]] = matched
+
     result = calc_capacity_completion(items, ticket_map, as_of)
-    return result, jira_error
+    return result, jira_error, items
 
 
 @router.get("/capacity", response_class=HTMLResponse)
@@ -77,13 +99,13 @@ def capacity_dashboard(
         sheet = "DATA"
     today = date.today()
 
-    result, jira_error = get_capacity_dashboard_data(sheet, today)
+    result, jira_error, all_items = get_capacity_dashboard_data(sheet, today)
     by_team = group_by(result, "ops_team")
 
     # 증설 여부(O,X)가 공란이면서 아직 일정도 없는 '진짜 미회신' 대상만 미응답으로 (완료율
     # 분모엔 안 들어가지만 상세 목록엔 같이 보여줌). 일정이 들어온 순간부터는 status_kind가
-    # "target"으로 바뀌어 result["details"]에 정상적으로 이미 포함돼 있다.
-    all_items = load_capacity_items_merged(sheet=sheet)
+    # "target"으로 바뀌어 result["details"]에 정상적으로 이미 포함돼 있다 - 매칭된
+    # [예방4] 티켓이 있어 target으로 승격된 미응답 대상도 마찬가지다.
     excluded_items = [i for i in all_items if i["status_kind"] == "excluded"]
     excluded_cnt = len(excluded_items)
     no_reply_raw = [i for i in all_items if i["status_kind"] == "no_reply"]
@@ -243,16 +265,20 @@ def capacity_remind_preview(
     kind: str = "blank",
 ):
     today = date.today()
-    data_result, data_err = get_capacity_dashboard_data("DATA", today)
-    arch_result, arch_err = get_capacity_dashboard_data("ARCH", today)
+    data_result, data_err, data_items = get_capacity_dashboard_data("DATA", today)
+    arch_result, arch_err, arch_items = get_capacity_dashboard_data("ARCH", today)
     jira_error = data_err or arch_err
     combined_details = data_result["details"] + arch_result["details"]
 
     # 같은 '미계획'이라도 완전 미기입 / 대략적 일정만(예: '11월 예정') 있는 경우를 분리
     blank_groups = group_capacity_unplanned(combined_details, hinted=False)
     hinted_groups = group_capacity_unplanned(combined_details, hinted=True)
-    # 미회신(증설 여부 O/X 자체가 공란)은 대상(O)이 아니라 엑셀 전체 행 기준으로 판단
-    all_items = load_capacity_items_merged(sheet="DATA") + load_capacity_items_merged(sheet="ARCH")
+    # 미회신(증설 여부 O/X 자체가 공란)은 대상(O)이 아니라 엑셀 전체 행 기준으로 판단.
+    # get_capacity_dashboard_data가 돌려준 items를 그대로 쓴다 - 이미 매칭된 [예방4]
+    # 티켓이 있는 미응답 대상은 target으로 승격돼 있어서(회신 없이 조용히 증설한
+    # 경우), 여기서 다시 load_capacity_items_merged를 불러 별도로 판단하면 이미
+    # 처리된 대상한테까지 "회신 안 함" 리마인드가 나가는 문제가 생긴다.
+    all_items = data_items + arch_items
     no_reply_groups = group_capacity_no_reply(all_items)
 
     groups = {"hinted": hinted_groups, "no_reply": no_reply_groups}.get(kind, blank_groups)
@@ -379,7 +405,7 @@ async def api_capacity_diagnose_unmatched(request: Request):
     if sheet not in ("DATA", "ARCH"):
         return JSONResponse({"ok": False, "error": "sheet가 올바르지 않습니다"}, status_code=400)
 
-    result, _ = get_capacity_dashboard_data(sheet, date.today())
+    result, _, _ = get_capacity_dashboard_data(sheet, date.today())
     item = next((d for d in result["details"] if d["item_no"] == item_no), None)
     if not item:
         return JSONResponse({"ok": False, "error": "대상을 찾을 수 없습니다"}, status_code=404)
@@ -442,7 +468,7 @@ async def api_capacity_chat(request: Request):
 def export_capacity_excel(sheet: str = "DATA"):
     """현재 시트의 대상 목록을 엑셀로. 화면에서 보는 값 그대로 담는다."""
     as_of_date = date.today()
-    result, _ = get_capacity_dashboard_data(sheet, as_of_date)
+    result, _, _ = get_capacity_dashboard_data(sheet, as_of_date)
 
     rows = [{
         "NO": d["no"],
@@ -481,7 +507,7 @@ def export_capacity_excel(sheet: str = "DATA"):
 
 @router.get("/capacity/api/summary")
 def api_capacity_summary(sheet: str = "DATA"):
-    result, _ = get_capacity_dashboard_data(sheet, date.today())
+    result, _, _ = get_capacity_dashboard_data(sheet, date.today())
     return {
         "sheet": sheet,
         "as_of": str(result["as_of"]),
