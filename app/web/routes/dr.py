@@ -79,6 +79,7 @@ def dashboard(
     request: Request,
     half: str | None = None,
     team: str | None = None,
+    company: str | None = None,
     status: str | None = None,
     q: str | None = None,
     mode: str | None = None,
@@ -92,6 +93,7 @@ def dashboard(
 
     result, jira_error = get_dashboard_data(half, today, mode=mode)
     by_team = group_by(result, "ops_team")
+    by_company = group_by(result, "company")
 
     # 탭에 표시할 방식별 대수 (필터 적용 전 기준)
     scope_targets = get_dr_targets(dr_data.load_items(half))
@@ -109,6 +111,8 @@ def dashboard(
     details = result["details"]
     if team:
         details = [d for d in details if d["ops_team"] == team]
+    if company:
+        details = [d for d in details if (d.get("company") or "미지정") == company]
 
     # 일정 칸에 'X'로 기입된 항목 = 제외 대상으로 별도 분류 (완료/미완료/미계획 목록에선 제외).
     # 단, 관리자가 웹에서 직접 처리(X 입력+저장)한 경우만 포함한다 — 비관리자가 실수로 입력했거나
@@ -159,25 +163,15 @@ def dashboard(
     evidence_check.annotate(details)
     evidence_warn_cnt = sum(1 for d in details if d.get("evidence_level"))
 
-    # 대상 목록을 관계사별로 나눠서 보여주기 위한 그룹. 위에서 이미 끝난 정렬/필터
-    # 결과를 그대로 순서 유지하며 나누기만 한다 - 그룹 안 순서(상태→일정→이름)는
-    # 그룹을 나누기 전과 똑같다. 그룹 자체는 이름 가나다순, 미기재는 맨 뒤.
-    details_by_company: dict[str, list[dict]] = {}
-    for d in details:
-        details_by_company.setdefault(d.get("company") or "미지정", []).append(d)
-    details_by_company = dict(
-        sorted(details_by_company.items(), key=lambda kv: (kv[0] == "미지정", kv[0]))
-    )
-
     return templates.TemplateResponse("dashboard.html", {
         "request": request,
         "result": result,
         "details": details,
-        "details_by_company": details_by_company,
         "excluded_items": excluded_items,
         "excluded_cnt": excluded_cnt,
         "evidence_warn_cnt": evidence_warn_cnt,
         "by_team": dict(sorted(by_team.items(), key=lambda x: x[1]["rate"])),
+        "by_company": dict(sorted(by_company.items(), key=lambda x: x[1]["rate"])),
         "report_warning": report_warning,
         # 발송 직후에만(sent=1) 방금 나간 본문을 화면에 띄운다
         "sent_report": last_report.get("dr") if sent else "",
@@ -192,6 +186,7 @@ def dashboard(
         "next_week": today + timedelta(days=7),
         "today": today,
         "filter_team": team or "",
+        "filter_company": company or "",
         "filter_status": status or "",
         "q": q or "",
         "teams": sorted(by_team.keys()),
