@@ -546,6 +546,25 @@ tr.clickable { cursor: pointer; }
 .team-link:hover { text-decoration: underline; }
 tr.row-done { background: var(--color-status-success-bg-subtle); }
 
+/* 관계사별 현황 - 관계사 행을 펼치면 업무 서비스별 소계가 나오는 중첩 표.
+   토글 버튼은 행 자체의 클릭(필터 이동)과 분리되어 있어(stopPropagation),
+   버튼 클릭만 이 화살표를 돌린다. */
+.row-toggle {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 24px; min-height: 24px;
+  background: none; border: none; cursor: pointer;
+  color: var(--color-text-tertiary); font-size: var(--text-sm); line-height: 1;
+  transition: transform 150ms var(--ease-out);
+}
+.row-toggle:hover { color: var(--color-text-secondary); }
+tr.service-breakdown-row > td { padding: 4px 10px 12px 34px; border-bottom: 1px solid var(--color-divider); }
+table.nested {
+  background: var(--color-bg-subtle); border-radius: 8px; overflow: hidden;
+}
+table.nested th, table.nested td { padding: 6px 10px; font-size: var(--text-sm); }
+table.nested th { background: transparent; }
+table.nested tbody tr:last-child td { border-bottom: none; }
+
 table.editable td { padding: 5px 6px; }
 
 /* ══ 대형 편집 표 (DR훈련·용량관리·EoS 대상 목록) ══
