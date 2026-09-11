@@ -265,16 +265,20 @@ def capacity_remind_preview(
     kind: str = "blank",
 ):
     today = date.today()
-    data_result, data_err, _ = get_capacity_dashboard_data("DATA", today)
-    arch_result, arch_err, _ = get_capacity_dashboard_data("ARCH", today)
+    data_result, data_err, data_items = get_capacity_dashboard_data("DATA", today)
+    arch_result, arch_err, arch_items = get_capacity_dashboard_data("ARCH", today)
     jira_error = data_err or arch_err
     combined_details = data_result["details"] + arch_result["details"]
 
     # 같은 '미계획'이라도 완전 미기입 / 대략적 일정만(예: '11월 예정') 있는 경우를 분리
     blank_groups = group_capacity_unplanned(combined_details, hinted=False)
     hinted_groups = group_capacity_unplanned(combined_details, hinted=True)
-    # 미회신(증설 여부 O/X 자체가 공란)은 대상(O)이 아니라 엑셀 전체 행 기준으로 판단
-    all_items = load_capacity_items_merged(sheet="DATA") + load_capacity_items_merged(sheet="ARCH")
+    # 미회신(증설 여부 O/X 자체가 공란)은 대상(O)이 아니라 엑셀 전체 행 기준으로 판단.
+    # get_capacity_dashboard_data가 돌려준 items를 그대로 쓴다 - 이미 매칭된 [예방4]
+    # 티켓이 있는 미응답 대상은 target으로 승격돼 있어서(회신 없이 조용히 증설한
+    # 경우), 여기서 다시 load_capacity_items_merged를 불러 별도로 판단하면 이미
+    # 처리된 대상한테까지 "회신 안 함" 리마인드가 나가는 문제가 생긴다.
+    all_items = data_items + arch_items
     no_reply_groups = group_capacity_no_reply(all_items)
 
     groups = {"hinted": hinted_groups, "no_reply": no_reply_groups}.get(kind, blank_groups)
