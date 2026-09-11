@@ -111,6 +111,27 @@
     </table>
   </details>
 
+  <!-- 업무 서비스별 -->
+  <details class="panel">
+    <summary><h2>업무 서비스별 현황</h2></summary>
+    <table>
+      <thead>
+        <tr><th scope="col">업무 서비스</th><th scope="col">완료</th><th scope="col">전체</th><th scope="col">완료율</th><th scope="col" style="width:35%">진행</th></tr>
+      </thead>
+      <tbody>
+      {% for service, v in by_business.items() %}
+        <tr class="clickable" onclick="location.href='/dr?half={{ half }}&service={{ service }}'">
+          <td><a class="team-link" href="/dr?half={{ half }}&service={{ service }}">{{ service }}</a></td>
+          <td>{{ v.done }}</td>
+          <td>{{ v.total }}</td>
+          <td class="{% if v.rate == 100 %}ok{% elif v.rate >= 50 %}mid{% else %}bad{% endif %}">{{ v.rate }}%</td>
+          <td><div class="progress sm"><div class="bar" style="width: {{ v.rate }}%"></div></div></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </details>
+
   <!-- 상세 목록 (편집 가능) -->
   <section class="panel">
     <div class="panel-head">
@@ -124,7 +145,7 @@
           <button type="submit" class="btn-sm">검색</button>
         </form>
         <div class="filters">
-          <a href="/dr?half={{ half }}{{ mode_qs }}" class="chip {% if not filter_status and not filter_team and not filter_company %}active{% endif %}">전체</a>
+          <a href="/dr?half={{ half }}{{ mode_qs }}" class="chip {% if not filter_status and not filter_team and not filter_company and not filter_service %}active{% endif %}">전체</a>
           <a href="/dr?half={{ half }}{{ mode_qs }}&status=pending" class="chip {% if filter_status == 'pending' %}active{% endif %}">미완료 {{ result.total - result.done }}</a>
           <a href="/dr?half={{ half }}{{ mode_qs }}&status=scheduled" class="chip {% if filter_status == 'scheduled' %}active{% endif %}">예정 {{ result.scheduled }}</a>
           <a href="/dr?half={{ half }}{{ mode_qs }}&status=overdue" class="chip {% if filter_status == 'overdue' %}active{% endif %}">지연 {{ result.overdue }}</a>

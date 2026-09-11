@@ -80,6 +80,7 @@ def dashboard(
     half: str | None = None,
     team: str | None = None,
     company: str | None = None,
+    service: str | None = None,
     status: str | None = None,
     q: str | None = None,
     mode: str | None = None,
@@ -94,6 +95,7 @@ def dashboard(
     result, jira_error = get_dashboard_data(half, today, mode=mode)
     by_team = group_by(result, "ops_team")
     by_company = group_by(result, "company")
+    by_business = group_by(result, "business_name")
 
     # 탭에 표시할 방식별 대수 (필터 적용 전 기준)
     scope_targets = get_dr_targets(dr_data.load_items(half))
@@ -113,6 +115,8 @@ def dashboard(
         details = [d for d in details if d["ops_team"] == team]
     if company:
         details = [d for d in details if (d.get("company") or "미지정") == company]
+    if service:
+        details = [d for d in details if (d.get("business_name") or "미지정") == service]
 
     # 일정 칸에 'X'로 기입된 항목 = 제외 대상으로 별도 분류 (완료/미완료/미계획 목록에선 제외).
     # 단, 관리자가 웹에서 직접 처리(X 입력+저장)한 경우만 포함한다 — 비관리자가 실수로 입력했거나
@@ -172,6 +176,7 @@ def dashboard(
         "evidence_warn_cnt": evidence_warn_cnt,
         "by_team": dict(sorted(by_team.items(), key=lambda x: x[1]["rate"])),
         "by_company": dict(sorted(by_company.items(), key=lambda x: x[1]["rate"])),
+        "by_business": dict(sorted(by_business.items(), key=lambda x: x[1]["rate"])),
         "report_warning": report_warning,
         # 발송 직후에만(sent=1) 방금 나간 본문을 화면에 띄운다
         "sent_report": last_report.get("dr") if sent else "",
@@ -187,6 +192,7 @@ def dashboard(
         "today": today,
         "filter_team": team or "",
         "filter_company": company or "",
+        "filter_service": service or "",
         "filter_status": status or "",
         "q": q or "",
         "teams": sorted(by_team.keys()),
