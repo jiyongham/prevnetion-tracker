@@ -95,7 +95,24 @@ def dashboard(
     result, jira_error = get_dashboard_data(half, today, mode=mode)
     by_team = group_by(result, "ops_team")
     by_company = group_by(result, "company")
-    by_business = group_by(result, "business_name")
+
+    # 관계사별 현황 안에 업무 서비스별 세부 집계도 같이 넣는다 (관계사 하나에
+    # 여러 업무 서비스가 걸릴 수 있어, 관계사 행을 펼치면 그 안에서 서비스별
+    # 소계를 본다) - group_by는 완료/전체만 보고 pending 목록은 따로 담는
+    # 1단계 집계라 이런 중첩엔 안 맞아서 여기서 따로 만든다.
+    company_services: dict[str, dict[str, dict]] = {}
+    for d in result["details"]:
+        c = d.get("company") or "미지정"
+        s = d.get("business_name") or "미지정"
+        bucket = company_services.setdefault(c, {}).setdefault(s, {"total": 0, "done": 0})
+        bucket["total"] += 1
+        if d["completed"]:
+            bucket["done"] += 1
+    for c, services in company_services.items():
+        for v in services.values():
+            v["rate"] = round(v["done"] / v["total"] * 100) if v["total"] else 0
+        # 서비스는 이름 가나다순 (바깥 관계사 목록은 완료율순 - 안쪽은 훑어보기 쉬운 순서가 낫다)
+        company_services[c] = dict(sorted(services.items()))
 
     # 탭에 표시할 방식별 대수 (필터 적용 전 기준)
     scope_targets = get_dr_targets(dr_data.load_items(half))
@@ -176,7 +193,7 @@ def dashboard(
         "evidence_warn_cnt": evidence_warn_cnt,
         "by_team": dict(sorted(by_team.items(), key=lambda x: x[1]["rate"])),
         "by_company": dict(sorted(by_company.items(), key=lambda x: x[1]["rate"])),
-        "by_business": dict(sorted(by_business.items(), key=lambda x: x[1]["rate"])),
+        "company_services": company_services,
         "report_warning": report_warning,
         # 발송 직후에만(sent=1) 방금 나간 본문을 화면에 띄운다
         "sent_report": last_report.get("dr") if sent else "",

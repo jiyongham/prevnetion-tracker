@@ -90,42 +90,45 @@
     </table>
   </details>
 
-  <!-- 관계사별 -->
+  <!-- 관계사별 (행을 펼치면 그 관계사 안 업무 서비스별 소계가 나온다) -->
   <details class="panel">
     <summary><h2>관계사별 현황</h2></summary>
     <table>
       <thead>
-        <tr><th scope="col">관계사</th><th scope="col">완료</th><th scope="col">전체</th><th scope="col">완료율</th><th scope="col" style="width:35%">진행</th></tr>
+        <tr><th scope="col" style="width:28px"></th><th scope="col">관계사</th><th scope="col">완료</th><th scope="col">전체</th><th scope="col">완료율</th><th scope="col" style="width:35%">진행</th></tr>
       </thead>
       <tbody>
       {% for company, v in by_company.items() %}
         <tr class="clickable" onclick="location.href='/dr?half={{ half }}&company={{ company }}'">
+          <td>
+            <button type="button" class="row-toggle" aria-expanded="false" aria-controls="svc-{{ loop.index }}"
+                    title="업무 서비스별 펼치기" onclick="event.stopPropagation(); toggleServiceBreakdown(this)">▸</button>
+          </td>
           <td><a class="team-link" href="/dr?half={{ half }}&company={{ company }}">{{ company }}</a></td>
           <td>{{ v.done }}</td>
           <td>{{ v.total }}</td>
           <td class="{% if v.rate == 100 %}ok{% elif v.rate >= 50 %}mid{% else %}bad{% endif %}">{{ v.rate }}%</td>
           <td><div class="progress sm"><div class="bar" style="width: {{ v.rate }}%"></div></div></td>
         </tr>
-      {% endfor %}
-      </tbody>
-    </table>
-  </details>
-
-  <!-- 업무 서비스별 -->
-  <details class="panel">
-    <summary><h2>업무 서비스별 현황</h2></summary>
-    <table>
-      <thead>
-        <tr><th scope="col">업무 서비스</th><th scope="col">완료</th><th scope="col">전체</th><th scope="col">완료율</th><th scope="col" style="width:35%">진행</th></tr>
-      </thead>
-      <tbody>
-      {% for service, v in by_business.items() %}
-        <tr class="clickable" onclick="location.href='/dr?half={{ half }}&service={{ service }}'">
-          <td><a class="team-link" href="/dr?half={{ half }}&service={{ service }}">{{ service }}</a></td>
-          <td>{{ v.done }}</td>
-          <td>{{ v.total }}</td>
-          <td class="{% if v.rate == 100 %}ok{% elif v.rate >= 50 %}mid{% else %}bad{% endif %}">{{ v.rate }}%</td>
-          <td><div class="progress sm"><div class="bar" style="width: {{ v.rate }}%"></div></div></td>
+        <tr class="service-breakdown-row hidden" id="svc-{{ loop.index }}">
+          <td></td>
+          <td colspan="5">
+            <table class="nested">
+              <thead>
+                <tr><th scope="col">업무 서비스</th><th scope="col">완료</th><th scope="col">전체</th><th scope="col">완료율</th></tr>
+              </thead>
+              <tbody>
+              {% for service, sv in company_services.get(company, {}).items() %}
+                <tr class="clickable" onclick="location.href='/dr?half={{ half }}&company={{ company }}&service={{ service }}'">
+                  <td><a class="team-link" href="/dr?half={{ half }}&company={{ company }}&service={{ service }}">{{ service }}</a></td>
+                  <td>{{ sv.done }}</td>
+                  <td>{{ sv.total }}</td>
+                  <td class="{% if sv.rate == 100 %}ok{% elif sv.rate >= 50 %}mid{% else %}bad{% endif %}">{{ sv.rate }}%</td>
+                </tr>
+              {% endfor %}
+              </tbody>
+            </table>
+          </td>
         </tr>
       {% endfor %}
       </tbody>
@@ -369,6 +372,16 @@ function showMainTab() {
   document.querySelectorAll(".tabs a.tab").forEach(t => {
     t.classList.toggle("active", t.dataset.modeActive === "1");
   });
+}
+
+// 관계사별 현황 - 행을 펼치면 그 관계사 안 업무 서비스별 소계가 나온다.
+// 행 자체는 눌러도 필터로 이동하므로(location.href), 펼치기 버튼은 stopPropagation으로 분리한다.
+function toggleServiceBreakdown(btn) {
+  const row = document.getElementById(btn.getAttribute("aria-controls"));
+  const opening = row.classList.contains("hidden");
+  row.classList.toggle("hidden", !opening);
+  btn.setAttribute("aria-expanded", opening ? "true" : "false");
+  btn.textContent = opening ? "▾" : "▸";
 }
 
 // 변경 저장 시 입력자명 2글자 이상 필수
