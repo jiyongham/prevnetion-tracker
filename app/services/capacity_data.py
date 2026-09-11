@@ -21,8 +21,10 @@ import threading
 import time
 
 from app.config import settings
+from app.core.capacity_loader import load_capacity_items_merged
 from app.core.jira_client import jira
-from app.services.capacity import build_capacity_ticket_summary
+from app.services.capacity import build_capacity_ticket_summary, filter_tickets_by_sheet
+from app.services.matcher import match_items_by_ip
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +116,51 @@ def get_tickets(use_jira: bool = True, force_refresh: bool = False) -> tuple[lis
         if entry_value is not None and entry_at >= requested_at:
             return entry_value
         return _refresh()
+
+
+def get_matched_items(
+    sheet: str, use_jira: bool = True, force_refresh: bool = False
+) -> tuple[list[dict], dict, str | None]:
+    """
+    엑셀+DB 병합 + JIRA 티켓 매칭 + 미응답 대상 target 승격까지 한 번에 처리한다.
+
+    대시보드("/capacity")와 리포트(capacity_report.py) 양쪽이 이 로직을 각자 따로
+    구현하고 있었는데, "미응답이어도 매칭된 [예방4] 티켓이 있으면 target으로 승격"을
+    한쪽에만 넣었더니 리포트 본문의 "증설 예정/미회신 대수"가 계속 승격 전 숫자로
+    화면과 어긋났다. 이 함수 하나로 합쳐 양쪽이 항상 같은 결과를 쓰게 한다.
+
+    반환: (items, ticket_map, jira_error). items는 승격 반영 후 전체 목록
+    (제외/미응답 포함) - 시트별 대상/제외/미응답 구성은 여기서 이미 확정된다.
+    """
+    items = load_capacity_items_merged(sheet=sheet)
+    ticket_map = {}
+    jira_error = None
+
+    if use_jira:
+        tickets, jira_error = get_tickets(force_refresh=force_refresh)
+        targets = [i for i in items if i["is_target"]]
+        match_result = match_items_by_ip(targets, tickets)
+        # 같은 서버가 DATA/ARCH 양쪽에 다 있을 수 있어, 변경작업내용으로 이 시트 소속만 남김
+        ticket_map = filter_tickets_by_sheet(match_result["matched"], sheet)
+
+        # 미응답(증설 여부 O/X 미기입) 대상도 매칭된 [예방4] 티켓이 있으면 target으로
+        # 승격한다. 담당자가 회신 없이 그냥 증설해버리는 경우가 실제로 있어서(예:
+        # 메시징서비스 서버) - "회신이 없다"와 "증설을 안 했다"는 다르다. 실제 증설
+        # 티켓이 있다는 사실 자체가 증설 여부를 확정하는 근거다. 승격 후엔 다른 target과
+        # 완전히 같은 기준(judge_capacity)으로 완료 여부를 판단하므로, 티켓만 있고 아직
+        # 진행 중이면 "미완료"로 뜨고 무조건 완료 처리되는 건 아니다.
+        no_reply = [i for i in items if i["status_kind"] == "no_reply"]
+        if no_reply:
+            no_reply_match = match_items_by_ip(no_reply, tickets)["matched"]
+            no_reply_ticket_map = filter_tickets_by_sheet(no_reply_match, sheet)
+            for item in no_reply:
+                matched = no_reply_ticket_map.get(item["no"])
+                if matched:
+                    item["is_target"] = True
+                    item["status_kind"] = "target"
+                    ticket_map[item["no"]] = matched
+
+    return items, ticket_map, jira_error
 
 
 def prewarm() -> None:
