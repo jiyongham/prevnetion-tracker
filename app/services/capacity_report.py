@@ -2,20 +2,12 @@
 from datetime import date
 
 from app.config import settings
-from app.core.capacity_loader import load_capacity_items_merged
 from app.core.date_utils import week_ranges
-from app.core.jira_client import jira
 from app.core.teams_client import send_teams_message
-from app.services import last_report
-from app.services.capacity import (
-    build_capacity_ticket_summary,
-    calc_capacity_completion,
-    capacity_ticket_done_date,
-    filter_tickets_by_sheet,
-)
+from app.services import capacity_data, last_report
+from app.services.capacity import calc_capacity_completion, capacity_ticket_done_date
 from app.services.ai_summary import generate_weekly_summary
 from app.services.completion import fmt_rate, group_by
-from app.services.matcher import match_items_by_ip
 from app.services.report_check import check_report, record_sent
 
 
@@ -41,17 +33,16 @@ def _projected_done(result: dict, ticket_map: dict, today: date, cutoff: date) -
 
 
 def collect_capacity(sheet: str, use_jira: bool = True):
-    items = load_capacity_items_merged(sheet=sheet)
-    ticket_map = {}
-    if use_jira:
-        try:
-            issues = jira.get_capacity_tickets()
-            tickets = build_capacity_ticket_summary(issues, settings.planned_end_date_field)
-            targets = [i for i in items if i["is_target"]]
-            match_result = match_items_by_ip(targets, tickets)
-            ticket_map = filter_tickets_by_sheet(match_result["matched"], sheet)
-        except Exception as e:
-            print(f"⚠️ 용량관리 JIRA 조회 실패 (엑셀 기준으로 계속): {e}")
+    """
+    엑셀 병합 + 티켓 매칭 + 미응답 target 승격은 대시보드("/capacity")와 똑같이
+    capacity_data.get_matched_items()를 그대로 쓴다 - 예전엔 여기서 따로 구현해서
+    (엑셀+DB 병합만 하고 티켓 매칭·미응답 승격을 자체적으로 재구현), "미응답이어도
+    매칭된 [예방4] 티켓 있으면 target 승격" 로직을 대시보드에만 넣었더니 리포트
+    본문의 "증설 예정/미회신 대수"가 계속 승격 전 숫자로 화면과 어긋났다.
+    """
+    items, ticket_map, jira_error = capacity_data.get_matched_items(sheet, use_jira)
+    if jira_error:
+        print(f"⚠️ 용량관리 JIRA 조회 실패 (엑셀 기준으로 계속): {jira_error}")
     return items, ticket_map
 
 
