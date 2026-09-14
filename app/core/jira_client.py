@@ -4,6 +4,7 @@ import logging
 
 import requests
 from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -23,8 +24,18 @@ class JiraClient:
             "Authorization": f"Bearer {settings.jira_pat}",
             "Accept": "application/json",
         })
-        # CMDB(Insight) 병렬 조회(ThreadPoolExecutor)가 동시에 여러 연결을 쓰므로 풀을 넉넉히 잡는다
-        adapter = HTTPAdapter(pool_connections=20, pool_maxsize=20)
+        # CMDB(Insight) 병렬 조회(ThreadPoolExecutor)가 동시에 여러 연결을 쓰므로 풀을 넉넉히 잡는다.
+        # 재시도는 없었다 - 사내망에서 가끔 있는 순간적인 접속 끊김(connection reset,
+        # TCP 핸드셰이크 실패 등) 한 번에도 곧바로 "Max retries exceeded"로 실패 처리돼서,
+        # 정작 몇 초 뒤엔 멀쩡히 붙는 상황도 전부 장애로 잡혔다. GET만(멱등) 몇 번 더
+        # 시도하도록 재시도를 붙인다.
+        retry = Retry(
+            total=3, connect=3, read=2,
+            backoff_factor=0.5,   # 0.5초 -> 1초 -> 2초 간격으로 최대 3번
+            status_forcelist=(502, 503, 504),
+            allowed_methods=frozenset(["GET"]),
+        )
+        adapter = HTTPAdapter(pool_connections=20, pool_maxsize=20, max_retries=retry)
         self.session.mount("https://", adapter)
         self.session.mount("http://", adapter)
 

@@ -11,6 +11,8 @@ CMDB(JIRA Insight)는 작업자가 늦게 반영하는 경우가 있어 Polestar
   (문서화된 엔드포인트/응답 필드에 없음). 그래서 호스트명 대신 IP를 조인 키로 쓴다.
 """
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 from app.config import settings
 
@@ -20,6 +22,17 @@ class PolestarClient:
         self.base_url = settings.polestar_url.rstrip("/")
         self.session = requests.Session()
         self.session.headers.update({"Accept": "application/json"})
+        # 사내망에서 가끔 있는 순간적인 접속 끊김 한 번에도 곧바로 실패 처리되던 것을
+        # 완화한다 (jira_client.py와 같은 이유/설정) - 조회(GET)만 몇 번 더 재시도.
+        retry = Retry(
+            total=3, connect=3, read=2,
+            backoff_factor=0.5,
+            status_forcelist=(502, 503, 504),
+            allowed_methods=frozenset(["GET"]),
+        )
+        adapter = HTTPAdapter(max_retries=retry)
+        self.session.mount("https://", adapter)
+        self.session.mount("http://", adapter)
 
     def login(self) -> bool:
         """인터페이스 정의서 규격의 로그인. 조회 API가 열려 있어 평소엔 호출하지 않는다."""
