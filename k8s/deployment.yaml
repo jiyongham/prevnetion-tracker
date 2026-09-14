@@ -29,11 +29,33 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /app/data
+          # 제한이 없으면 한순간 메모리를 과하게 써도 kubelet이 못 잡아채고, kind처럼
+          # 클러스터 전체가 컨테이너 하나(kindest/node)에 들어있는 로컬 환경에서는
+          # 그게 호스트 메모리 압박으로 번져 노드(=클러스터 전체) 자체가 죽는 사고로
+          # 이어질 수 있다. requests는 평소 사용량, limits는 이 값을 넘으면 파드만
+          # OOMKilled로 재시작되게 하는 안전판 - 노드 전체가 아니라 이 파드 선에서 끊는다.
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
           readinessProbe:
             httpGet:
               path: /health
               port: 8000
             initialDelaySeconds: 3
+          # readinessProbe만 있으면 프로세스가 죽지 않고 내부적으로 멈춰(deadlock 등)
+          # 응답을 안 하는 경우, 트래픽만 안 보낼 뿐 재시작은 안 된다. liveness를 추가해
+          # 그런 경우엔 kubelet이 컨테이너를 재시작하게 한다.
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            failureThreshold: 3
       volumes:
         - name: data
           persistentVolumeClaim:
