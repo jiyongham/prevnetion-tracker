@@ -6,11 +6,24 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
-  ci:
+  pr-checks:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Gitleaks secret scan
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}:/repo" \
+            zricethezav/gitleaks:latest \
+            git /repo --exit-code 1 --verbose
 
       - uses: actions/setup-python@v5
         with:
@@ -28,23 +41,24 @@ jobs:
       - name: Python syntax check
         run: python -m compileall -q app
 
-      - name: Docker build check
-        run: docker build -t dr-tracker:ci .
+      - name: Run pip-audit
+        run: |
+          pip install pip-audit
+          pip-audit -r requirements.txt
 
-  security:
-    name: Security Scan
+      - name: Trivy config scan
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: 'config'
+          scan-ref: '.'
+          format: 'table'
+          severity: 'HIGH,CRITICAL'
+          exit-code: '1'
+
+  image-scan:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Gitleaks secret scan
-        run: |
-          docker run --rm \
-            -v "${{ github.workspace }}:/repo" \
-            zricethezav/gitleaks:latest \
-            git /repo --exit-code 1 --verbose
 
       - name: Build Docker image for scanning
         run: docker build -t dr-tracker:ci .
@@ -59,7 +73,7 @@ jobs:
           ignore-unfixed: true
 
   deploy:
-    needs: [ci, security]
+    needs: [pr-checks, image-scan]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: self-hosted
     env:
@@ -68,11 +82,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build image
-        run: docker build -t dr-tracker:local .
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Load image into kind
-        run: kind load docker-image dr-tracker:local --name dr-tracker
+      - name: Build image
+        run: docker build -t ghcr.io/jiyongham/prevention-tracker:latest -t ghcr.io/jiyongham/prevention-tracker:${{ github.sha }} .
+
+      - name: Push image to ghcr.io
+        run: |
+          docker push ghcr.io/jiyongham/prevention-tracker:latest
+          docker push ghcr.io/jiyongham/prevention-tracker:${{ github.sha }}
+
+      - name: Create/update ghcr.io pull secret
+        run: |
+          kubectl -n dr-tracker create secret docker-registry ghcr-pull-secret \
+            --docker-server=ghcr.io \
+            --docker-username=${{ github.actor }} \
+            --docker-password=${{ secrets.GITHUB_TOKEN }} \
+            --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Rollout restart
         run: kubectl -n dr-tracker rollout restart deployment/dr-tracker

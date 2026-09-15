@@ -184,7 +184,7 @@ def dashboard(
     evidence_check.annotate(details)
     evidence_warn_cnt = sum(1 for d in details if d.get("evidence_level"))
 
-    return templates.TemplateResponse("dashboard.html", {
+    return templates.TemplateResponse(request, "dashboard.html", {
         "request": request,
         "result": result,
         "details": details,
@@ -360,7 +360,7 @@ def save_schedule(
 @router.get("/logs", response_class=HTMLResponse)
 def view_logs(request: Request, item_no: str | None = None):
     logs = get_logs(item_no=item_no, limit=200)
-    return templates.TemplateResponse("logs.html", {
+    return templates.TemplateResponse(request, "logs.html", {
         "request": request,
         "logs": logs,
         "item_no": item_no or "",
@@ -402,7 +402,7 @@ def remind_preview(
     if service:
         selected = next((g for g in groups if g["service"] == service), None)
 
-    return templates.TemplateResponse("remind_preview.html", {
+    return templates.TemplateResponse(request, "remind_preview.html", {
         "request": request,
         "half": half,
         "half_label": "상반기" if half == "H1" else "하반기",
@@ -469,7 +469,7 @@ def owner_check(request: Request, half: str | None = None):
     targets, ticket_map, jira_error = collect_targets_with_tickets(half)
     candidates = find_owner_mismatches(targets, ticket_map)
 
-    return templates.TemplateResponse("owner_check.html", {
+    return templates.TemplateResponse(request, "owner_check.html", {
         "request": request,
         "half": half,
         "half_label": "상반기" if half == "H1" else "하반기",

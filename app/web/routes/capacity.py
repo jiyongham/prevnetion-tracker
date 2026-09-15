@@ -109,7 +109,7 @@ def capacity_dashboard(
 
     details = sorted(details, key=lambda d: (d["schedule"] is None, d["schedule"]))
 
-    return templates.TemplateResponse("capacity.html", {
+    return templates.TemplateResponse(request, "capacity.html", {
         "request": request,
         "result": result,
         "details": details,
@@ -264,7 +264,7 @@ def capacity_remind_preview(
     if team:
         selected = next((g for g in groups if g["ops_team"] == team), None)
 
-    return templates.TemplateResponse("capacity_remind_preview.html", {
+    return templates.TemplateResponse(request, "capacity_remind_preview.html", {
         "request": request,
         "kind": kind,
         "groups": groups,
@@ -322,7 +322,7 @@ def capacity_owner_check(request: Request, sheet: str = "DATA"):
     targets, ticket_map, jira_error = collect_capacity_targets_with_tickets(sheet)
     candidates = find_owner_mismatches(targets, ticket_map)
 
-    return templates.TemplateResponse("capacity_owner_check.html", {
+    return templates.TemplateResponse(request, "capacity_owner_check.html", {
         "request": request,
         "sheet": sheet,
         "sheet_label": "DATA (ASM/파일시스템)" if sheet == "DATA" else "ARCH (아카이브)",

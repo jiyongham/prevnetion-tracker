@@ -124,7 +124,7 @@ def eos_dashboard(
         if i["status"] == "excluded" and i.get("input_source") == "web"
     ]
 
-    return templates.TemplateResponse("eos.html", {
+    return templates.TemplateResponse(request, "eos.html", {
         "request": request,
         "result": result,
         "details": details,
@@ -248,7 +248,7 @@ def eos_remind_preview(
     if team:
         selected = next((g for g in groups if g["ops_team"] == team), None)
 
-    return templates.TemplateResponse("eos_remind_preview.html", {
+    return templates.TemplateResponse(request, "eos_remind_preview.html", {
         "request": request,
         "kind": kind,
         "groups": groups,
@@ -291,7 +291,7 @@ def eos_owner_check(request: Request):
     targets, ticket_map, jira_error = collect_eos_targets_with_tickets()
     candidates = find_owner_mismatches(targets, ticket_map)
 
-    return templates.TemplateResponse("eos_owner_check.html", {
+    return templates.TemplateResponse(request, "eos_owner_check.html", {
         "request": request,
         "candidates": candidates,
         "jira_error": jira_error,
@@ -364,7 +364,7 @@ def eos_plan_chat_page(request: Request):
             for item_no, row in saved.items()
         ]
 
-    return templates.TemplateResponse("eos_plan_chat.html", {
+    return templates.TemplateResponse(request, "eos_plan_chat.html", {
         "request": request,
         "plan_start": plan_start,
         "plan_end": plan_end,
