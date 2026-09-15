@@ -1,0 +1,5 @@
+# 테스트 전용 의존성 (운영 배포 이미지에는 포함하지 않는다)
+# requirements.txt 와 별도로 관리 - pip install -r requirements.txt -r requirements-dev.txt
+-r requirements.txt
+pytest==8.3.3
+httpx==0.27.2        # FastAPI TestClient가 내부적으로 사용 (starlette.testclient 의존성)
