@@ -119,7 +119,7 @@ def portal_home(request: Request):
             "error": error,
         })
 
-    return templates.TemplateResponse("portal.html", {
+    return templates.TemplateResponse(request, "portal.html", {
         "request": request,
         "modules": modules,
         "as_of": today,
