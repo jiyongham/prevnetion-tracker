@@ -17,10 +17,12 @@ spec:
       labels:
         app: dr-tracker
     spec:
+      imagePullSecrets:
+        - name: ghcr-pull-secret
       containers:
         - name: dr-tracker
-          image: dr-tracker:local
-          imagePullPolicy: IfNotPresent   # kind load로 넣은 로컬 이미지를 그대로 사용
+          image: ghcr.io/jiyongham/prevention-tracker:latest
+          imagePullPolicy: Always   # 레지스트리에서 최신 이미지를 매번 pull받기 위해 Always 사용 - latest 태그는 IfNotPresent로는 캐시된 옛 이미지를 계속 쓰게 됨
           ports:
             - containerPort: 8000
           envFrom:

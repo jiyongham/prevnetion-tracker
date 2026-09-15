@@ -109,7 +109,7 @@ def kernel_dashboard(
     # 계획 수립의 첫 질문이 된다 (진척률만으로는 안 보이는 정보).
     by_os = group_by(result, "os")
 
-    return templates.TemplateResponse("kernel.html", {
+    return templates.TemplateResponse(request, "kernel.html", {
         "request": request,
         "result": result,
         "details": details,
@@ -223,7 +223,7 @@ def kernel_owner_check(request: Request, scope: str | None = None):
     targets = collect_kernel_targets(scope)
     candidates = find_owner_mismatches(targets, {}, use_ops_team_fallback=True)
 
-    return templates.TemplateResponse("kernel_owner_check.html", {
+    return templates.TemplateResponse(request, "kernel_owner_check.html", {
         "request": request,
         "candidates": candidates,
         "checked": len(targets),
