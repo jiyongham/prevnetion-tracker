@@ -30,7 +30,11 @@
 from fastapi.testclient import TestClient
 
 from app.core import jira_client, polestar_client
-from app.services import owner_check
+from app.services import capacity_data, dr_data, eos_data, owner_check
+from app.web.routes import capacity as capacity_routes
+from app.web.routes import dr as dr_routes
+from app.web.routes import eos as eos_routes
+from app.web.routes import kernel as kernel_routes
 from app.main import app
 
 # 500 에러 응답 본문에서 이번 버그 계열(포지셔널 인자 밀림)을 잡기 위한 문자열.
@@ -79,6 +83,49 @@ def _apply_no_network_patches(monkeypatch):
     monkeypatch.setattr(jira_client.jira, "search", _fake_search)
     monkeypatch.setattr(polestar_client.polestar, "list_resources", lambda resource_type="all": [])
     monkeypatch.setattr(owner_check, "get_server_assets", lambda hostnames: {})
+
+    # 저장소에 포함되지 않는 운영 엑셀(data/*.xlsx)에 기대지 않고도 템플릿 경로를
+    # 끝까지 실행할 수 있도록, 각 도메인의 데이터 경계를 빈 테스트 데이터로 바꾼다.
+    monkeypatch.setattr(dr_data, "load_items", lambda half: [])
+    monkeypatch.setattr(
+        dr_data,
+        "get_ticket_map",
+        lambda half, items, use_jira=True: ({}, None),
+    )
+    monkeypatch.setattr(dr_routes, "load_dr_items_merged", lambda half="H2": [])
+    monkeypatch.setattr(
+        dr_routes,
+        "collect_targets_with_tickets",
+        lambda half, use_jira=True: ([], {}, None),
+    )
+    monkeypatch.setattr(
+        capacity_data,
+        "get_matched_items",
+        lambda sheet, use_jira=True: ([], {}, None),
+    )
+    monkeypatch.setattr(
+        capacity_routes,
+        "collect_capacity_targets_with_tickets",
+        lambda sheet, use_jira=True: ([], {}, None),
+    )
+
+    empty_eos_data = lambda use_external=True: ([], {}, set(), None)
+    monkeypatch.setattr(eos_data, "get_eos_data", empty_eos_data)
+    monkeypatch.setattr(eos_routes, "get_eos_data", empty_eos_data)
+    monkeypatch.setattr(eos_routes, "load_eos_items_merged", lambda: [])
+    monkeypatch.setattr(
+        eos_routes,
+        "collect_eos_targets_with_tickets",
+        lambda use_jira=True: ([], {}, None),
+    )
+
+    monkeypatch.setattr(kernel_routes, "available_scopes", lambda: [])
+    monkeypatch.setattr(kernel_routes, "collect_kernel_targets", lambda scope="dev": [])
+    monkeypatch.setattr(
+        kernel_routes,
+        "load_kernel_items_merged",
+        lambda scope="dev": [],
+    )
 
 
 def test_all_template_routes_render_without_500(monkeypatch):
