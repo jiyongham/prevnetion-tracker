@@ -79,12 +79,23 @@ def _collect_external(targets: list[dict]) -> tuple[dict, dict[str, dict], str |
     p_error = None
     try:
         current = confirmed_reasons(targets)
-        added = record_eos_polestar_seen(current)
-        if added:
-            logger.info(f"Polestar '_OLD' 신규 확인 {added}건 기록")
     except Exception as e:
         p_error = str(e)
         logger.warning(f"Polestar 조회 실패 (기록된 관측으로 계속): {e}")
+
+    if current is not None:
+        try:
+            added = record_eos_polestar_seen(current)
+            if added:
+                logger.info(f"Polestar '_OLD' 신규 확인 {added}건 기록")
+        except Exception as e:
+            # 조회(네트워크) 자체는 됐는데 기록(로컬 DB 쓰기)만 실패한 경우 - 위
+            # p_error와 뭉뚱그리면 "Polestar 조회 실패"로 떠서 Polestar 서버 문제처럼
+            # 보이지만, 실은 로컬 SQLite 파일/디렉터리가 읽기 전용이 됐다든지 하는
+            # 완전히 다른 원인이다. 이번 조회 결과 자체는 정상이라 화면엔 그대로 반영하고
+            # (아래 merge_polestar_latch에 current를 넘김), 기록만 못 남겼다고 알린다.
+            p_error = f"Polestar 관측 기록 저장 실패 (조회는 정상, 이번 결과만 반영됨): {e}"
+            logger.warning(f"Polestar '_OLD' 관측 기록 저장 실패 (조회는 정상): {e}")
 
     return ticket_map, merge_polestar_latch(current), jira_error, p_error
 
