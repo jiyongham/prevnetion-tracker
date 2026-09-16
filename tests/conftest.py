@@ -50,3 +50,14 @@ def _dummy_settings_env():
     missing = [k for k in _DUMMY_ENV if k not in os.environ]
     assert not missing, f"더미 환경변수 누락: {missing}"
     yield
+
+
+@pytest.fixture(autouse=True)
+def _isolated_test_database(tmp_path, monkeypatch):
+    """각 테스트가 운영 DB나 저장소의 data/ 디렉터리에 의존하지 않게 한다."""
+    from app.models import db
+
+    test_db = tmp_path / "tracker.db"
+    monkeypatch.setattr(db, "DB_PATH", test_db)
+    db.init_db()
+    yield
