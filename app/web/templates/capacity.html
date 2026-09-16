@@ -107,6 +107,7 @@
       <thead>
         <tr>
           <th scope="col">CI명</th><th scope="col">호스트명</th><th scope="col">운영팀</th><th scope="col">담당자</th>
+          <th scope="col" style="width:90px">종류</th>
           <th scope="col" style="width:70px">사용량</th>
           <th scope="col" style="width:90px">증설필요(GB)</th>
           <th scope="col" style="width:90px">일정 ✏️</th>
@@ -129,6 +130,7 @@
             <input type="text" class="cell owner-edit" value="{{ d.owner }}"
                    aria-label="{{ d.ci_name }} 담당자">
           </td>
+          <td class="small">{{ d.fs_type or "-" }}</td>
           <td class="small">{% if d.usage_pct is not none %}{{ d.usage_pct }}%{% else %}-{% endif %}</td>
           <td class="small">{{ d.required_gb if d.required_gb is not none else "-" }}</td>
 
@@ -182,6 +184,7 @@
       <thead>
         <tr>
           <th scope="col">CI명</th><th scope="col">호스트명</th><th scope="col">운영팀</th><th scope="col">담당자</th>
+          <th scope="col" style="width:90px">종류</th>
           <th scope="col" style="width:70px">사용량</th>
           <th scope="col" style="width:90px">증설필요(GB)</th>
           <th scope="col" style="width:90px">일정</th>
@@ -202,6 +205,7 @@
           <td class="mono small">{{ d.hostname }}</td>
           <td class="small">{{ d.ops_team }}</td>
           <td class="small">{{ d.owner }}</td>
+          <td class="small">{{ d.fs_type or "-" }}</td>
           <td class="small">{% if d.usage_pct is not none %}{{ d.usage_pct }}%{% else %}-{% endif %}</td>
           <td class="small">{{ d.required_gb if d.required_gb is not none else "-" }}</td>
           <td class="small mono">{{ d.schedule_raw }}</td>
