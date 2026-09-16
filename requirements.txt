@@ -1,8 +1,8 @@
 fastapi==0.141.1
 uvicorn==0.32.0
-jinja2==3.1.4
-python-dotenv==1.0.1
-requests==2.32.3
+jinja2==3.1.6
+python-dotenv==1.2.2
+requests==2.33.0
 pandas==2.2.3
 openpyxl==3.1.5
 xlrd==2.0.1          # 레거시 .xls 읽기 (Polestar 내보내기가 이 형식으로 나온다)
