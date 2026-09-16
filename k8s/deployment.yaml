@@ -45,6 +45,7 @@ spec:
             # 서로 독립적이라 여기서 풀어준다고 메인 컨테이너 권한이 넓어지지 않는다.
             runAsNonRoot: false
             runAsUser: 0   # chown 하려면 root로 떠야 한다
+            readOnlyRootFilesystem: true   # chown 대상은 /app/data 볼륨 마운트뿐, 루트 FS에 쓸 일이 없다
           volumeMounts:
             - name: data
               mountPath: /app/data
