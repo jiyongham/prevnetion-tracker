@@ -31,6 +31,7 @@ from fastapi.testclient import TestClient
 
 from app.core import jira_client, polestar_client
 from app.services import capacity_data, dr_data, eos_data, owner_check
+from app.web.routes import capacity as capacity_routes
 from app.web.routes import dr as dr_routes
 from app.web.routes import eos as eos_routes
 from app.web.routes import kernel as kernel_routes
@@ -93,8 +94,18 @@ def _apply_no_network_patches(monkeypatch):
     )
     monkeypatch.setattr(dr_routes, "load_dr_items_merged", lambda half="H2": [])
     monkeypatch.setattr(
+        dr_routes,
+        "collect_targets_with_tickets",
+        lambda half, use_jira=True: ([], {}, None),
+    )
+    monkeypatch.setattr(
         capacity_data,
         "get_matched_items",
+        lambda sheet, use_jira=True: ([], {}, None),
+    )
+    monkeypatch.setattr(
+        capacity_routes,
+        "collect_capacity_targets_with_tickets",
         lambda sheet, use_jira=True: ([], {}, None),
     )
 
@@ -102,8 +113,14 @@ def _apply_no_network_patches(monkeypatch):
     monkeypatch.setattr(eos_data, "get_eos_data", empty_eos_data)
     monkeypatch.setattr(eos_routes, "get_eos_data", empty_eos_data)
     monkeypatch.setattr(eos_routes, "load_eos_items_merged", lambda: [])
+    monkeypatch.setattr(
+        eos_routes,
+        "collect_eos_targets_with_tickets",
+        lambda use_jira=True: ([], {}, None),
+    )
 
     monkeypatch.setattr(kernel_routes, "available_scopes", lambda: [])
+    monkeypatch.setattr(kernel_routes, "collect_kernel_targets", lambda scope="dev": [])
     monkeypatch.setattr(
         kernel_routes,
         "load_kernel_items_merged",
