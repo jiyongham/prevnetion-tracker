@@ -17,6 +17,14 @@ spec:
       labels:
         app: dr-tracker
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
       imagePullSecrets:
         - name: ghcr-pull-secret
       containers:
@@ -28,9 +36,17 @@ spec:
           envFrom:
             - secretRef:
                 name: dr-tracker-env
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
           volumeMounts:
             - name: data
               mountPath: /app/data
+            - name: tmp
+              mountPath: /tmp
           # 제한이 없으면 한순간 메모리를 과하게 써도 kubelet이 못 잡아채고, kind처럼
           # 클러스터 전체가 컨테이너 하나(kindest/node)에 들어있는 로컬 환경에서는
           # 그게 호스트 메모리 압박으로 번져 노드(=클러스터 전체) 자체가 죽는 사고로
@@ -59,6 +75,9 @@ spec:
             periodSeconds: 15
             failureThreshold: 3
       volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
         - name: data
           persistentVolumeClaim:
             claimName: dr-tracker-data
