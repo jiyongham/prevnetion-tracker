@@ -105,6 +105,17 @@ jobs:
             --docker-password=${{ secrets.GITHUB_TOKEN }} \
             --dry-run=client -o yaml | kubectl apply -f -
 
+      - name: Apply Kubernetes manifests
+        # deployment.yaml 등 k8s/ 매니페스트를 수정해도 rollout restart만으로는 클러스터에
+        # 반영되지 않는다 (파드 스펙이 바뀌어야 롤아웃이 트리거된다). apply를 먼저 실행해
+        # image/imagePullPolicy/imagePullSecrets 같은 변경이 실제로 적용되게 한다.
+        # servicemonitor.yaml은 Prometheus Operator CRD가 있어야 하므로 제외.
+        run: |
+          kubectl apply -f k8s/namespace.yaml
+          kubectl apply -f k8s/pvc.yaml
+          kubectl apply -f k8s/service.yaml
+          kubectl apply -f k8s/deployment.yaml
+
       - name: Rollout restart
         run: kubectl -n dr-tracker rollout restart deployment/dr-tracker
 
