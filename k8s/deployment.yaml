@@ -27,6 +27,27 @@ spec:
           type: RuntimeDefault
       imagePullSecrets:
         - name: ghcr-pull-secret
+      # fsGroup(위)이 이 볼륨 소유권을 10001로 맞춰주는 게 정상이지만, kind 기본
+      # 스토리지클래스(local-path-provisioner, hostPath 기반)는 fsGroup 적용을
+      # 안정적으로 보장하지 않는 것으로 알려져 있다 - 특히 비루트 전환 전부터
+      # 있던 기존 sqlite 파일은 root 소유로 남아 있을 수 있다. 그 결과가 "attempt
+      # to write a readonly database": 파일 자체는 멀쩡한데 지금 컨테이너(UID 10001)가
+      # 쓰기 권한이 없는 것뿐이다. fsGroup에 기대지 않고 매 기동 시 확실하게
+      # chown하는 initContainer를 둬서 스토리지 드라이버 지원 여부와 무관하게 고친다.
+      initContainers:
+        - name: fix-data-perms
+          image: busybox:1.36
+          command: ["sh", "-c", "chown -R 10001:10001 /app/data"]
+          securityContext:
+            # 파드 전체에 runAsNonRoot: true가 걸려 있어(위) 명시적으로 꺼주지 않으면
+            # runAsUser: 0(root)과 충돌해서 이 initContainer 자체가 못 뜬다. 메인
+            # 컨테이너는 이 설정 없이 그대로 비루트로 남는다 - 컨테이너별 securityContext는
+            # 서로 독립적이라 여기서 풀어준다고 메인 컨테이너 권한이 넓어지지 않는다.
+            runAsNonRoot: false
+            runAsUser: 0   # chown 하려면 root로 떠야 한다
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
       containers:
         - name: dr-tracker
           image: ghcr.io/jiyongham/prevention-tracker:latest
