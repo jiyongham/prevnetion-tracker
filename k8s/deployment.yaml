@@ -25,8 +25,11 @@ spec:
         fsGroupChangePolicy: OnRootMismatch
         seccompProfile:
           type: RuntimeDefault
-      imagePullSecrets:
-        - name: ghcr-pull-secret
+      # GHCR 패키지를 public으로 전환해 imagePullSecrets가 필요 없다 - private일 때는 CI가
+      # 만든 GITHUB_TOKEN기반 secret(ghcr-pull-secret)을 참조했는데, 그 토큰은 워크플로우
+      # 실행 동안만 살아있어서 CI와 무관하게 파드가 재시작(노드 재부팅, rollout restart 등)될 때마다
+      # 403으로 pull이 실패하는 문제가 반복되었다. public 이미지는 인증 없이 익명으로 바로 pull되므로
+      # 이 문제 자체가 사라진다.
       # fsGroup(위)이 이 볼륨 소유권을 10001로 맞춰주는 게 정상이지만, kind 기본
       # 스토리지클래스(local-path-provisioner, hostPath 기반)는 fsGroup 적용을
       # 안정적으로 보장하지 않는 것으로 알려져 있다 - 특히 비루트 전환 전부터
