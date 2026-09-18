@@ -97,13 +97,6 @@ jobs:
           docker push ghcr.io/jiyongham/prevention-tracker:latest
           docker push ghcr.io/jiyongham/prevention-tracker:${{ github.sha }}
 
-      - name: Create/update ghcr.io pull secret
-        run: |
-          kubectl -n dr-tracker create secret docker-registry ghcr-pull-secret \
-            --docker-server=ghcr.io \
-            --docker-username=${{ github.actor }} \
-            --docker-password=${{ secrets.GITHUB_TOKEN }} \
-            --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Apply Kubernetes manifests
         # deployment.yaml 등 k8s/ 매니페스트를 수정해도 rollout restart만으로는 클러스터에

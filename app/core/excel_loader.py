@@ -75,7 +75,14 @@ def load_dr_items(excel_path: str | None = None, half: str = "H2") -> list[dict]
             "owner": _s(row, "담당자"),
             "is_target": _s(row, "대상 여부(O,X)").upper() == "O",
             "exclude_reason": _s(row, "기타 (제외 사유)"),
-            "evidence": _s(row, "증적"),
+            # 증적: H1은 엑셀 공유 컬럼값을 그대로 쓰지만(문서화된 기존 동작 유지),
+            # H2는 엑셀 값을 절대 쓰지 않는다. '증적' 컬럼이 반기별로 나뉘어 있지 않아서,
+            # 상반기에 이미 종결된 JIRA 티켓을 증적으로 적어둔 행이 그대로 하반기(무중단
+            # 대상)에도 노출돼 - 하반기엔 아무도 새로 증적을 입력한 적이 없는데도 상반기
+            # 증적이 인정된 것처럼 보이는 문제가 있었다. H2는 아래 load_dr_items_merged()에서
+            # DB(schedule_input, half='H2')에 실제로 입력된 값만 채워 넣는다 - 그 전까지는
+            # 빈 값(증적 없음)으로 둬야 '하반기엔 새로 증적을 받는다'는 요구사항이 지켜진다.
+            "evidence": _s(row, "증적") if half == "H1" else "",
             # 반기별
             "half": half,
             "schedule_raw": _s(row, cols["schedule"]),
