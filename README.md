@@ -190,7 +190,34 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
+
 `.env`는 gitignore 대상이며 인증정보·에이전트 키가 모두 여기 들어간다. Kubernetes 배포 시 **Secret과 코드를 반드시 함께 갱신해야 한다** — 한쪽만 배포되면 설정 로딩에서 실패하거나, 더 나쁘게는 필드 ID가 비어 조용히 잘못된 숫자가 나간다.
+
+---
+
+## CI/CD
+
+PR과 main 병합에 각각 다른 검증을 탄다.
+
+```
+PR
+  → Gitleaks       비밀정보(토큰·키) 유출 검사
+  → pytest         판정·매칭·권한 등 핵심 로직 테스트
+  → pip-audit      requirements.txt 의존성 취약점 검사
+  → Trivy (config) Dockerfile·k8s 매니페스트 오구성 검사
+
+main 병합
+  → Docker 이미지 빌드
+  → Trivy (image)  빌드된 이미지 취약점 검사 (HIGH/CRITICAL 실패)
+  → ghcr.io push
+  → Kubernetes 배포 (rollout restart → health 확인)
+```
+
+컨테이너 이미지는 GHCR에 public으로 공개된다 — 소스가 이미 public 저장소에 있고(`data/`·`.env`는 `.dockerignore`로 이미지에 안 들어간다), 민감 정보는 볼륨/Secret으로 런타임에 주입되는 구조라 이미지 자체를 잠가 둘 실익이 없다. private로 둘 경우 CI가 발급하는 `GITHUB_TOKEN`이 워크플로우 종료 후 곧 만료되어, CI와 무관하게 파드가 재시작될 때(노드 재부팅 등) `ImagePullBackOff`가 반복되는 문제가 있었다.
 
 ---
 
@@ -198,4 +225,4 @@ uvicorn app.main:app --reload
 
 - **커널패치 자동 판정 미완.** 패치 레벨이 EMS REST API에 노출되지 않는다(인터페이스 정의서 108개 엔드포인트 전수 확인). 화면의 PQL 검색은 거르기만 되고 값을 돌려주지 않으며, 배포판마다 타겟 커널이 달라 단일 패턴으로는 판정할 수 없다. 현재는 관리자 확인으로 집계하고, 근거 파일 경로만 채우면 자동 판정이 붙도록 판정부를 분리해 두었다.
 - **엑셀이 계약이다.** 컬럼명이 바뀌면 로더를 고쳐야 한다. 머리글은 별칭 집합으로 찾아 어느 정도 흡수하지만 완전하지 않다.
-- **자동화 테스트가 없다.** 판정·매칭 변경 시 이전 결과와 대조하는 검증 스크립트를 매번 작성해 돌리는 방식으로 대신하고 있다.
+- **자동화 테스트는 핵심 로직만 다룬다.** pytest로 판정(반기별 JIRA 페이지네이션)·매칭(IP/호스트명/CMDB Key 경계값)·권한 검사·템플릿 렌더링 회귀를 검증하지만, 외부 연동(JIRA/Polestar/Confluence)은 모킹으로 대체해 실제 연동 자체는 검증하지 못한다.
