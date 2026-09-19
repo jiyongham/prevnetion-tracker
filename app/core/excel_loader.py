@@ -104,38 +104,12 @@ def get_targets(items: list[dict]) -> list[dict]:
     return [i for i in items if i["is_target"]]
 
 
-def get_h1_nonstop_target_nos(excel_path: str | None = None) -> set[str]:
-    """
-    상반기 무중단으로 수행한 대상 NO 집합.
-    하반기 DR 모의훈련은 이 대상에 한해 수행하므로 완료율 분모로 사용.
-    """
-    h1 = load_dr_items(excel_path=excel_path, half="H1")
-    return {
-        i["no"] for i in h1
-        if i["is_target"] and "무중단" in (i.get("mode") or "")
-    }
-
-
-def scope_h2_targets(items: list[dict], excel_path: str | None = None) -> list[dict]:
-    """하반기(H2) 항목을 상반기 무중단 대상으로만 한정"""
-    nonstop_nos = get_h1_nonstop_target_nos(excel_path=excel_path)
-    return [i for i in items if i["no"] in nonstop_nos]
-
-
-def get_h1_real_target_nos(excel_path: str | None = None) -> set[str]:
-    """
-    상반기 '실전환'으로 수행한 대상 NO 집합.
-    하반기 DR 모의훈련 통계(완료율/리포트)는 상반기 무중단 대상(get_h1_nonstop_target_nos)
-    으로만 한정되고 이 실전환 대상은 거기 안 들어간다 - 다만 담당자들이 하반기에도 이
-    대상들의 일정/증적을 참고삼아 같이 입력하고 싶어해서, 화면에는 별도 참고 목록으로
-    노출한다 (app.services.dr_data.load_extra_h2_items 참고). 통계에는 절대 포함하지 않는다.
-    """
-    h1 = load_dr_items(excel_path=excel_path, half="H1")
-    return {
-        i["no"] for i in h1
-        if i["is_target"] and "실전환" in (i.get("mode") or "")
-    }
-
+# get_h1_nonstop_target_nos / scope_h2_targets / get_h1_real_target_nos는
+# H2를 상반기 무중단(173대)만으로 한정하고 상반기 실전환(102대)은 참고 목록으로
+# 따로 노출하던 예전 방식의 함수였다. 이 규칙은 H1 수행방식+완료여부로 H2
+# 수행방식을 계산하는 새 토글 규칙(app.services.dr_data.compute_h2_items /
+# toggle_h1_to_h2_mode 참고)으로 완전히 대체됐다 - H2 대상은 이제 H1 전체
+# 대상(275대)과 동일하고, 별도로 목록을 좁히는 함수가 필요 없다.
 # app/core/excel_loader.py 맨 아래 추가
 from app.models.db import get_inputs
 
@@ -154,7 +128,13 @@ def load_dr_items_merged(half: str = "H2", excel_path: str | None = None) -> lis
             if db.get("schedule"):
                 item["schedule_raw"] = db["schedule"]
                 item["input_source"] = "web"
-            if db.get("mode"):
+            # H2는 mode를 DB에서 직접 덮어쓰지 않는다 - H2의 mode는 항상
+            # app.services.dr_data.compute_h2_items()가 H1 결과로 계산한 값으로
+            # 강제되고, 그 계산은 이 함수가 반환한 뒤(JIRA 완료판정이 필요해서)
+            # 별도로 이뤄진다. 여기서 DB 값을 먼저 넣어버리면 나중에 그 계산이
+            # 덮어써야 할 값을 화면에 잠깐 잘못 보여주거나, 계산 전에 이 함수
+            # 결과만 쓰는 호출부가 있으면 DB 값이 그대로 새 버릴 수 있다.
+            if half != "H2" and db.get("mode"):
                 item["mode"] = norm_mode(db["mode"])
             if db.get("is_done"):
                 item["excel_done"] = "O"

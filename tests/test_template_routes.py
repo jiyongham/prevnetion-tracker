@@ -92,11 +92,8 @@ def _apply_no_network_patches(monkeypatch):
         "get_ticket_map",
         lambda half, items, use_jira=True: ({}, None),
     )
-    # load_extra_h2_items()는 dr_data.py 내부에서 자체 import한 load_dr_items_merged를
-    # 다시 호출한다(모듈 자기 바인딩이라 아래 dr_routes.load_dr_items_merged 패치와는
-    # 별개 대상 - 그쪽만 막으면 이 경로는 그대로 실제 엑셀을 읽으러 간다). get_current_half()가
-    # 오늘 날짜 기준 H2를 반환하면 /dr, / 라우트가 이 경로를 반드시 타므로 여기서 같이 막는다.
-    monkeypatch.setattr(dr_data, "load_extra_h2_items", lambda ticket_map, use_jira=True: [])
+    # dr_data.load_items()를 통하지므로 compute_h2_items()(H1 토글 계산, JIRA 필요)는
+    # 호출되지 않는다 - 따로 막을 필요 없다.
     monkeypatch.setattr(dr_routes, "load_dr_items_merged", lambda half="H2": [])
     monkeypatch.setattr(
         dr_routes,

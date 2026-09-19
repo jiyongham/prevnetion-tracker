@@ -26,10 +26,8 @@ from datetime import date
 
 from app.config import settings
 from app.core.excel_loader import (
-    get_h1_real_target_nos,
     get_targets,
     load_dr_items_merged,
-    scope_h2_targets,
 )
 from app.core.jira_client import jira
 from app.services.completion import build_ticket_summary, calc_completion
@@ -64,10 +62,68 @@ def cached_at(half: str) -> float:
         return (_cache.get(half) or {}).get("at", 0.0)
 
 
+def toggle_h1_to_h2_mode(h1_mode: str, h1_completed: bool) -> str:
+    """
+    H1 수행방식+완료여부 -> H2 수행방식 토글 규칙 (단일 소스).
+
+    | H1 mode | H1 완료 | -> H2 mode |
+    |---|---|---|
+    | 무중단 | True  | 실전환 |
+    | 무중단 | False | 실전환 |
+    | 실전환 | True  | 무중단 |
+    | 실전환 | False | 실전환 (변화 없음) |
+    """
+    if "무중단" in (h1_mode or ""):
+        return "실전환"
+    if "실전환" in (h1_mode or ""):
+        return "무중단" if h1_completed else "실전환"
+    return h1_mode
+
+
+def compute_h2_items(use_jira: bool = True) -> list[dict]:
+    """
+    H2의 mode를 H1 결과로 계산해 덮어쒨 275대 전체 목록.
+
+    H2 대상은 H1의 전체 대상(is_target=True, 실전환+무중단 합산 275대)과 동일하고,
+    각 항목의 mode는 toggle_h1_to_h2_mode()로 계산된 값으로 덮어쒤다 - H2 엑셀/DB의
+    mode 값은 무시된다(excel_loader.load_dr_items_merged에서 이미 H2는 DB 덮어쓰기를
+    건너뛴). 이 함수는 H1의 JIRA 완료판정이 필요해서(excel_loader는 순수 데이터
+    로딩 모듈로 유지하기 위해 JIRA를 모른다) dr_data.py에 둔다.
+
+    dr_data.load_items("H2")와 report.collect("H2") 양쪽 모두 이 함수 하나만 통해서
+    H2 mode를 얻어야 한다 - 둘이 각자 토글 로직을 복제하면 대시보드/리포트가 서로
+    다른 숫자를 보여줄 수 있다(이번 세션에서 계속 겪은 버그 유형).
+    """
+    h1_items = load_dr_items_merged(half="H1")
+    h1_items = load_dr_items_merged(half="H1")
+    h1_ticket_map, _ = get_ticket_map("H1", h1_items, use_jira=use_jira)
+    h1_result = calc_completion(h1_items, h1_ticket_map, date.today())
+    # no -> (H1 mode, H1 완료여부) 루퍼 (calc_completion은 대상(get_targets)만 가진다).
+    h1_lookup = {d["no"]: (d["mode"], d["completed"]) for d in h1_result["details"]}
+
+    h2_items = load_dr_items_merged(half="H2")
+    for item in get_targets(h2_items):
+        h1_entry = h1_lookup.get(item["no"])
+        if h1_entry is None:
+            # H1 이력이 없는 항목(예: 연도 중간에 새로 추가된 시스템) - 토글을 적용할
+            # 기준이 없으므로 H2 시트 자체의 mode 값을 그대로 둔다(fallback).
+            continue
+        h1_mode, h1_completed = h1_entry
+        item["mode"] = toggle_h1_to_h2_mode(h1_mode, h1_completed)
+    return h2_items
+
+
 def load_items(half: str) -> list[dict]:
-    """엑셀+DB 병합 항목 (하반기는 상반기 무중단 대상으로 한정). 캐시하지 않는다."""
-    items = load_dr_items_merged(half=half)
-    return scope_h2_targets(items) if half == "H2" else items
+    """
+    엑셀+DB 병합 항목 (캐싱하지 않는다).
+
+    H1은 그대로, H2는 상반기 전체 275대(=H1 is_target 전체)이 대상이고,
+    각 항목의 mode는 상반기 결과(mode+완료여부)에 따라 계산된 값으로 강제된다
+    (compute_h2_items 참고). 더 이상 '173대 vs 102대 참고목록'으로 나누지 않는다.
+    """
+    if half == "H2":
+        return compute_h2_items(use_jira=True)
+    return load_dr_items_merged(half=half)
 
 
 def _collect_external(targets: list[dict]) -> tuple[dict, str | None]:
@@ -145,6 +201,11 @@ def prewarm(half: str) -> None:
     """
     기동 직후 캐시를 미리 채운다 (앱 시작을 막지 않도록 백그라운드 스레드).
     첫 방문자가 JIRA 조회를 기다리지 않게 하는 것이 목적이라 실패해도 그냥 넘어간다.
+
+    H2를 예열할 때는 H1의 케시도 같이 미리 채운다 - load_items("H2")
+    (-> compute_h2_items)가 내부적으로 H1의 ticket_map을 필요로 하게 되었기 때문에,
+    H2만 예열하면 H1 케시가 비어있어 H2 첫 요청자가 H1 JIRA 조회까지 기다리게 된다
+    (캐싱 모듈이 존재하는 이유 자체인 'cold start 회피'와 정면으로 배치되는 상황).
     """
     def run():
         try:
@@ -154,28 +215,12 @@ def prewarm(half: str) -> None:
 
     threading.Thread(target=run, name=f"dr-prewarm-{half}", daemon=True).start()
 
+    # H2 예열은 H1 케시도 함께 따뜻하게 만든다(위 설명 참고).
+    if half == "H2":
+        def run_h1():
+            try:
+                get_ticket_map("H1", load_items("H1"))
+            except Exception as e:
+                logger.warning(f"DR훈련(H1, H2 예열 동반) 캐시 예열 실패: {e}")
 
-def load_extra_h2_items(ticket_map: dict, use_jira: bool = True) -> list[dict]:
-    """
-    H2 화면 '참고 표시'용: 상반기에 실전환이었던 대상(하반기엔 무중단 훈련 대상이 아니므로
-    173대 통계에는 안 잡히지만, 담당자가 하반기에도 일정/증적을 입력할 수 있게 표로 보여준다.
-    통계(완료율/팀별/관계사별/리포트)에는 절대 포함시키지 않는다 - calc_completion을 별도로
-    돌려 details만 뽑고, 그 result의 total/done/rate 등은 버린다.
-
-    ticket_map(173대분)은 이 102대의 no를 커버하지 못하므로(dr_data 모듈 독립 참고),
-    use_jira=True면 이 102대만 따로 JIRA 재매칭한다 (매번 재조회하는 단순한 구현 -
-    이 참고 목록은 자주 열어보는 화면이 아니라고 가정해, 성능이 문제되면 나중에 캐싱 추가).
-    use_jira=False면 엑셀 표기(O)만으로 완료 판정하고 JIRA 매칭은 생략한다.
-    """
-    all_h2 = load_dr_items_merged(half="H2")  # scope_h2_targets 미적용 - 275대 전체
-    real_nos = get_h1_real_target_nos()
-    extra_items = [i for i in get_targets(all_h2) if i["no"] in real_nos]
-    if not extra_items:
-        return []
-
-    extra_ticket_map = _collect_external(extra_items)[0] if use_jira else {}
-    result = calc_completion(extra_items, extra_ticket_map, date.today())
-    details = result["details"]
-    for d in details:
-        d["is_extra"] = True  # 템플릿에서 이 행들을 시각적으로 구분하기 위한 플래그
-    return details
+        threading.Thread(target=run_h1, name="dr-prewarm-H1-via-H2", daemon=True).start()

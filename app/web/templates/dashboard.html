@@ -3,16 +3,13 @@
 {% block title %}DR 모의훈련 진척 관리{% endblock %}
 
 {% block content %}
-{# H2 대상 목록(details)과 참고 목록(extra_details, 상반기 실전환 102대)이 같은
-   열 구조를 공유하므로 매크로로 뿑아 중복을 피한다. is_extra 플래그가 있으면
-   row-extra 클래스와 참고 문구를 더하고, 제외 버튼 칸은 비활성 표시로 대체한다
-   (제외 처리는 173대 통계 대상 개념이라 102대 참고 항목에는 맞지 않는다). #}
+{# 대상 목록(details) 행 렌더링용 매크로. 상반기 실전환 참고 목록 개념은 폐기됐다 -
+   H2는 이제 상반기 전체 275대가 details 하나에 계산된 mode로 담겨 나온다. #}
 {% macro detail_row(d) %}
-  {% set is_extra = d.get('is_extra', False) %}
   <tr data-no="{{ d.no }}"
-      class="{{ 'row-extra' if is_extra }} {% if d.completed %}row-done{% endif %} src-{{ d.input_source }}"
-      title="{% if is_extra %}상반기 실전환 대상 (하반기 통계에는 포함되지 않는 참고 항목) — {% endif %}{% if d.input_source == 'web' %}웹 입력 ({{ d.updated_by }}, {{ d.updated_at }}){% else %}엑셀 원본{% endif %}">
-    <td class="strong">{{ d.system_name }}{% if is_extra %} <span class="muted small" title="상반기 실전환 참고 대상">📎</span>{% endif %}</td>
+      class="{% if d.completed %}row-done{% endif %} src-{{ d.input_source }}"
+      title="{% if d.input_source == 'web' %}웹 입력 ({{ d.updated_by }}, {{ d.updated_at }}){% else %}엑셀 원본{% endif %}">
+    <td class="strong">{{ d.system_name }}</td>
     <td class="mono small">{{ d.hostname }}</td>
     <td class="small">{{ d.ops_team }}</td>
     <td class="owner-cell">
@@ -58,12 +55,8 @@
     </td>
     <td><button class="btn-save" onclick="saveRow(this)" aria-label="{{ d.system_name }} 저장">저장</button></td>
     <td class="admin-only">
-      {% if is_extra %}
-      <span class="muted small" title="상반기 실전환 참고 항목은 제외 처리 대상이 아닙니다">-</span>
-      {% else %}
       <button class="btn-sm btn-exclude" onclick="excludeRow(this)"
               title="제외 처리 — 엑셀 일정란에 X로 기록되고 제외 대상으로 이동합니다">제외</button>
-      {% endif %}
     </td>
   </tr>
 {% endmacro %}
@@ -203,7 +196,7 @@
   <!-- 상세 목록 (편집 가능) -->
   <section class="panel">
     <div class="panel-head">
-      <h2>대상 목록 ({{ details|length }}건){% if half == 'H2' and total_h1_target_cnt %} <span class="muted small" title="상반기 무중단 대상 {{ details|length }}대 + 상반기 실전환이었던 참고 대상 {{ extra_details|length }}대 = 상반기 전체 {{ total_h1_target_cnt }}대">({{ details|length }} / {{ total_h1_target_cnt }}대)</span>{% endif %}</h2>
+      <h2>대상 목록 ({{ details|length }}건)</h2>
       <div class="head-right">
         <form method="get" class="inline-form">
           <input type="hidden" name="half" value="{{ half }}">
@@ -241,9 +234,6 @@
       </thead>
       <tbody>
       {% for d in details %}
-        {{ detail_row(d) }}
-      {% endfor %}
-      {% for d in extra_details %}
         {{ detail_row(d) }}
       {% endfor %}
       </tbody>
