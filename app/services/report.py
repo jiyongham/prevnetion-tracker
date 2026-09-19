@@ -4,9 +4,9 @@ from datetime import date
 from app.config import settings
 from app.core.date_utils import week_ranges
 from app.core.jira_client import jira
-from app.core.excel_loader import get_targets, load_dr_items_merged, scope_h2_targets
+from app.core.excel_loader import get_targets, load_dr_items_merged
 from app.core.teams_client import send_teams_message
-from app.services import last_report
+from app.services import dr_data, last_report
 from app.services.completion import (
     DONE_MARKS,
     build_ticket_summary,
@@ -26,7 +26,15 @@ def get_current_half() -> str:
 
 
 def collect(half: str, use_jira: bool = True):
-    items = load_dr_items_merged(half=half)
+    """
+    half=="H2"면 dr_data.compute_h2_items()를 통해 H1 결과로 계산된 mode가 적용된
+    275대 전체를 받는다 - 대시보드(dr_data.load_items)와 동일한 단일 소스를 쓴다.
+    그렇지 않으면 대시보드/리포트가 서로 다른 대상수/mode를 보여줄 수 있다.
+    """
+    if half == "H2":
+        items = dr_data.compute_h2_items(use_jira=use_jira)
+    else:
+        items = load_dr_items_merged(half=half)
     ticket_map = {}
 
     if use_jira:
@@ -49,9 +57,9 @@ def _build(half: str | None = None, use_jira: bool = True) -> tuple[str, dict]:
 
     h2_items, h2_tmap = collect("H2", use_jira)
 
-    # 하반기 대상 = 상반기 무중단으로 수행한 대상에 한함
-    h2_scope = scope_h2_targets(h2_items)
-    h2_result = calc_completion(h2_scope, h2_tmap, today)
+    # 하반기 대상 = 상반기 전체 275대 (collect()가 이미 compute_h2_items()로 계산된
+    # mode를 적용한 상태로 반환한다 - 여기서 다시 좁힐 필요 없음)
+    h2_result = calc_completion(h2_items, h2_tmap, today)
 
     # ── 1. 전체 대상 ──
     total_all = len(h2_items)

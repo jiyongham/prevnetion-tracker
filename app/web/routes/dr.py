@@ -121,26 +121,16 @@ def dashboard(
         **{k: len(filter_by_mode(scope_targets, k)) for k in MODE_TABS},
     }
 
-    # 대상 여부(O,X)에서 X로 제외된 건수. Teams 리포트 "1. 전체 대상"과 같은 기준으로,
-    # 상반기 무중단 174대로 좁히기 전 그 반기 엑셀 전체를 기준으로 센다 (좁힌 뒤로 세면
-    # H2는 174대 전원이 이미 O라서 제외가 늘 0으로 나와 의미가 없다).
+    # 대상 여부(O,X)에서 X로 제외된 건수. Teams 리포트 "1. 전체 대상"과 같은
+    # 기준으로, 그 반기 엑셀 전체를 기준으로 센다 (H2도 이제 275대 전체가 대상이라
+    # load_dr_items_merged 직접 결과와 dr_data.load_items 결과의 대상 수가 같다).
     half_items = load_dr_items_merged(half=half)
     excluded_cnt = len(half_items) - len(get_dr_targets(half_items))
 
     details = result["details"]
 
-    # H2 화면에만: 상반기 실전환이었던 102대를 참고용으로 이어서 보여준다(총 173+102=275대).
-    # 통계(result/mode_counts/excluded_cnt)에는 이미 안 들어가 있으므로 안전 - 이 바로 아래에서
-    # details와 동일하게 필터만 적용해 표에 같이 들어간다.
-    # ticket_map/items 호출은 dr_data 내부 캐시(TTL 5분)에 이미 있어 재조회 비용이 없다.
-    extra_details = []
-    if half == "H2":
-        items_173 = dr_data.load_items(half)
-        ticket_map_173, _ = dr_data.get_ticket_map(half, items_173, use_jira=True)
-        extra_details = dr_data.load_extra_h2_items(ticket_map_173, use_jira=True)
-
     def _apply_common_filters(items: list[dict]) -> list[dict]:
-        """team/company/service 필터 - 173대 details와 102대 extra_details 양쪽에 동일하게 적용하기 위해 뽑음"""
+        """team/company/service 필터"""
         if team:
             items = [d for d in items if d["ops_team"] == team]
         if company:
@@ -150,12 +140,10 @@ def dashboard(
         return items
 
     details = _apply_common_filters(details)
-    extra_details = _apply_common_filters(extra_details)
 
     # 일정 칸에 'X'로 기입된 항목 = 제외 대상으로 별도 분류 (완료/미완료/미계획 목록에선 제외).
     # 단, 관리자가 웹에서 직접 처리(X 입력+저장)한 경우만 포함한다 — 비관리자가 실수로 입력했거나
     # 엑셀 원본에 그냥 X라고만 적혀있는 건(누가 처리했는지 확인 불가)은 제외 대상으로 안 본다.
-    # (extra_details는 102대 참고 목록이라 제외 개념이 없으므로 이 필터는 details에만 적용)
     excluded_nos = {
         d["no"] for d in details
         if (d.get("schedule_raw") or "").strip().upper() == "X"
@@ -188,7 +176,6 @@ def dashboard(
 
         details = [d for d in details if _match(d)]
         excluded_items = [d for d in excluded_items if _match(d)]
-        extra_details = [d for d in extra_details if _match(d)]
 
     # 상태 그룹 순 -> 그룹 안에서 일정 오름차순.
     # 손댈 게 없는 것(완료)부터 손대야 하는 것(미계획)까지 순서대로 보이게 하되,
@@ -201,15 +188,7 @@ def dashboard(
 
     # 증적란에 적힌 JIRA 키의 실제 상태(반려/미종결)를 표시용으로 붙인다
     evidence_check.annotate(details)
-    evidence_check.annotate(extra_details)
     evidence_warn_cnt = sum(1 for d in details if d.get("evidence_level"))
-
-    # extra_details도 같은 기준으로 정렬해 자연스럽게 훑어볼 수 있게 한다
-    extra_details = sorted(extra_details, key=lambda d: (
-        STATUS_ORDER.get(d["status_label"], len(STATUS_ORDER)),
-        d["schedule_sort"] or date.max,
-        d["system_name"] or "",
-    ))
 
     return templates.TemplateResponse(request, "dashboard.html", {
         "request": request,
@@ -217,12 +196,6 @@ def dashboard(
         "details": details,
         "excluded_items": excluded_items,
         "excluded_cnt": excluded_cnt,
-        "extra_details": extra_details,
-        # 화면에 "173 / 275대" 형태로 함께 보여주기 위한 상반기 전체 대수
-        # (엑셀 재로드는 mtime 기준 캐시(_items_cache)가 있어 비용이 작다). H1에서는 의미 없으므로 0.
-        "total_h1_target_cnt": (
-            len(get_dr_targets(load_dr_items_merged(half="H2"))) if half == "H2" else 0
-        ),
         "evidence_warn_cnt": evidence_warn_cnt,
         "by_team": dict(sorted(by_team.items(), key=lambda x: x[1]["rate"])),
         "by_company": dict(sorted(by_company.items(), key=lambda x: x[1]["rate"])),
