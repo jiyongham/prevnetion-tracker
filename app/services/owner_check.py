@@ -17,7 +17,7 @@ from app.config import settings
 from app.core.capacity_loader import get_targets as get_capacity_targets
 from app.core.capacity_loader import load_capacity_items_merged
 from app.core.eos_loader import get_targets as get_eos_targets
-from app.core.excel_loader import get_targets, load_dr_items_merged, scope_h2_targets
+from app.core.excel_loader import get_targets, load_dr_items_merged
 from app.core.insight_client import get_server_assets
 from app.core.jira_client import jira
 from app.core.kernel_loader import get_targets as get_kernel_targets
@@ -44,9 +44,13 @@ def parse_jsm_requester(display_name: str) -> dict:
 
 def collect_targets_with_tickets(half: str, use_jira: bool = True):
     """대상 목록 + (윈도우 제한 없는) 매칭 티켓맵"""
-    items = load_dr_items_merged(half=half)
     if half == "H2":
-        items = scope_h2_targets(items)
+        # H2는 dr_data.compute_h2_items()(H1 토글 계산 결과)를 단일 소스로 쓴다 -
+        # 순환 import를 피하기 위해 함수 안에서 import한다.
+        from app.services import dr_data
+        items = dr_data.compute_h2_items(use_jira=use_jira)
+    else:
+        items = load_dr_items_merged(half=half)
     targets = get_targets(items)
 
     ticket_map = {}

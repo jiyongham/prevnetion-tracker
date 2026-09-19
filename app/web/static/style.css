@@ -587,12 +587,6 @@ table.editable tbody tr { background: var(--color-bg-surface); }
 table.editable tbody tr.row-done { background: var(--color-status-success-bg-subtle); }
 table.editable tbody tr:hover { background: var(--color-bg-hover); }
 
-/* H2 대상 목록에 이어 붙는 '상반기 실전환' 참고 행. 통계에는 안 잡히는 대상임을
-   구별하기 위해 옵한 노란색 톤을 깔고, 왼쪽에 작은 인디케이터를 둔다.
-   :not(.row-done)을 붙여 완료된 참고 행은 기존 완료 색(녹색)이 우선하게 둔다. */
-table.editable tbody tr.row-extra:not(.row-done) { background: rgba(255, 196, 0, 0.12); }
-table.editable tbody tr.row-extra:not(.row-done) td:first-child { box-shadow: inset -1px 0 0 var(--color-divider), inset 3px 0 0 rgba(255, 170, 0, 0.55); }
-
 /* (1) 머리글 고정. border-collapse 와 sticky 를 같이 쓰면 크롬에서 테두리가
    같이 스크롤돼 사라지므로 밑줄은 inset box-shadow 로 그린다. */
 table.editable thead th {
