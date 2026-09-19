@@ -22,11 +22,17 @@ item_no 기준이라 어떤 모드로 걸러도 조회 결과가 같기 때문�
 import logging
 import threading
 import time
+from datetime import date
 
 from app.config import settings
-from app.core.excel_loader import load_dr_items_merged, scope_h2_targets
+from app.core.excel_loader import (
+    get_h1_real_target_nos,
+    get_targets,
+    load_dr_items_merged,
+    scope_h2_targets,
+)
 from app.core.jira_client import jira
-from app.services.completion import build_ticket_summary
+from app.services.completion import build_ticket_summary, calc_completion
 from app.services.matcher import match_items_by_ip
 
 logger = logging.getLogger(__name__)
@@ -147,3 +153,29 @@ def prewarm(half: str) -> None:
             logger.warning(f"DR훈련({half}) 캐시 예열 실패 (첫 요청 때 다시 시도): {e}")
 
     threading.Thread(target=run, name=f"dr-prewarm-{half}", daemon=True).start()
+
+
+def load_extra_h2_items(ticket_map: dict, use_jira: bool = True) -> list[dict]:
+    """
+    H2 화면 '참고 표시'용: 상반기에 실전환이었던 대상(하반기엔 무중단 훈련 대상이 아니므로
+    173대 통계에는 안 잡히지만, 담당자가 하반기에도 일정/증적을 입력할 수 있게 표로 보여준다.
+    통계(완료율/팀별/관계사별/리포트)에는 절대 포함시키지 않는다 - calc_completion을 별도로
+    돌려 details만 뽑고, 그 result의 total/done/rate 등은 버린다.
+
+    ticket_map(173대분)은 이 102대의 no를 커버하지 못하므로(dr_data 모듈 독립 참고),
+    use_jira=True면 이 102대만 따로 JIRA 재매칭한다 (매번 재조회하는 단순한 구현 -
+    이 참고 목록은 자주 열어보는 화면이 아니라고 가정해, 성능이 문제되면 나중에 캐싱 추가).
+    use_jira=False면 엑셀 표기(O)만으로 완료 판정하고 JIRA 매칭은 생략한다.
+    """
+    all_h2 = load_dr_items_merged(half="H2")  # scope_h2_targets 미적용 - 275대 전체
+    real_nos = get_h1_real_target_nos()
+    extra_items = [i for i in get_targets(all_h2) if i["no"] in real_nos]
+    if not extra_items:
+        return []
+
+    extra_ticket_map = _collect_external(extra_items)[0] if use_jira else {}
+    result = calc_completion(extra_items, extra_ticket_map, date.today())
+    details = result["details"]
+    for d in details:
+        d["is_extra"] = True  # 템플릿에서 이 행들을 시각적으로 구분하기 위한 플래그
+    return details

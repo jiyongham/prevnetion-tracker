@@ -121,6 +121,21 @@ def scope_h2_targets(items: list[dict], excel_path: str | None = None) -> list[d
     nonstop_nos = get_h1_nonstop_target_nos(excel_path=excel_path)
     return [i for i in items if i["no"] in nonstop_nos]
 
+
+def get_h1_real_target_nos(excel_path: str | None = None) -> set[str]:
+    """
+    상반기 '실전환'으로 수행한 대상 NO 집합.
+    하반기 DR 모의훈련 통계(완료율/리포트)는 상반기 무중단 대상(get_h1_nonstop_target_nos)
+    으로만 한정되고 이 실전환 대상은 거기 안 들어간다 - 다만 담당자들이 하반기에도 이
+    대상들의 일정/증적을 참고삼아 같이 입력하고 싶어해서, 화면에는 별도 참고 목록으로
+    노출한다 (app.services.dr_data.load_extra_h2_items 참고). 통계에는 절대 포함하지 않는다.
+    """
+    h1 = load_dr_items(excel_path=excel_path, half="H1")
+    return {
+        i["no"] for i in h1
+        if i["is_target"] and "실전환" in (i.get("mode") or "")
+    }
+
 # app/core/excel_loader.py 맨 아래 추가
 from app.models.db import get_inputs
 
