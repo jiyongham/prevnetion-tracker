@@ -20,10 +20,17 @@ import logging
 import threading
 import time
 
+from datetime import date
+
 from app.config import settings
 from app.core.capacity_loader import load_capacity_items_merged
+from app.core.date_utils import half_window
 from app.core.jira_client import jira
-from app.services.capacity import build_capacity_ticket_summary, filter_tickets_by_sheet
+from app.services.capacity import (
+    build_capacity_ticket_summary,
+    capacity_ticket_done_date,
+    filter_tickets_by_sheet,
+)
 from app.services.matcher import match_items_by_ip
 
 logger = logging.getLogger(__name__)
@@ -143,29 +150,42 @@ def get_matched_items(
         # 같은 서버가 DATA/ARCH 양쪽에 다 있을 수 있어, 변경작업내용으로 이 시트 소속만 남김
         ticket_map = filter_tickets_by_sheet(match_result["matched"], sheet)
 
-        # 미응답(증설 여부 O/X 미기입) 대상도 매칭된 증설 티켓이 있으면 target으로
-        # 승격한다. 담당자가 회신 없이 그냥 증설해버리는 경우가 실제로 있어서(예:
-        # 메시징서비스 서버) - "회신이 없다"와 "증설을 안 했다"는 다르다. 실제 증설
-        # 티켓이 있다는 사실 자체가 증설 여부를 확정하는 근거다. 승격 후엔 다른 target과
-        # 완전히 같은 기준(judge_capacity)으로 완료 여부를 판단하므로, 티켓만 있고 아직
-        # 진행 중이면 "미완료"로 뜨고 무조건 완료 처리되는 건 아니다.
+        # 미회신(증설 여부 O/X 미기입) 대상에 증설 티켓이 걸리면 "회신은 없었지만 증설한
+        # 것으로 보인다"는 뜻이다. 담당자가 회신 없이 그냥 증설해버리는 경우가 실제로
+        # 있다(예: 메시징서비스 서버) - "회신이 없다"와 "증설을 안 했다"는 다르다.
         #
-        # 여기서 종류(kind)를 따로 안 보는 건 build_capacity_ticket_summary가 이미
-        # 증설 티켓만 담아 주기 때문이다 - 그 필터가 없으면 무관한 티켓 하나에 승격이
-        # 일어나 완료율 분모만 늘어난다 (실제로 그런 적이 있다).
+        # 예전엔 이걸 곧바로 target으로 승격시켜 완료율 분모에 넣었다. 그러면 엑셀이 정한
+        # 대상 수가 JIRA 조회 결과에 따라 조용히 움직인다 - 태그 없는 티켓까지 보게 된 뒤
+        # DATA 시트가 17대에서 23대로 늘어, "무엇을 기준으로 늘었는지" 화면만 봐서는
+        # 아무도 설명할 수 없는 상태가 됐다. 분모는 보고서에 그대로 나가는 숫자라
+        # 사람이 정한 값으로 고정돼 있어야 한다.
+        #
+        # 그래서 승격은 하지 않고 표시만 한다. 확인한 사람이 엑셀 '증설 여부'를 O로
+        # 고치면 그때 정식으로 대상이 된다 - 코드가 분모를 조용히 바꾸는 대신 사람이
+        # 고칠 거리를 드러내는 쪽이다 (evidence_check도 같은 이유로 완료 판정을 뒤집지
+        # 않고 표시만 한다).
+        # 표시하는 기준도 "티켓이 걸렸다"가 아니라 "완료 판정을 통과하는 티켓이 있다"이다.
+        # 단순히 IP/호스트명이 스쳤다는 이유로 증설했다고 말하면, 증설하지도 않은 서버가
+        # 증설된 것처럼 표시된다 - 실제로 변경계획완료일도 없는 티켓에 걸려서 증설한 적
+        # 없는 서버 6대에 "회신없이 증설"이 붙은 적이 있다. 완료로 인정할 수 있는
+        # 티켓(judge_capacity와 같은 조건)일 때만 이야기한다.
+        today = date.today()
+        start, end = half_window(today.year, "H2")
         no_reply = [i for i in items if i["status_kind"] == "no_reply"]
         if no_reply:
             no_reply_match = match_items_by_ip(no_reply, tickets)["matched"]
             no_reply_ticket_map = filter_tickets_by_sheet(no_reply_match, sheet)
             for item in no_reply:
-                matched = no_reply_ticket_map.get(item["no"])
-                if matched:
-                    item["is_target"] = True
-                    item["status_kind"] = "target"
-                    # 미회신이었는데 티켓이 확인돼 분모에 들어온 건. 분모가 늘면
-                    # "왜 늘었나"를 화면에서 바로 확인할 수 있어야 한다.
-                    item["promoted_from_no_reply"] = True
-                    ticket_map[item["no"]] = matched
+                confirmed = [
+                    t for t in (no_reply_ticket_map.get(item["no"]) or [])
+                    if (d := capacity_ticket_done_date(t)) and start <= d <= end and d <= today
+                ]
+                if confirmed:
+                    item["expanded_without_reply"] = True
+                    # 화면에서 바로 열어볼 수 있게 대표(최신 생성) 티켓 키
+                    item["no_reply_jira_key"] = max(
+                        confirmed, key=lambda t: t.get("created") or ""
+                    )["key"]
 
     return items, ticket_map, jira_error
 
