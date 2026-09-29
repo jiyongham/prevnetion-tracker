@@ -14,6 +14,8 @@ logger = logging.getLogger(__name__)
 PAGE_SIZE = 100
 # 페이지 병렬 조회 수. 세션 커넥션 풀(pool_maxsize=20)과 JIRA 부하를 함께 고려한 값.
 MAX_PAGE_WORKERS = 6
+# 'key in (...)' 한 번에 넣을 키 수 (JQL 길이 제한과 실패 시 재시도 비용의 절충)
+KEY_CHUNK = 40
 
 
 class JiraClient:
@@ -130,6 +132,12 @@ class JiraClient:
           2) 변경작업내용이 그 시트(DATA/ARCH) 영역인지 (capacity.classify_capacity_sheet)
           3) 디스크/파일시스템/ASM 증설로 읽히는지 (capacity.capacity_ticket_kind)
         EoS(get_eos_tickets)가 "예방1" 없는 IP전환 티켓을 이미 같은 방식으로 받아온다.
+
+        issuelinks를 같이 받는 이유: 증설은 요청(SR) 티켓에서 시작해 '변경이관'으로
+        변경관리(CM) 티켓을 만들어 진행한다. 호스트명/IP가 적혀 우리 대상과 매칭되는
+        건 SR 티켓인데, 변경계획완료일은 CM 티켓에만 들어간다. 연결을 따라가지 않으면
+        증설이 끝났는데도 "완료일 없음"으로 빠진다
+        (capacity.attach_linked_change_tickets 참고).
         """
         tag_clause = 'summary ~ "예방4"'
         if settings.capacity_accept_untagged_jira:
@@ -144,12 +152,32 @@ class JiraClient:
             "description",
             "status",
             "created",
+            "issuelinks",
             settings.jsm_requester_field,
             settings.planned_end_date_field,
             settings.planned_start_date_field,
             *settings.match_field_list,
         ]
         return self.search(jql, fields=fields)
+
+    def get_issues_by_keys(self, keys: list[str], fields: list[str]) -> list[dict]:
+        """
+        키 목록으로 이슈 조회. 없는 키가 하나라도 섞이면 JQL 전체가 400으로 떨어지므로
+        청크로 나눠 조회하고, 실패한 청크만 한 건씩 다시 시도한다
+        (evidence_check._fetch_statuses와 같은 방식).
+        """
+        result: list[dict] = []
+        for i in range(0, len(keys), KEY_CHUNK):
+            chunk = keys[i:i + KEY_CHUNK]
+            try:
+                result += self.search(f"key in ({','.join(chunk)})", fields=fields)
+            except Exception:
+                for k in chunk:
+                    try:
+                        result += self.search(f"key = {k}", fields=fields)
+                    except Exception:
+                        logger.info(f"연결 티켓 조회 불가 (없는 키이거나 권한 없음): {k}")
+        return result
 
     def get_eos_tickets(self):
         """
