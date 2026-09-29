@@ -24,12 +24,11 @@ from datetime import date
 
 from app.config import settings
 from app.core.capacity_loader import load_capacity_items_merged
-from app.core.date_utils import half_window
 from app.core.jira_client import jira
 from app.services.capacity import (
     build_capacity_ticket_summary,
-    capacity_ticket_done_date,
     filter_tickets_by_sheet,
+    judge_capacity,
 )
 from app.services.matcher import match_items_by_ip
 
@@ -152,42 +151,35 @@ def get_matched_items(
         # 같은 서버가 DATA/ARCH 양쪽에 다 있을 수 있어, 변경작업내용으로 이 시트 소속만 남김
         ticket_map = filter_tickets_by_sheet(match_result["matched"], sheet)
 
-        # 미회신(증설 여부 O/X 미기입) 대상에 증설 티켓이 걸리면 "회신은 없었지만 증설한
-        # 것으로 보인다"는 뜻이다. 담당자가 회신 없이 그냥 증설해버리는 경우가 실제로
-        # 있다(예: 메시징서비스 서버) - "회신이 없다"와 "증설을 안 했다"는 다르다.
+        # 미회신(증설 여부 O/X 미기입) 대상 중 '증설이 끝난 것이 확인된' 건만 대상으로
+        # 올린다. 담당자가 회신 없이 그냥 증설해버리는 경우가 실제로 있어서(예:
+        # 메시징서비스 서버) - "회신이 없다"와 "증설을 안 했다"는 다르다.
         #
-        # 예전엔 이걸 곧바로 target으로 승격시켜 완료율 분모에 넣었다. 그러면 엑셀이 정한
-        # 대상 수가 JIRA 조회 결과에 따라 조용히 움직인다 - 태그 없는 티켓까지 보게 된 뒤
-        # DATA 시트가 17대에서 23대로 늘어, "무엇을 기준으로 늘었는지" 화면만 봐서는
-        # 아무도 설명할 수 없는 상태가 됐다. 분모는 보고서에 그대로 나가는 숫자라
-        # 사람이 정한 값으로 고정돼 있어야 한다.
+        # 승격 기준을 완료 판정(judge_capacity)과 같은 함수로 묶은 것이 핵심이다.
+        # 예전에는 "티켓이 하나라도 걸렸다"로 승격시켰는데, 그 조건은 완료 판정보다
+        # 훨씬 느슨해서 완료로는 절대 안 잡히는 티켓(이름/IP만 스친 무관한 티켓,
+        # 변경계획완료일이 없는 티켓)도 승격시켰다. 그 결과 증설한 적 없는 서버 6대가
+        # 분모에만 들어가 DATA 시트가 17대에서 23대로 늘었고, 늘어난 건들은 완료도
+        # 미완료도 아닌 '미계획'으로 떠서 아무도 설명할 수 없는 숫자가 됐다.
         #
-        # 그래서 승격은 하지 않고 표시만 한다. 확인한 사람이 엑셀 '증설 여부'를 O로
-        # 고치면 그때 정식으로 대상이 된다 - 코드가 분모를 조용히 바꾸는 대신 사람이
-        # 고칠 거리를 드러내는 쪽이다 (evidence_check도 같은 이유로 완료 판정을 뒤집지
-        # 않고 표시만 한다).
-        # 표시하는 기준도 "티켓이 걸렸다"가 아니라 "완료 판정을 통과하는 티켓이 있다"이다.
-        # 단순히 IP/호스트명이 스쳤다는 이유로 증설했다고 말하면, 증설하지도 않은 서버가
-        # 증설된 것처럼 표시된다 - 실제로 변경계획완료일도 없는 티켓에 걸려서 증설한 적
-        # 없는 서버 6대에 "회신없이 증설"이 붙은 적이 있다. 완료로 인정할 수 있는
-        # 티켓(judge_capacity와 같은 조건)일 때만 이야기한다.
+        # 같은 함수를 쓰면 '승격됨'과 '완료됨'이 항상 같이 움직인다 - 분모와 분자가
+        # 함께 +1이라 완료율이 왜곡되지 않고, 승격된 대상은 화면에서 반드시 완료로
+        # 보인다(분모만 늘고 설명이 안 되는 상태가 원천적으로 안 생긴다).
         today = date.today()
-        start, end = half_window(today.year, "H2")
         no_reply = [i for i in items if i["status_kind"] == "no_reply"]
         if no_reply:
             no_reply_match = match_items_by_ip(no_reply, tickets)["matched"]
             no_reply_ticket_map = filter_tickets_by_sheet(no_reply_match, sheet)
             for item in no_reply:
-                confirmed = [
-                    t for t in (no_reply_ticket_map.get(item["no"]) or [])
-                    if (d := capacity_ticket_done_date(t)) and start <= d <= end and d <= today
-                ]
-                if confirmed:
+                matched = no_reply_ticket_map.get(item["no"]) or []
+                completed, _reason, _sel = judge_capacity(item, matched, today, today.year)
+                if completed:
+                    item["is_target"] = True
+                    item["status_kind"] = "target"
+                    # 엑셀 회신 없이 대상이 된 건. 분모가 엑셀 '증설 O' 대수와 다를 때
+                    # 그 차이가 정확히 이 건들이라는 걸 화면에서 확인할 수 있어야 한다.
                     item["expanded_without_reply"] = True
-                    # 화면에서 바로 열어볼 수 있게 대표(최신 생성) 티켓 키
-                    item["no_reply_jira_key"] = max(
-                        confirmed, key=lambda t: t.get("created") or ""
-                    )["key"]
+                    ticket_map[item["no"]] = matched
 
     return items, ticket_map, jira_error
 
