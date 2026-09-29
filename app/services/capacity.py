@@ -78,7 +78,9 @@ def capacity_ticket_kind(f: dict) -> str:
     return "기타"
 
 
-def build_capacity_ticket_summary(issues: list[dict], field_id: str) -> list[dict]:
+def build_capacity_ticket_summary(
+    issues: list[dict], field_id: str, include_other: bool = False
+) -> list[dict]:
     """
     JIRA 원본 -> 필요 필드만. 용량관리 증설 티켓이 아닌 것(kind "기타")은 여기서 버린다.
 
@@ -89,9 +91,45 @@ def build_capacity_ticket_summary(issues: list[dict], field_id: str) -> list[dic
     완료율 분모만 늘어난다. 예전엔 조회가 예방4만 받아와서 "목록에 있는 티켓은 전부
     용량관리 티켓"이 자동으로 보장됐는데, 조회를 넓히면서 그 전제가 깨졌다.
     목록을 만드는 이 지점에서 걸러 전제를 되돌린다.
+
+    include_other=True면 "기타"까지 그대로 돌려준다 - 진단 화면(/capacity/trace)이
+    "이 티켓이 어느 단계에서 빠졌나"를 보여주려면 걸러진 것까지 봐야 하기 때문이다.
+    이 필터 때문에 정작 원인 파악이 안 되는 상황을 만들지 않으려고 둔 예외다.
     """
     tickets = build_ticket_summary(issues, field_id, kind_fn=capacity_ticket_kind)
+    if include_other:
+        return tickets
     return [t for t in tickets if t["kind"] in CAPACITY_KINDS]
+
+
+def trace_ticket(t: dict, sheet: str, as_of: date, base_year: int) -> tuple[str, str]:
+    """
+    티켓 하나가 완료 판정까지 가는 길에서 어느 단계에 걸렸는지 (진단 화면용).
+    반환: (수준, 설명) - 수준은 ok / wait / drop.
+
+    judge_capacity·filter_tickets_by_sheet·capacity_ticket_kind가 각각 조용히
+    걸러내기 때문에, 화면에서는 "티켓이 분명히 있는데 완료가 아니다"만 보이고 왜
+    그런지는 코드를 읽어야만 알 수 있었다. 판정 단계를 같은 순서로 다시 짚어
+    문장으로 돌려준다.
+    """
+    if t["kind"] not in CAPACITY_KINDS:
+        return "drop", "증설 티켓으로 인식되지 않음 (제목/본문에 증설 표현 + 디스크 영역 표기가 필요)"
+
+    sheets = classify_capacity_sheet(t.get("match_text"))
+    if sheet not in sheets:
+        found = ", ".join(sorted(sheets)) or "없음"
+        return "drop", f"이 시트({sheet}) 영역이 아님 - 변경작업내용 영역 판별: {found}"
+
+    done_on = capacity_ticket_done_date(t)
+    if not done_on:
+        return "drop", "변경계획완료일이 비어 있음 (완료 판정은 이 날짜만 본다)"
+
+    start, end = half_window(base_year, "H2")
+    if not (start <= done_on <= end):
+        return "drop", f"변경계획완료일 {done_on}이 집계 구간({start} ~ {end}) 밖"
+    if done_on > as_of:
+        return "wait", f"변경계획완료일 {done_on}이 아직 오지 않음 → '미완료'로 표시"
+    return "ok", f"완료로 인정 ({done_on})"
 
 
 def filter_tickets_by_sheet(ticket_map: dict[str, list[dict]], sheet: str) -> dict[str, list[dict]]:
@@ -134,10 +172,13 @@ def build_no_reply_details(items: list[dict], base_year: int) -> list[dict]:
             "schedule": sched,
             "schedule_disp": f"{sched.month}/{sched.day}" if sched else (item.get("schedule_raw") or ""),
             "planned": False,
+            # 미회신 행은 대상 목록에서 다른 미응답과 똑같이 보인다. 증설 티켓이
+            # 확인된 건이라도 여기서는 구분하지 않는다 - "티켓이 걸렸다"를 증설했다는
+            # 뜻으로 화면에 내보냈다가, 증설한 적 없는 서버가 증설된 것처럼 표시된
+            # 적이 있다. 그 정보는 판정 추적 화면(/capacity/trace)에서만 확인한다.
             "jira_key": "",
             "jira_matched": False,
             "jira_untagged": False,
-            "promoted": False,
             "completed": False,
             "reason": "",
             "input_source": item.get("input_source", "excel"),
@@ -263,8 +304,6 @@ def calc_capacity_completion(
             # 예방4 태그 없이 올라온 티켓으로 잡힌 건 - 화면에 표시해서 담당자에게
             # 태그를 붙여달라고 요청할 수 있게 한다 (연결 자체는 정상으로 본다)
             "jira_untagged": is_untagged(display_ticket),
-            # 미회신이었는데 증설 티켓이 확인돼 대상(분모)으로 올라온 건
-            "promoted": bool(item.get("promoted_from_no_reply")),
             "completed": completed,
             "reason": reason,
             "input_source": item.get("input_source", "excel"),

@@ -1,0 +1,135 @@
+{% extends "_layout.html" %}
+
+{% block title %}용량관리 판정 추적{% endblock %}
+
+{% block content %}
+  <header>
+    <h1>🔎 용량관리 판정 추적</h1>
+    <a href="/capacity?sheet={{ sheet }}" class="btn-sm">← 용량관리</a>
+  </header>
+
+  <div class="alert alert-info">
+    대상 하나가 <strong>왜 완료(또는 미완료·미계획)로 잡혔는지</strong> 단계별로 보여줍니다.
+    걸러진 티켓까지 전부 표시하므로, "티켓은 있는데 완료가 안 된다"의 원인을 여기서 확인할 수 있습니다.
+    <br>
+    집계 구간 <strong>{{ half_start }} ~ {{ half_end }}</strong> · 기준일 <strong>{{ as_of }}</strong>
+    — 완료로 인정되려면 티켓의 <strong>변경계획완료일</strong>이 이 구간 안이고 기준일 이전이어야 합니다.
+  </div>
+
+  {% if load_error %}
+  <div class="alert">⚠️ 대상 엑셀을 읽지 못했습니다: {{ load_error[:200] }}</div>
+  {% endif %}
+  {% if jira_error %}
+  <div class="alert">⚠️ JIRA 조회 실패: {{ jira_error[:200] }}</div>
+  {% endif %}
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>대상 찾기</h2>
+      <form method="get" class="inline-form">
+        <label for="sheet" class="sr-only">시트 선택</label>
+        <select id="sheet" name="sheet">
+          <option value="DATA" {% if sheet == 'DATA' %}selected{% endif %}>DATA (ASM/파일시스템)</option>
+          <option value="ARCH" {% if sheet == 'ARCH' %}selected{% endif %}>ARCH (아카이브)</option>
+        </select>
+        <label for="q" class="sr-only">대상 검색</label>
+        <input type="text" id="q" name="q" value="{{ q }}" class="search"
+               placeholder="CI명 / 호스트명 / IP" style="min-width:260px">
+        <button type="submit" class="btn-sm">추적</button>
+      </form>
+    </div>
+    {% if not searched %}
+    <p class="muted" style="padding:16px">
+      CI명·호스트명·IP 중 아무거나 넣고 추적을 누르세요. 예) <span class="mono">ez1</span>
+    </p>
+    {% elif not rows %}
+    <p class="muted" style="padding:16px">
+      <span class="mono">{{ q }}</span>와(과) 일치하는 {{ sheet }} 시트 대상이 없습니다.
+      시트를 바꿔보거나 검색어를 줄여보세요.
+    </p>
+    {% else %}
+    <p class="muted" style="padding:0 16px 12px">
+      {{ rows|length }}건 일치 · 조회된 증설 관련 티켓 {{ ticket_cnt }}건 (걸러진 것 포함)
+    </p>
+    {% endif %}
+  </section>
+
+  {% for r in rows %}
+  <section class="panel">
+    <div class="panel-head">
+      <h2>{{ r.item.ci_name }} <span class="muted small">{{ r.item.hostname }} · {{ r.item.ip }}</span></h2>
+    </div>
+
+    <table>
+      <tbody>
+        <tr><th scope="row" style="width:180px">대상 여부 판정</th><td>{{ r.target_reason }}</td></tr>
+        <tr>
+          <th scope="row">엑셀 증설 여부</th>
+          <td class="mono">{{ r.item.expand_flag or "(공란)" }}</td>
+        </tr>
+        <tr>
+          <th scope="row">일정 칸</th>
+          <td class="mono">{{ r.item.schedule_raw or "(비어 있음)" }}
+            <span class="muted small">
+              ({% if r.item.input_source == 'web' %}웹 입력{% if r.item.updated_by %} · {{ r.item.updated_by }}{% endif %}{% else %}엑셀 원본{% endif %})
+            </span>
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">완료 표기</th>
+          <td class="mono">{{ r.item.excel_done or "(없음)" }}
+            <span class="muted small">— 이 칸에 O가 있으면 JIRA와 무관하게 완료로 잡힙니다</span>
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">종류</th>
+          <td class="mono">{{ r.item.fs_type or "-" }}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="panel-head" style="margin-top:8px">
+      <h2 class="small">걸린 티켓 {{ r.tickets|length }}건 <span class="muted small">— IP/호스트명으로 매칭된 전부 (시트·종류 필터 적용 전)</span></h2>
+    </div>
+    {% if not r.tickets %}
+    <p class="muted" style="padding:12px 16px">
+      IP·호스트명으로 걸린 티켓이 없습니다. 티켓이 분명히 있다면 ①제목에 <span class="mono">예방4</span>나
+      <span class="mono">증설</span>이 없어 조회 대상에서 빠졌거나, ②티켓 본문·변경작업 대상에 이 서버의
+      호스트명·IP가 적혀 있지 않은 경우입니다.
+    </p>
+    {% else %}
+    <div class="table-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">티켓</th><th scope="col">제목</th><th scope="col">상태</th>
+          <th scope="col">종류 판정</th><th scope="col">영역</th>
+          <th scope="col">변경계획완료일</th><th scope="col">변경계획시작일</th>
+          <th scope="col">판정 결과</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for x in r.tickets %}
+        <tr>
+          <td><a href="{{ jira_base }}/browse/{{ x.t.key }}" target="_blank" class="link small">{{ x.t.key }}</a></td>
+          <td class="small">{{ x.t.summary }}</td>
+          <td class="small">{{ x.t.status }}</td>
+          <td class="mono small">{{ x.t.kind }}</td>
+          <td class="mono small">{{ x.sheets | join(",") or "-" }}</td>
+          <td class="mono small">{{ x.t.planned_end_date or "(없음)" }}</td>
+          <td class="mono small">{{ x.t.planned_start_date or "(없음)" }}</td>
+          <td class="small">
+            {% if x.level == 'ok' %}<span class="badge ok">인정</span>
+            {% elif x.level == 'wait' %}<span class="badge info">대기</span>
+            {% else %}<span class="badge warn">제외</span>{% endif %}
+            {{ x.note }}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% endif %}
+  </section>
+  {% endfor %}
+{% endblock %}

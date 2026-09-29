@@ -22,10 +22,16 @@ from app.models.db import (
     log_capacity_remind,
     upsert_capacity_input,
 )
+from app.core.capacity_loader import load_capacity_items_merged
+from app.core.date_utils import half_window
+from app.core.jira_client import jira
 from app.services.capacity import (
+    build_capacity_ticket_summary,
     build_no_reply_details,
     calc_capacity_completion,
+    classify_capacity_sheet,
     filter_tickets_by_sheet,
+    trace_ticket,
 )
 from app.services import ai_diagnose, capacity_chatbot, capacity_data, last_report
 from app.services.capacity_reminder import group_capacity_no_reply, group_capacity_unplanned
@@ -84,9 +90,6 @@ def capacity_dashboard(
     # [예방4] 태그 없이 올라온 티켓으로 연결된 대상 수 (필터/검색 적용 전 전체 기준).
     # 이 숫자가 곧 "태그를 빼먹은 티켓" 목록이라 담당자에게 태그 추가를 요청할 때 쓴다.
     untagged_cnt = sum(1 for d in result["details"] if d.get("jira_untagged"))
-    # 미회신이었는데 증설 티켓이 확인돼 대상(분모)으로 올라온 대수. 완료율 분모가
-    # 엑셀상 "증설 O" 대수보다 많아 보이는 이유가 정확히 이 숫자다.
-    promoted_cnt = sum(1 for d in result["details"] if d.get("promoted"))
     no_reply_raw = [i for i in all_items if i["status_kind"] == "no_reply"]
     no_reply_details = build_no_reply_details(no_reply_raw, today.year)
 
@@ -102,8 +105,6 @@ def capacity_dashboard(
         details = [d for d in details if not d["planned"]]
     elif status == "untagged":
         details = [d for d in details if d.get("jira_untagged")]
-    elif status == "promoted":
-        details = [d for d in details if d.get("promoted")]
     if q:
         kw = q.lower()
 
@@ -127,7 +128,6 @@ def capacity_dashboard(
         "excluded_items": excluded_items,
         "excluded_cnt": excluded_cnt,
         "untagged_cnt": untagged_cnt,
-        "promoted_cnt": promoted_cnt,
         "by_team": dict(sorted(by_team.items(), key=lambda x: x[1]["rate"])),
         "report_warning": report_warning,
         # 발송 직후에만(sent=1) 방금 나간 본문을 화면에 띄운다
@@ -141,6 +141,118 @@ def capacity_dashboard(
         "teams": sorted(by_team.keys()),
         "admins": sorted(settings.capacity_admin_set),
         "jira_error": jira_error,
+        "jira_base": settings.jira_url.rstrip("/"),
+    })
+
+
+# ─────────────────────────────────────────────
+# 판정 추적 (왜 이 대상이 완료/대상으로 잡혔는지)
+# ─────────────────────────────────────────────
+def _target_reason(item: dict) -> str:
+    """이 대상이 완료율 분모(대상)에 들어간/빠진 이유를 한 문장으로 (capacity_loader 규칙과 1:1)"""
+    if item["status_kind"] == "excluded":
+        return "제외 - 엑셀 '증설 여부'가 X 또는 웹에서 제외 처리"
+    if item["status_kind"] == "no_reply":
+        base = "대상 아님 (미회신) - 증설 여부 공란 + 일정 없음"
+        if item.get("expanded_without_reply"):
+            return (
+                f"{base}. 다만 완료로 인정할 만한 증설 티켓"
+                f"({item.get('no_reply_jira_key')})이 확인됨 - 엑셀 '증설 여부'를 "
+                f"O로 고치면 정식 대상이 된다 (코드가 분모를 자동으로 바꾸지는 않는다)"
+            )
+        return base
+    if item["expand_flag"] == "O":
+        return "대상 - 엑셀 '증설 여부'가 O"
+    if (item.get("schedule_raw") or "").strip():
+        src = "웹 입력" if item.get("input_source") == "web" else "엑셀 원본"
+        return (
+            f"대상 - 증설 여부는 공란인데 일정 칸에 '{item['schedule_raw']}'이 있어 "
+            f"증설 의사로 간주 ({src})"
+        )
+    return "대상"
+
+
+@router.get("/capacity/trace", response_class=HTMLResponse)
+def capacity_trace(request: Request, sheet: str = "DATA", q: str | None = None):
+    """
+    대상 하나가 왜 완료(또는 미완료/미계획)로 잡혔는지 단계별로 보여주는 진단 화면.
+
+    "티켓이 분명히 있는데 완료가 안 된다"를 확인할 방법이 화면에 없어서 코드를 읽어야만
+    알 수 있었다. 여기서는 걸러진 티켓까지(include_other=True) 다 보여주고, 각 티켓이
+    kind 판정 -> 시트 영역 -> 변경계획완료일 -> 집계 구간 중 어디서 빠졌는지 문장으로 찍는다.
+
+    대시보드 캐시(capacity_data)를 안 쓰고 JIRA를 직접 부른다 - 캐시에는 이미 걸러진
+    목록만 들어 있어서, 걸러진 이유를 보려면 원본이 필요하다. 눌러서 여는 진단
+    화면이라 조회 몇 초는 감수한다.
+    """
+    if sheet not in ("DATA", "ARCH"):
+        sheet = "DATA"
+    today = date.today()
+    kw = (q or "").strip().lower()
+
+    load_error = None
+    try:
+        items = load_capacity_items_merged(sheet=sheet)
+    except Exception as e:
+        # 엑셀을 못 읽어도 화면은 떠야 한다 (진단 화면이 진단 불가로 500 나면 곤란하다)
+        logger.warning(f"판정 추적 엑셀 로드 실패: {e}")
+        items, load_error = [], str(e)
+
+    matched_items = [
+        i for i in items
+        if kw and (
+            kw in (i["ci_name"] or "").lower()
+            or kw in (i["hostname"] or "").lower()
+            or kw in (i["ip"] or "").lower()
+            or kw == (i["no"] or "").lower()
+        )
+    ]
+
+    jira_error = None
+    tickets = []
+    if matched_items:
+        try:
+            tickets = build_capacity_ticket_summary(
+                jira.get_capacity_tickets(), settings.planned_end_date_field,
+                include_other=True,
+            )
+        except Exception as e:
+            logger.warning(f"판정 추적 JIRA 조회 실패: {e}")
+            jira_error = str(e)
+
+    rows = []
+    for item in matched_items:
+        # 매칭은 대시보드와 같은 함수로 하되 시트/종류 필터는 적용하지 않는다 -
+        # 바로 그 필터에서 빠졌는지가 보고 싶은 것이기 때문이다.
+        hits = match_items_by_ip([item], tickets)["matched"].get(item["no"]) or []
+        traced = []
+        for t in sorted(hits, key=lambda x: x.get("created") or "", reverse=True):
+            level, note = trace_ticket(t, sheet, today, today.year)
+            traced.append({
+                "t": t,
+                "sheets": sorted(classify_capacity_sheet(t.get("match_text"))),
+                "level": level,
+                "note": note,
+            })
+        rows.append({
+            "item": item,
+            "target_reason": _target_reason(item),
+            "tickets": traced,
+        })
+
+    half_start, half_end = half_window(today.year, "H2")
+    return templates.TemplateResponse(request, "capacity_trace.html", {
+        "request": request,
+        "sheet": sheet,
+        "q": q or "",
+        "rows": rows,
+        "searched": bool(kw),
+        "ticket_cnt": len(tickets),
+        "half_start": half_start,
+        "half_end": half_end,
+        "as_of": today,
+        "jira_error": jira_error,
+        "load_error": load_error,
         "jira_base": settings.jira_url.rstrip("/"),
     })
 
