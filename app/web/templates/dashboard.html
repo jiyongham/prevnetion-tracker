@@ -53,6 +53,9 @@
       {% elif d.status_label == '대략' %}<span class="badge soft" title="대략적 일정만 등록됨: {{ d.schedule_raw }} — 정확한 날짜 확정 필요">대략</span>
       {% else %}<span class="badge warn">미계획</span>{% endif %}
     </td>
+    {# 입력자: 이 행을 웹에서 마지막으로 저장한 사람. 일정이 엑셀 원본에서 온 행은
+       입력한 사람이 없으므로 '-'로 둔다 (updated_by가 비어 있는 경우와 같다). #}
+    <td class="small" title="{% if d.updated_by %}웹 입력 {{ d.updated_at }}{% else %}엑셀 원본 (웹 입력 없음){% endif %}">{{ d.updated_by or "-" }}</td>
     <td><button class="btn-save" onclick="saveRow(this)" aria-label="{{ d.system_name }} 저장">저장</button></td>
     <td class="admin-only">
       <button class="btn-sm btn-exclude" onclick="excludeRow(this)"
@@ -228,7 +231,9 @@
           <th scope="col" style="width:50px">완료 ✏️</th>
           <th scope="col" style="width:130px">증적 ✏️</th>
           <th scope="col" style="width:130px">비고 ✏️</th>
-          <th scope="col">JIRA</th><th scope="col">상태</th><th scope="col" style="width:60px">저장</th>
+          <th scope="col">JIRA</th><th scope="col">상태</th>
+          <th scope="col" style="width:80px">입력자</th>
+          <th scope="col" style="width:60px">저장</th>
           <th scope="col" class="admin-only" style="width:60px">제외</th>
         </tr>
       </thead>

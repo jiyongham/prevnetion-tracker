@@ -16,7 +16,7 @@ from fastapi.responses import (
 
 from app.config import settings
 from app.core.excel_loader import get_targets as get_dr_targets
-from app.core.excel_loader import load_dr_items_merged
+from app.core.excel_loader import load_dr_items, load_dr_items_merged
 from app.core.jira_client import jira
 from app.core.scheduler import get_jobs_info
 from app.core.teams_client import send_teams_dm, send_teams_message
@@ -363,12 +363,31 @@ def save_schedule(
 # ─────────────────────────────────────────────
 # 변경 이력
 # ─────────────────────────────────────────────
+def hostname_by_no() -> dict[str, str]:
+    """
+    NO -> 호스트명. 변경 이력(change_log)은 NO만 저장하는데, NO는 엑셀 행번호라
+    사람이 보고 어느 서버인지 알 수 없다. 화면에는 호스트명으로 보여주기 위한 맵.
+
+    호스트명은 반기와 무관한 엑셀 원본 컬럼이라 어느 반기로 읽어도 같다 (반기별로
+    갈리는 건 일정/수행방식/완료 뿐 - excel_loader.HALF_COLS 참고). 그래서 한 번만
+    읽고, 굳이 DB 병합(load_dr_items_merged)도 하지 않는다.
+    """
+    return {i["no"]: i["hostname"] for i in load_dr_items(half="H1") if i["no"]}
+
+
 @router.get("/logs", response_class=HTMLResponse)
 def view_logs(request: Request, item_no: str | None = None):
     logs = get_logs(item_no=item_no, limit=200)
+    try:
+        hostnames = hostname_by_no()
+    except Exception as e:
+        # 엑셀을 못 읽어도 이력 자체는 보여준다 (호스트명 칸만 NO로 대체된다)
+        logger.warning(f"변경 이력 호스트명 매핑 실패 (NO로 표시): {e}")
+        hostnames = {}
     return templates.TemplateResponse(request, "logs.html", {
         "request": request,
         "logs": logs,
+        "hostnames": hostnames,
         "item_no": item_no or "",
     })
 

@@ -8,9 +8,17 @@
     <a href="/dr?half={{ half }}" class="btn-sm">← 대시보드</a>
   </header>
 
+  {# 사전 안내(작업 N일 이내)만 '입력자'에게 보낸다 - 이미 웹에 일정을 넣은 사람이
+     실제 작업 준비자이자 변경 티켓 발행자다 (reminder.group_unplanned_by_service 참고). #}
+  {% set by_inputter = kind == 'upcoming' %}
   <div class="alert alert-info">
-    서비스별 <strong>{{ total_unplanned }}건</strong> · 아래는 <strong>발송 전 초안</strong>입니다.
+    {% if by_inputter %}입력자별{% else %}서비스별{% endif %} <strong>{{ total_unplanned }}건</strong> ·
+    아래는 <strong>발송 전 초안</strong>입니다.
+    {% if by_inputter %}
+    일정을 웹에 입력한 사람에게 보냅니다 (엑셀 원본 일정이라 입력자가 없는 대상은 서비스별 대표 담당자).
+    {% else %}
     받는 팀명은 CMDB(운영팀) 기준으로 자동 보정됩니다.
+    {% endif %}
   </div>
 
   <div class="tabs">
@@ -36,9 +44,9 @@
   {% endif %}
 
   <div class="remind-layout">
-    <!-- 서비스 선택 -->
+    <!-- 그룹 선택 (서비스별 / 사전 안내는 입력자별) -->
     <aside class="panel remind-side">
-      <h2>서비스 선택</h2>
+      <h2>{% if by_inputter %}입력자 선택{% else %}서비스 선택{% endif %}</h2>
       <a href="/remind-preview?half={{ half }}&kind={{ kind }}"
          class="owner-item {% if not selected %}active{% endif %}">
         <span>전체 보기</span><span class="cnt">{{ total_unplanned }}</span>
@@ -46,7 +54,7 @@
       {% for g in groups %}
       <a href="/remind-preview?half={{ half }}&kind={{ kind }}&service={{ g.service | urlencode }}"
          class="owner-item {% if selected and selected.service == g.service %}active{% endif %}">
-        <span>{% if g.sent %}✅ {% endif %}{{ g.service }} <span class="muted">{{ g.name }}{% if g.candidates|length > 1 %} 외 {{ g.candidates|length - 1 }}{% endif %}·{{ g.team }}</span></span>
+        <span>{% if g.sent %}✅ {% endif %}{{ g.label }} <span class="muted">{{ g.sub_label }}</span></span>
         <span class="cnt">{{ g.count }}</span>
       </a>
       {% endfor %}
@@ -61,7 +69,7 @@
       {% for g in show %}
       <div class="panel draft" data-owner="{{ g.owner }}" data-half="{{ half }}" data-service="{{ g.service }}">
         <div class="panel-head">
-          <h2>{{ g.service }} <span class="muted">{{ g.name }}·{{ g.team }}{% if g.candidates|length > 1 %} 외 {{ g.candidates|length - 1 }}명{% endif %} · {{ g.count }}건</span>
+          <h2>{{ g.label }} <span class="muted">{{ g.sub_label }} · {{ g.count }}건</span>
             <span class="send-status">
               {% if g.sent %}✅ 발송 이력 있음 ({{ g.sent.sent_at }}, {{ g.sent.recipient_name }}){% endif %}
             </span>
