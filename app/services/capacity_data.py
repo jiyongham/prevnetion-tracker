@@ -149,6 +149,10 @@ def get_matched_items(
         # 티켓이 있다는 사실 자체가 증설 여부를 확정하는 근거다. 승격 후엔 다른 target과
         # 완전히 같은 기준(judge_capacity)으로 완료 여부를 판단하므로, 티켓만 있고 아직
         # 진행 중이면 "미완료"로 뜨고 무조건 완료 처리되는 건 아니다.
+        #
+        # 여기서 종류(kind)를 따로 안 보는 건 build_capacity_ticket_summary가 이미
+        # 증설 티켓만 담아 주기 때문이다 - 그 필터가 없으면 무관한 티켓 하나에 승격이
+        # 일어나 완료율 분모만 늘어난다 (실제로 그런 적이 있다).
         no_reply = [i for i in items if i["status_kind"] == "no_reply"]
         if no_reply:
             no_reply_match = match_items_by_ip(no_reply, tickets)["matched"]
@@ -158,6 +162,9 @@ def get_matched_items(
                 if matched:
                     item["is_target"] = True
                     item["status_kind"] = "target"
+                    # 미회신이었는데 티켓이 확인돼 분모에 들어온 건. 분모가 늘면
+                    # "왜 늘었나"를 화면에서 바로 확인할 수 있어야 한다.
+                    item["promoted_from_no_reply"] = True
                     ticket_map[item["no"]] = matched
 
     return items, ticket_map, jira_error
