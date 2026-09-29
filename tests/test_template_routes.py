@@ -35,6 +35,7 @@ from app.web.routes import capacity as capacity_routes
 from app.web.routes import dr as dr_routes
 from app.web.routes import eos as eos_routes
 from app.web.routes import kernel as kernel_routes
+from app.web.routes import teams as teams_routes
 from app.main import app
 
 # 500 에러 응답 본문에서 이번 버그 계열(포지셔널 인자 밀림)을 잡기 위한 문자열.
@@ -59,6 +60,7 @@ ROUTES = [
     ("GET", "/eos/plan-chat", "eos_plan_chat.html"),
     ("GET", "/kernel", "kernel.html"),
     ("GET", "/kernel/owner-check", "kernel_owner_check.html"),
+    ("GET", "/teams", "teams.html"),
 ]
 
 
@@ -134,6 +136,13 @@ def _apply_no_network_patches(monkeypatch):
         "load_kernel_items_merged",
         lambda scope="dev": [],
     )
+
+    # 팀별 조회는 네 영역 집계를 직접 모은다. 커널 로더는 이 모듈에 따로 바인딩돼
+    # 있으므로(kernel_routes 패치가 안 먹는다) 여기서도 막아준다 - 안 막으면
+    # 엑셀이 없어 예외 경로로만 렌더돼 실제 집계 코드를 안 타게 된다.
+    monkeypatch.setattr(teams_routes, "available_scopes", lambda: [])
+    monkeypatch.setattr(teams_routes, "load_kernel_items_merged", lambda scope="dev": [])
+    monkeypatch.setattr(teams_routes.dr_data, "load_items", lambda half: [])
 
 
 def test_all_template_routes_render_without_500(monkeypatch):

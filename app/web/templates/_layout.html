@@ -18,6 +18,7 @@
    갈 수 있다). #}
 {% set path = request.url.path %}
 {% if path == '/' %}{% set section = 'home' %}
+{% elif path.startswith('/teams') %}{% set section = 'teams' %}
 {% elif path.startswith('/capacity') %}{% set section = 'capacity' %}
 {% elif path.startswith('/eos') %}{% set section = 'eos' %}
 {% elif path.startswith('/kernel') %}{% set section = 'kernel' %}
@@ -30,7 +31,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}장애예방 관제센터{% endblock %}</title>
-  <link rel="stylesheet" href="/static/style.css?v=26">
+  <link rel="stylesheet" href="/static/style.css?v=27">
 </head>
 <body>
 <a href="#main" class="skip-link">본문으로 건너뛰기</a>
@@ -58,6 +59,9 @@
       <a href="/kernel" class="side-nav-item {{ 'active' if section == 'kernel' }}"
          {{ 'aria-current=page' if section == 'kernel' }}>
         <span class="side-nav-icon" aria-hidden="true">🧩</span>커널패치</a>
+      <a href="/teams" class="side-nav-item {{ 'active' if section == 'teams' }}"
+         {{ 'aria-current=page' if section == 'teams' }}>
+        <span class="side-nav-icon" aria-hidden="true">👥</span>팀별 조회</a>
     </nav>
 
     <div class="side-nav-foot">

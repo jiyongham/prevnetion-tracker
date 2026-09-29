@@ -13,7 +13,7 @@ from app.services.dr_data import prewarm as prewarm_dr
 from app.services.eos_data import prewarm as prewarm_eos
 from app.services.report import get_current_half
 from app.web.deps import WEB_DIR
-from app.web.routes import capacity, dr, eos, home, kernel, misc
+from app.web.routes import capacity, dr, eos, home, kernel, misc, teams
 
 logging.basicConfig(
     level=logging.INFO,
@@ -55,4 +55,5 @@ app.include_router(dr.router)
 app.include_router(capacity.router)
 app.include_router(eos.router)
 app.include_router(kernel.router)
+app.include_router(teams.router)
 app.include_router(misc.router)
