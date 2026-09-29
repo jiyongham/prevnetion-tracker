@@ -97,6 +97,10 @@
           <a href="/capacity?sheet={{ sheet }}&status=pending" class="chip {% if filter_status == 'pending' %}active{% endif %}">미완료</a>
           <a href="/capacity?sheet={{ sheet }}&status=unplanned" class="chip {% if filter_status == 'unplanned' %}active{% endif %}">미계획</a>
           <a href="/capacity?sheet={{ sheet }}&status=done" class="chip {% if filter_status == 'done' %}active{% endif %}">완료</a>
+          {% if untagged_cnt %}
+          <a href="/capacity?sheet={{ sheet }}&status=untagged" class="chip {% if filter_status == 'untagged' %}active{% endif %}"
+             title="제목에 [예방4] 태그 없이 올라온 증설 티켓으로 연결된 대상 - 담당자에게 태그 추가를 요청할 목록입니다">태그없음 {{ untagged_cnt }}</a>
+          {% endif %}
         </div>
         <button id="bulkSaveBtn" class="btn-sm" onclick="bulkSave()">💾 현재 목록 일괄 저장</button>
       </div>
@@ -146,6 +150,10 @@
           <td>
             {% if d.jira_key %}
             <a href="{{ jira_base }}/browse/{{ d.jira_key }}" target="_blank" class="link small">{{ d.jira_key }}</a>
+            {# 제목에 [예방4]가 없는 티켓으로 연결된 건. 연결은 정상이지만 담당자에게
+               태그를 붙여달라고 요청할 대상이라 눈에 띄게 표시해둔다. #}
+            {% if d.jira_untagged %}<span class="badge soft small"
+               title="제목에 [예방4] 태그가 없는 티켓입니다. 디스크 증설 내용으로 인식해 연결했습니다 - 담당자에게 태그 추가를 요청해주세요.">태그없음</span>{% endif %}
             {% elif d.no_reply %}<span class="muted">-</span>
             {% else %}
             <button class="btn-ai" title="왜 매칭이 안 됐는지 AI로 진단"

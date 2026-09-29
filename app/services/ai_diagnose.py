@@ -107,7 +107,7 @@ def diagnose_capacity_unmatched(
             "호스트명 일부가 겹치는 다른 티켓들:\n" + "\n".join(lines)
         )
     if not sheet_filtered and not candidates:
-        parts.append("이 호스트명과 조금이라도 겹치는 [예방4] 티켓이 전혀 없습니다.")
+        parts.append("이 호스트명과 조금이라도 겹치는 증설 티켓이 전혀 없습니다.")
 
     query = (
         "당신은 용량관리(디스크 증설) 진척 관리 시스템의 매칭 진단 도우미입니다. "

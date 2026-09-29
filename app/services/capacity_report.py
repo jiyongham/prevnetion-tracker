@@ -37,7 +37,7 @@ def collect_capacity(sheet: str, use_jira: bool = True):
     엑셀 병합 + 티켓 매칭 + 미응답 target 승격은 대시보드("/capacity")와 똑같이
     capacity_data.get_matched_items()를 그대로 쓴다 - 예전엔 여기서 따로 구현해서
     (엑셀+DB 병합만 하고 티켓 매칭·미응답 승격을 자체적으로 재구현), "미응답이어도
-    매칭된 [예방4] 티켓 있으면 target 승격" 로직을 대시보드에만 넣었더니 리포트
+    매칭된 증설 티켓 있으면 target 승격" 로직을 대시보드에만 넣었더니 리포트
     본문의 "증설 예정/미회신 대수"가 계속 승격 전 숫자로 화면과 어긋났다.
     """
     items, ticket_map, jira_error = capacity_data.get_matched_items(sheet, use_jira)
