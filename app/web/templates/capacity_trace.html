@@ -136,7 +136,17 @@
           <td class="small">{{ x.t.status }}</td>
           <td class="mono small">{{ x.t.kind }}</td>
           <td class="mono small">{{ x.sheets | join(",") or "-" }}</td>
-          <td class="mono small">{{ x.t.planned_end_date or "(없음)" }}</td>
+          <td class="mono small">
+            {% if x.t.planned_end_date %}{{ x.t.planned_end_date }}
+            {% else %}<span class="muted">(없음)</span>
+              {# 요청(SR) 티켓은 완료일이 비어 있고 실제 작업은 '변경이관'된
+                 변경관리 티켓에 들어간다 - 그 티켓과 날짜를 같이 보여준다. #}
+              {% for l in x.t.linked %}
+              <div class="small">↳ <a href="{{ jira_base }}/browse/{{ l.key }}" target="_blank" class="link">{{ l.key }}</a>
+                {{ l.planned_end_date or "완료일 없음" }}{% if l.status %} ({{ l.status }}){% endif %}</div>
+              {% endfor %}
+            {% endif %}
+          </td>
           <td class="mono small">{{ x.t.planned_start_date or "(없음)" }}</td>
           <td class="small">
             {% if x.level == 'ok' %}<span class="badge ok">인정</span>
