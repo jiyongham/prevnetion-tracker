@@ -58,6 +58,8 @@ def cached_at() -> float:
 def _collect_external() -> tuple[list, str | None]:
     try:
         issues = jira.get_capacity_tickets()
+        # 요청(SR) 티켓의 빈 완료일을 '변경이관'된 변경관리 티켓에서 채우는 것까지
+        # build_capacity_ticket_summary가 해준다 (capacity.attach_linked_change_tickets)
         tickets = build_capacity_ticket_summary(issues, settings.planned_end_date_field)
         return tickets, None
     except Exception as e:
