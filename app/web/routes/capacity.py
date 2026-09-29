@@ -31,6 +31,7 @@ from app.services.capacity import (
     calc_capacity_completion,
     classify_capacity_sheet,
     filter_tickets_by_sheet,
+    judge_capacity,
     trace_ticket,
 )
 from app.services import ai_diagnose, capacity_chatbot, capacity_data, last_report
@@ -198,19 +199,23 @@ def capacity_trace(request: Request, sheet: str = "DATA", q: str | None = None):
         logger.warning(f"판정 추적 엑셀 로드 실패: {e}")
         items, load_error = [], str(e)
 
-    matched_items = [
-        i for i in items
-        if kw and (
-            kw in (i["ci_name"] or "").lower()
+    if kw:
+        candidates = [
+            i for i in items
+            if kw in (i["ci_name"] or "").lower()
             or kw in (i["hostname"] or "").lower()
             or kw in (i["ip"] or "").lower()
             or kw == (i["no"] or "").lower()
-        )
-    ]
+        ]
+    else:
+        # 검색어가 없으면 시트 전체를 훑어, 아래에서 "티켓은 걸렸는데 완료가 아닌"
+        # 대상만 남긴다. 한 건씩 검색해서 확인하는 방식으로는 아직 눈치채지 못한
+        # 누락이 끝내 안 보인다 - 기본 화면이 일괄 점검이어야 한다.
+        candidates = items
 
     jira_error = None
     tickets = []
-    if matched_items:
+    if candidates:
         try:
             tickets = build_capacity_ticket_summary(
                 jira.get_capacity_tickets(), settings.planned_end_date_field,
@@ -220,11 +225,23 @@ def capacity_trace(request: Request, sheet: str = "DATA", q: str | None = None):
             logger.warning(f"판정 추적 JIRA 조회 실패: {e}")
             jira_error = str(e)
 
+    # 매칭은 대시보드와 같은 함수로 하되 시트/종류 필터는 적용하지 않는다 - 바로 그
+    # 필터에서 빠졌는지가 보고 싶은 것이기 때문이다. 대상마다 부르면 티켓 인덱스를
+    # 매번 다시 만들게 되므로 한 번에 넘긴다.
+    all_hits = match_items_by_ip(candidates, tickets)["matched"] if tickets else {}
+
     rows = []
-    for item in matched_items:
-        # 매칭은 대시보드와 같은 함수로 하되 시트/종류 필터는 적용하지 않는다 -
-        # 바로 그 필터에서 빠졌는지가 보고 싶은 것이기 때문이다.
-        hits = match_items_by_ip([item], tickets)["matched"].get(item["no"]) or []
+    for item in candidates:
+        hits = all_hits.get(item["no"]) or []
+        # 이 시트 소속으로 남는 티켓만으로 실제 완료 판정을 돌려본다 (대시보드와 동일)
+        kept = [t for t in hits if sheet in classify_capacity_sheet(t.get("match_text"))]
+        completed, reason, _ = judge_capacity(item, kept, today, today.year)
+
+        # 기본(일괄 점검) 화면은 손볼 데가 있는 것만 보여준다: 티켓이 걸렸는데도
+        # 완료가 아닌 대상. 검색했을 때는 조건 없이 그 대상을 그대로 보여준다.
+        if not kw and (completed or not hits):
+            continue
+
         traced = []
         for t in sorted(hits, key=lambda x: x.get("created") or "", reverse=True):
             level, note = trace_ticket(t, sheet, today, today.year)
@@ -237,6 +254,8 @@ def capacity_trace(request: Request, sheet: str = "DATA", q: str | None = None):
         rows.append({
             "item": item,
             "target_reason": _target_reason(item),
+            "completed": completed,
+            "reason": reason,
             "tickets": traced,
         })
 
