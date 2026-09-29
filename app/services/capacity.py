@@ -436,6 +436,8 @@ def calc_capacity_completion(
             # 예방4 태그 없이 올라온 티켓으로 잡힌 건 - 화면에 표시해서 담당자에게
             # 태그를 붙여달라고 요청할 수 있게 한다 (연결 자체는 정상으로 본다)
             "jira_untagged": is_untagged(display_ticket),
+            # 엑셀 '증설 여부' 회신 없이, 증설 완료가 확인돼 대상이 된 건
+            "expanded_without_reply": bool(item.get("expanded_without_reply")),
             "completed": completed,
             "reason": reason,
             "input_source": item.get("input_source", "excel"),

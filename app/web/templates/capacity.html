@@ -56,7 +56,9 @@
     <div class="card">
       <div class="label">미완료</div>
       <div class="value warn">{{ result.total - result.done }}건</div>
-      <div class="sub">미계획 {{ result.no_schedule }}건 · 제외 {{ excluded_cnt }}건</div>
+      {# 분모가 엑셀 '증설 O' 대수와 다를 때 그 차이가 '회신없이 증설'이다 - 제외 옆에
+         같이 둬서 대수를 맞춰볼 수 있게 한다. #}
+      <div class="sub">미계획 {{ result.no_schedule }}건 · 제외 {{ excluded_cnt }}건{% if expanded_cnt %} · 회신없이 증설 {{ expanded_cnt }}건{% endif %}</div>
     </div>
   </section>
 
@@ -165,6 +167,10 @@
             {% elif d.completed %}<span class="badge ok" title="{{ d.reason }}">완료</span>
             {% elif not d.planned %}<span class="badge warn">미계획</span>
             {% else %}<span class="badge bad">미완료</span>{% endif %}
+            {# 엑셀 회신 없이 증설 완료가 확인돼 대상이 된 건. 승격 기준이 완료 판정과
+               같은 함수라 이 배지가 붙은 행은 반드시 완료다. #}
+            {% if d.expanded_without_reply %}<span class="badge soft small"
+               title="엑셀 '증설 여부'는 공란이지만 증설 완료가 확인돼 대상으로 집계한 건입니다. 엑셀에 O로 반영해두면 좋습니다.">회신없이 증설</span>{% endif %}
           </td>
           <td><button class="btn-save" onclick="saveRow(this)" aria-label="{{ d.ci_name }} 저장">저장</button></td>
           <td class="admin-only">
