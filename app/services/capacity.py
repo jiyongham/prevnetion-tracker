@@ -2,15 +2,56 @@
 import re
 from datetime import date
 
+from app.config import settings
 from app.core.capacity_loader import get_targets
 from app.core.date_utils import half_window, parse_schedule
 from app.services.completion import DONE_MARKS, build_ticket_summary
 
+# 완료 판정에 쓰는 티켓 종류. 예방4 태그 유무만 다르고 같은 증설 작업이라
+# 판정 기준은 동일하게 둔다 (태그 없음은 근거 문구/화면 배지로만 구분).
+CAPACITY_KINDS = ("예방4", "증설")
+
+# 태그 없는 티켓을 증설로 인정할 때 쓰는 표현들.
+# '증설' 한 단어만 보면 메모리/CPU/서버 증설까지 걸리므로, 증설을 뜻하는 말과
+# 디스크 영역을 가리키는 말이 함께 있어야 용량관리 티켓으로 본다.
+# 디스크 쪽 표현은 일부러 좁게 잡았다 - '용량', '마운트'처럼 변경 티켓 양식에
+# 흔히 들어가는 낱말을 넣으면 사실상 아무 티켓이나 통과해버린다.
+_EXPAND_RE = re.compile(r"증설|확장|extend", re.I)
+_DISK_RE = re.compile(
+    r"디스크|파일\s*시스템|filesystem|file\s*system|볼륨|volume"
+    r"|\bASM\b|디스크\s*그룹|diskgroup|/oradata|/arch|\bLVM\b",
+    re.I,
+)
+
 
 def capacity_ticket_kind(f: dict) -> str:
-    """티켓 종류 판별 - 용량관리(증설) 티켓은 제목에 "예방4" 포함"""
+    """
+    티켓 종류 판별.
+
+    - "예방4": 제목에 예방4 태그가 붙은 정식 용량관리 티켓
+    - "증설" : 태그는 없지만 디스크/파일시스템/ASM 증설로 읽히는 티켓
+    - "기타" : 그 밖 (완료 판정에 쓰이지 않는다)
+
+    예방4 태그를 빼고 올리는 경우가 잦아서, 태그가 없어도 증설 티켓이면 같은 종류로
+    본다. 제목만 보면 '[영향도협의] OO서버 증설'처럼 어느 영역인지 안 드러나는 경우가
+    많아 본문과 변경작업 대상까지 같이 읽는다 (매칭에 쓰는 텍스트와 같은 범위 -
+    completion.build_ticket_summary의 match_text 참고).
+
+    이 함수가 마지막 방어선은 아니다. 여기를 통과한 티켓도
+    match_items_by_ip(대상과 IP/호스트명 일치) -> filter_tickets_by_sheet(DATA/ARCH
+    영역 확인)를 다시 지나야 대상에 연결된다.
+    """
     summary = f.get("summary", "") or ""
-    return "예방4" if "예방4" in summary else "기타"
+    if "예방4" in summary:
+        return "예방4"
+    if not settings.capacity_accept_untagged_jira:
+        return "기타"
+
+    extra = "\n".join(str(f.get(k) or "") for k in settings.match_field_list)
+    text = f"{summary}\n{f.get('description') or ''}\n{extra}"
+    if _EXPAND_RE.search(text) and _DISK_RE.search(text):
+        return "증설"
+    return "기타"
 
 
 def build_capacity_ticket_summary(issues: list[dict], field_id: str) -> list[dict]:
@@ -87,6 +128,7 @@ def build_no_reply_details(items: list[dict], base_year: int) -> list[dict]:
             "planned": False,
             "jira_key": "",
             "jira_matched": False,
+            "jira_untagged": False,
             "completed": False,
             "reason": "",
             "input_source": item.get("input_source", "excel"),
@@ -101,19 +143,28 @@ def build_no_reply_details(items: list[dict], base_year: int) -> list[dict]:
 
 
 def capacity_ticket_done_date(t: dict) -> date | None:
-    """완료로 볼 날짜: 변경계획완료일 (예방4는 실전환/무중단 구분 없음)"""
-    if t.get("kind") == "예방4":
+    """완료로 볼 날짜: 변경계획완료일 (증설은 실전환/무중단 구분이 없다)"""
+    if t.get("kind") in CAPACITY_KINDS:
         return t.get("planned_end_date")
     return None
+
+
+def is_untagged(t: dict | None) -> bool:
+    """예방4 태그 없이 올라온 증설 티켓인지 (화면에서 구분해 보여주기 위한 표시용)"""
+    return bool(t) and t.get("kind") != "예방4"
 
 
 def judge_capacity(
     item: dict, tickets: list[dict] | None, as_of: date, base_year: int
 ) -> tuple[bool, str, dict | None]:
     """
-    완료 판정 (JIRA [예방4] 티켓 기준).
+    완료 판정 (JIRA 증설 티켓 기준).
     1) 엑셀/웹 '증설 완료' 표기
-    2) 매칭된 [예방4] 티켓의 변경계획완료일이 하반기 창 안 + 기준일 이전
+    2) 매칭된 증설 티켓의 변경계획완료일이 하반기 창 안 + 기준일 이전
+
+    2)의 티켓은 [예방4] 태그가 붙은 것과 태그 없이 올라온 것을 같이 본다
+    (capacity_ticket_kind 참고). 태그가 없던 건은 근거 문구에 그 사실을 남긴다 -
+    숫자만 맞추고 끝내면 아무도 태그 누락을 바로잡지 않게 된다.
     """
     if (item.get("excel_done") or "").upper() in DONE_MARKS:
         return True, "완료표기", None
@@ -126,7 +177,8 @@ def judge_capacity(
     ]
     if in_window:
         t = max(in_window, key=lambda x: x.get("created") or "")
-        return True, f"JIRA {t['key']} 증설완료 ({t['planned_end_date']})", t
+        note = " · 예방4 태그 없음" if is_untagged(t) else ""
+        return True, f"JIRA {t['key']} 증설완료 ({t['planned_end_date']}){note}", t
 
     return False, "", None
 
@@ -199,6 +251,9 @@ def calc_capacity_completion(
             "planned": planned,
             "jira_key": display_ticket["key"] if display_ticket else "",
             "jira_matched": bool(in_window),
+            # 예방4 태그 없이 올라온 티켓으로 잡힌 건 - 화면에 표시해서 담당자에게
+            # 태그를 붙여달라고 요청할 수 있게 한다 (연결 자체는 정상으로 본다)
+            "jira_untagged": is_untagged(display_ticket),
             "completed": completed,
             "reason": reason,
             "input_source": item.get("input_source", "excel"),
