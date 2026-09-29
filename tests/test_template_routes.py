@@ -52,6 +52,7 @@ ROUTES = [
     ("GET", "/capacity", "capacity.html"),
     ("GET", "/capacity/remind-preview", "capacity_remind_preview.html"),
     ("GET", "/capacity/owner-check", "capacity_owner_check.html"),
+    ("GET", "/capacity/trace", "capacity_trace.html"),
     ("GET", "/eos", "eos.html"),
     ("GET", "/eos/remind-preview", "eos_remind_preview.html"),
     ("GET", "/eos/owner-check", "eos_owner_check.html"),
@@ -109,6 +110,11 @@ def _apply_no_network_patches(monkeypatch):
         capacity_routes,
         "collect_capacity_targets_with_tickets",
         lambda sheet, use_jira=True: ([], {}, None),
+    )
+    # 판정 추적(/capacity/trace)은 걸러진 티켓까지 봐야 해서 캐시를 안 타고 엑셀/JIRA를
+    # 직접 부른다 - 엑셀은 리포지토리에 없으므로(data/*.xlsx는 .gitignore) 여기서 막는다.
+    monkeypatch.setattr(
+        capacity_routes, "load_capacity_items_merged", lambda sheet, excel_path=None: []
     )
 
     empty_eos_data = lambda use_external=True: ([], {}, set(), None)
