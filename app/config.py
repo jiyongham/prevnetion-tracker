@@ -155,6 +155,10 @@ class Settings(BaseSettings):
     capacity_step1_date: str = "7/16"
     capacity_step2_label: str = "작업 일정 취합 및 진행 협의"
     capacity_step2_date: str = "7/31"
+    # 제목에 [예방4] 태그가 없는 디스크 증설 티켓도 용량관리 티켓으로 인정할지.
+    # 담당자가 태그를 빼고 올리는 경우가 잦아 기본값은 켜둔다 - 끄면 예전처럼
+    # 제목에 "예방4"가 있는 티켓만 본다 (capacity.capacity_ticket_kind 참고).
+    capacity_accept_untagged_jira: bool = True
 
     # 리포트 발송 전 이상 감지 - 지난주 스냅샷과 비교해 이상이 보이면 판단해주는 에이전트.
     # 미설정이면 규칙 기반 경고만 나가고 판단 문장은 생략된다.
