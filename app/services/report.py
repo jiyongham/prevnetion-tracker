@@ -101,7 +101,7 @@ def _build(half: str | None = None, use_jira: bool = True) -> tuple[str, dict]:
         "",
     ]
 
-    # ── 3. 하반기 (상반기 무중단 대상 / 월 일정·주간 실적·계획) ──
+    # ── 3. 하반기 (반기 기준 진척률 + 참고용 주간 실적/계획) ──
     perf_start, perf_end, plan_start, plan_end = week_ranges(today)
 
     # 금주 실적: 다음 주에 완료일(실전환=변경계획완료일 / 무중단=생성일)이 있는 대상 수.
@@ -112,7 +112,6 @@ def _build(half: str | None = None, use_jira: bool = True) -> tuple[str, dict]:
             for t in (nos_tickets or [])
         )
 
-    completed_nos = {d["no"] for d in h2_result["details"] if d["completed"]}
     perf_nos = {
         d["no"] for d in h2_result["details"]
         if _has_ticket_in(h2_tmap.get(d["no"]), perf_start, perf_end)
@@ -120,9 +119,14 @@ def _build(half: str | None = None, use_jira: bool = True) -> tuple[str, dict]:
     }
     perf_cnt = len(perf_nos)
 
-    # 총 완료/진행률: 현재까지 완료 + 금주 실적을 합쳐서 표시 (같은 대상 중복 집계 방지)
-    projected_done = len(completed_nos | perf_nos)
-    projected_rate = round(projected_done / h2_result["total"] * 100, 1) if h2_result["total"] else 0.0
+    # 진척률은 반기 기준으로만 낸다 - 분자는 '그 반기 안에 실제로 완료 판정된 대상'
+    # (calc_completion의 done)뿐이다. 예전에는 여기에 '금주 실적'까지 더해서 냈는데,
+    # 금주 실적은 '이번 주에 일정이 잡혀 있다'는 것일 뿐 완료가 아니라서
+    #   - 아직 하지 않은 작업이 완료로 집계되고,
+    #   - 그 주에 작업이 밀리면 다음 주 진행률이 거꾸로 내려간다(완료는 누적인데도).
+    # 주간 수치는 아래 '2) 실적'에 금주 실적/차주 계획으로 따로 남는다.
+    done_cnt = h2_result["done"]
+    done_rate = h2_result["rate"]
 
     # 차주 계획: 그 다음 주에 웹/엑셀 등록 일정이 잡힌 대수
     plan_cnt = sum(
@@ -132,8 +136,8 @@ def _build(half: str | None = None, use_jira: bool = True) -> tuple[str, dict]:
 
     lines += [
         f"'{year2}년 하반기 DR 모의 훈련",
-        f"1) 총 {h2_result['total']}대 中 {projected_done}대 완료 "
-        f"(진행률 {fmt_rate(projected_rate)}%)",
+        f"1) 총 {h2_result['total']}대 中 {done_cnt}대 완료 "
+        f"(진행률 {fmt_rate(done_rate)}%)",
         "2) 실적",
         f"   - 금주 실적 ({perf_start.month}/{perf_start.day} ~ {perf_end.month}/{perf_end.day}) : {perf_cnt}대",
         f"   - 차주 계획 ({plan_start.month}/{plan_start.day} ~ {plan_end.month}/{plan_end.day}) : {plan_cnt}대",
@@ -155,8 +159,8 @@ def _build(half: str | None = None, use_jira: bool = True) -> tuple[str, dict]:
 
     metrics = {
         "total": h2_result["total"],
-        "done": projected_done,
-        "rate": projected_rate,
+        "done": done_cnt,
+        "rate": done_rate,
         "no_schedule": h2_result["no_schedule"],
         "perf_cnt": perf_cnt,
         "plan_cnt": plan_cnt,

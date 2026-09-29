@@ -84,6 +84,33 @@ def has_schedule_hint(item: dict) -> bool:
     return bool((item.get("schedule_raw") or "").strip())
 
 
+def inputter_of(item: dict) -> str:
+    """
+    이 대상의 일정을 웹에 직접 입력한 사람(입력자). 엑셀 원본에서 온 일정이면 빈 값.
+
+    input_source가 'web'일 때만 updated_by를 입력자로 본다 - 엑셀에서 일정을 읽어온
+    행에도 (비고만 남긴 경우처럼) updated_by가 붙을 수 있어서, 그것까지 '일정을 넣은
+    사람'으로 취급하면 일정과 무관한 사람에게 작업 안내가 간다.
+    """
+    if item.get("input_source") != "web":
+        return ""
+    return clean_name(item.get("updated_by") or "")
+
+
+def team_of_inputter(name: str, items: list[dict], cmdb_map: dict | None = None) -> str:
+    """
+    입력자의 소속 팀. 입력자는 화면 입력칸에 이름만 적으므로 팀 정보가 없는데, DM
+    수신자 조회는 이름+팀으로 하므로 같은 대상의 담당자 칸에서 동명을 찾아 팀을 채운다.
+    거기에도 없으면 CMDB로 한 번 더 찾고, 끝까지 못 찾으면 빈 값으로 둔다
+    (Flow가 이름만으로 조회한다 - 틀린 팀을 넣는 것보다 낫다).
+    """
+    for d in items:
+        for p in parse_owners(d.get("owner", "")):
+            if clean_name(p["name"]) == name and p["team"]:
+                return p["team"]
+    return team_via_cmdb(name, items, cmdb_map, "")
+
+
 def build_body(items: list[dict], show_raw: bool = False) -> str:
     """대상 목록 본문 (시스템명 / 호스트명 / IP). show_raw면 현재 등록된 텍스트도 같이 표기"""
     lines = []
@@ -239,6 +266,115 @@ def is_upcoming(item: dict, as_of: date, days: int) -> bool:
     return as_of <= sched <= as_of + timedelta(days=days)
 
 
+def _draft(
+    key: str,
+    label: str,
+    items: list[dict],
+    msg_kind: str,
+    cmdb_map: dict | None,
+    owner: str,
+    name: str,
+    team: str,
+    given: str,
+) -> dict:
+    """
+    미리보기 카드 한 장 (그룹 키 + 받는 사람 + 초안 본문).
+
+    key   : URL/발송이력 키 (서비스명 또는 입력자명)
+    label : 화면에 보이는 그룹 제목
+    owner : 받는 사람 선택 키 ('이름-팀' 형태, 드롭다운 기본 선택값)
+    """
+    candidates = candidates_of(items, cmdb_map)
+    # 받는 사람은 반드시 후보 드롭다운 안에 '같은 raw로' 있어야 한다 - 템플릿이
+    # `c.raw == g.owner`로 기본 선택을 정하므로, 없으면 아무것도 선택되지 않고
+    # 브라우저가 첫 후보를 고른 것처럼 보여 엉뚱한 사람에게 보내게 된다.
+    existing = next((c for c in candidates if clean_name(c["name"]) == clean_name(name)), None)
+    if existing:
+        # 이미 후보에 있는 사람이면 그 항목으로 맞춘다. 엑셀 표기가 '한경진'과
+        # '한경진-교육플랫폼팀'처럼 섞여 있어 candidates_of가 팀 있는 쪽으로 합치기
+        # 때문에, 넘겨받은 raw가 후보의 raw와 다를 수 있다 (같은 사람을 두 번
+        # 보여주지 않으려면 후보 쪽 값을 따라가야 한다).
+        owner, name, team, given = (
+            existing["raw"], existing["name"], existing["team"], existing["given"]
+        )
+    else:
+        # 입력자가 엑셀 담당자 칸에 아예 없는 경우 - 맨 앞에 끼워 기본 선택되게 한다
+        candidates = [{"raw": owner, "name": name, "team": team, "given": given}] + candidates
+
+    others = len(candidates) - 1
+    sub = f"{name}{f' 외 {others}명' if others > 0 else ''}"
+    return {
+        "owner": owner,
+        "service": key,
+        "label": label,
+        # 제목 옆 회색 보조 표기 (받는 사람·팀). 템플릿에서 조립하면 그룹 종류마다
+        # 분기가 생겨 지저분해지므로 여기서 만들어 보낸다.
+        "sub_label": f"{sub}·{team}" if team else sub,
+        "name": name,
+        "team": team,               # DM 발송용 (CMDB 보정)
+        "given": given,
+        "count": len(items),
+        "targets": items,           # 'items'는 Jinja에서 dict.items()와 충돌 → targets
+        "greeting_suffix": greeting_suffix(items, msg_kind),  # 이름 뒤 고정 문구+대상
+        "candidates": candidates,   # 받는 담당자 후보
+        "message": build_message(given, items, msg_kind),
+    }
+
+
+def _service_groups(
+    items: list[dict], cmdb_map: dict | None, msg_kind: str
+) -> list[dict]:
+    """
+    '서비스'(주업무명) 단위로 묶어 그 안 대표 담당자에게 보내는 초안.
+
+    같은 서비스 소속 시스템들도 엑셀 행마다 담당자 나열 순서가 제각각이라(예: 동일
+    서비스의 시스템들이 담당자 A/B/C를 행마다 다른 순서로 등록), 예전처럼
+    '행별 1순위 담당자'로만 나누면 같은 서비스가 여러 명에게 조각조각 흩어져 보내진다.
+    그래서 서비스로 먼저 묶고, 그 서비스 안에서 1순위로 가장 많이 등장한 사람을
+    대표 담당자로 뽑아 그 한 명에게만 보낸다 (받는 담당자는 미리보기에서 수동 변경 가능).
+    """
+    result = []
+    for g in group_and_vote(
+        items,
+        key_fn=lambda d: d.get("business_name") or d.get("system_name"),
+        include_fn=lambda d: True,
+    ):
+        top_raw, p, given = pick_representative(g)
+        team = team_via_cmdb(p["name"], g["items"], cmdb_map, p["team"])
+        result.append(_draft(
+            key=g["key"], label=g["key"], items=g["items"],
+            msg_kind=msg_kind, cmdb_map=cmdb_map,
+            owner=top_raw, name=p["name"], team=team, given=given,
+        ))
+    return result
+
+
+def _inputter_groups(
+    items: list[dict], cmdb_map: dict | None, msg_kind: str
+) -> list[dict]:
+    """
+    '입력자' 단위로 묶어 그 사람에게 보내는 초안 (사전 안내 전용).
+
+    한 사람이 여러 서비스에 일정을 넣어뒀어도 DM은 한 통으로 합친다 - 같은 사람에게
+    서비스마다 따로 보내면 받는 쪽에서 알림만 늘어난다.
+    """
+    groups: dict[str, list[dict]] = {}
+    for d in items:
+        groups.setdefault(inputter_of(d), []).append(d)
+
+    result = []
+    for name, group_items in groups.items():
+        team = team_of_inputter(name, group_items, cmdb_map)
+        result.append(_draft(
+            key=name, label=f"입력자 {name}", items=group_items,
+            msg_kind=msg_kind, cmdb_map=cmdb_map,
+            # candidates_of가 만드는 담당자 후보의 raw와 같은 '이름-팀' 형태로 맞춘다
+            owner=f"{name}-{team}" if team else name,
+            name=name, team=team, given=strip_surname(name) or name,
+        ))
+    return result
+
+
 def group_unplanned_by_service(
     details: list[dict],
     cmdb_map: dict | None = None,
@@ -247,13 +383,18 @@ def group_unplanned_by_service(
     as_of: date | None = None,
 ) -> list[dict]:
     """
-    미계획(일정 미등록) 대상을 '서비스'(주업무명) 단위로 묶고 초안까지 생성.
+    리마인드 대상을 그룹으로 묶고 초안까지 생성.
 
-    같은 서비스 소속 시스템들도 엑셀 행마다 담당자 나열 순서가 제각각이라(예: 동일
-    서비스의 시스템들이 담당자 A/B/C를 행마다 다른 순서로 등록), 예전처럼
-    '행별 1순위 담당자'로만 나누면 같은 서비스가 여러 명에게 조각조각 흩어져 보내진다.
-    그래서 서비스로 먼저 묶고, 그 서비스 안에서 1순위로 가장 많이 등장한 사람을
-    대표 담당자로 뽑아 그 한 명에게만 보낸다 (받는 담당자는 미리보기에서 수동 변경 가능).
+    kind별 모수와 받는 사람:
+    - blank / hinted : 미계획(일정 미등록) 대상 → 서비스별 대표 담당자 (_service_groups)
+    - upcoming       : 작업 예정일이 N일 이내인 대상 → 그 일정을 넣은 입력자
+
+    사전 안내(upcoming)만 받는 사람 기준이 다른 이유: 미기입/대략 리마인드는 아직
+    아무 정보가 없는 단계라 엑셀 담당자에게 물어볼 수밖에 없지만, 사전 안내는 이미
+    누군가가 웹에 일정을 넣어둔 뒤다. 그 일정을 넣은 사람이 실제로 작업을 준비하는
+    사람이고 변경 티켓도 그 사람이 내므로, 조직변경으로 오래됐을 수 있는 엑셀 담당자가
+    아니라 입력자에게 보내는 게 맞다. 일정이 엑셀 원본에서 온 대상은 입력자가 없으므로
+    그것만 기존처럼 서비스별 대표 담당자에게 보낸다.
 
     hinted 필터 (같은 '미계획' 안에서도 성격이 다른 두 경우를 분리):
     - None: 전체 미계획
@@ -261,39 +402,21 @@ def group_unplanned_by_service(
     - True : '11월 예정'처럼 텍스트는 있지만 날짜로 파싱 안 된 대상만 ("대략적 일정만 기입")
 
     cmdb_map(item_no -> CMDB 자산)이 주어지면, DM 발송 대상 팀명을 CMDB 기준으로 보정한다.
-    반환: [{owner, service, name, team, given, count, targets, message}, ...] (대상 많은 순)
+    반환: [{owner, service, label, name, team, given, count, targets, message}, ...] (대상 많은 순)
     """
     if kind == "upcoming":
         # 사전 안내는 '미계획'이 아니라 '일정이 코앞인 대상'이 모수다
         today = as_of or date.today()
-        include_fn = lambda d: is_upcoming(d, today, settings.pre_work_remind_days)  # noqa: E731
-    else:
-        include_fn = lambda d: (  # noqa: E731
-            not d.get("planned") and (hinted is None or has_schedule_hint(d) == hinted)
+        items = [d for d in details if is_upcoming(d, today, settings.pre_work_remind_days)]
+        result = (
+            _inputter_groups([d for d in items if inputter_of(d)], cmdb_map, "upcoming")
+            + _service_groups([d for d in items if not inputter_of(d)], cmdb_map, "upcoming")
         )
-
-    raw_groups = group_and_vote(
-        details,
-        key_fn=lambda d: d.get("business_name") or d.get("system_name"),
-        include_fn=include_fn,
-    )
-
-    msg_kind = kind if kind == "upcoming" else ("hinted" if hinted else "blank")
-    result = []
-    for g in raw_groups:
-        top_raw, p, given = pick_representative(g)
-        team = team_via_cmdb(p["name"], g["items"], cmdb_map, p["team"])
-        result.append({
-            "owner": top_raw,          # 이름-팀 (선택 키, 엑셀 원본 기준)
-            "service": g["key"],
-            "name": p["name"],
-            "team": team,               # DM 발송용 (CMDB 보정)
-            "given": given,
-            "count": len(g["items"]),
-            "targets": g["items"],     # 'items'는 Jinja에서 dict.items()와 충돌 → targets
-            "greeting_suffix": greeting_suffix(g["items"], msg_kind),  # 이름 뒤 고정 문구+대상
-            "candidates": candidates_of(g["items"], cmdb_map),  # 받는 담당자 후보
-            "message": build_message(given, g["items"], msg_kind),
-        })
+    else:
+        items = [
+            d for d in details
+            if not d.get("planned") and (hinted is None or has_schedule_hint(d) == hinted)
+        ]
+        result = _service_groups(items, cmdb_map, "hinted" if hinted else "blank")
 
     return sorted(result, key=lambda x: (-x["count"], x["service"]))

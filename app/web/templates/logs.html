@@ -11,13 +11,15 @@
   <section class="panel">
     <table>
       <thead>
-        <tr><th scope="col">일시</th><th scope="col">NO</th><th scope="col">반기</th><th scope="col">항목</th><th scope="col">이전</th><th scope="col">변경</th><th scope="col">수정자</th></tr>
+        <tr><th scope="col">일시</th><th scope="col">호스트명</th><th scope="col">반기</th><th scope="col">항목</th><th scope="col">이전</th><th scope="col">변경</th><th scope="col">수정자</th></tr>
       </thead>
       <tbody>
       {% for l in logs %}
         <tr>
           <td class="mono small">{{ l.updated_at }}</td>
-          <td>{{ l.item_no }}</td>
+          {# 이력엔 NO만 저장돼 있어 화면에서 호스트명으로 바꿔 보여준다. 엑셀에서 빠진
+             옛 NO는 매핑이 없으므로 NO를 그대로 둔다(빈칸보다 낫다). #}
+          <td class="mono small" title="NO {{ l.item_no }}">{{ hostnames.get(l.item_no) or l.item_no }}</td>
           <td>{{ l.half }}</td>
           <td>{{ l.field }}</td>
           <td class="muted">{{ l.old_value or '-' }}</td>
