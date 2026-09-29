@@ -1,11 +1,15 @@
 # app/services/capacity.py
+import logging
 import re
 from datetime import date
 
 from app.config import settings
 from app.core.capacity_loader import get_targets
-from app.core.date_utils import half_window, parse_schedule
+from app.core.date_utils import half_window, parse_jira_date, parse_schedule
+from app.core.jira_client import jira
 from app.services.completion import DONE_MARKS, build_ticket_summary
+
+logger = logging.getLogger(__name__)
 
 # 완료 판정에 쓰는 티켓 종류. 예방4 태그 유무만 다르고 같은 증설 작업이라
 # 판정 기준은 동일하게 둔다 (태그 없음은 근거 문구/화면 배지로만 구분).
@@ -18,7 +22,19 @@ CAPACITY_KINDS = ("예방4", "증설")
 # 걸린다. 티켓 설명엔 "데이터베이스(Database)"가 거의 항상 들어가므로, 이 lookahead가 없으면
 # 실제로는 ARCH(RECO) 작업인 티켓도 DATA로 오판정돼 조용히 걸러져버린다.
 _DATA_PATTERNS = [re.compile(r"/oradata", re.I), re.compile(r"\bDATA(?!BASE)", re.I)]
-_ARCH_PATTERNS = [re.compile(r"/arch", re.I), re.compile(r"\bRECO(?!VERY)", re.I)]
+# ARCH 쪽은 오래 비대칭이었다: DATA는 맨 단어 "DATA"도 잡는데 ARCH는 "/arch"(슬래시
+# 필수)와 "RECO"만 잡아서, "DATA 영역 2T, Arch 영역 1T 증설"처럼 흔한 표기가 DATA로만
+# 분류됐다(바로 위 주석의 예시가 그 표기다). 그러면 한 티켓으로 두 영역을 같이 증설해도
+# ARCH 시트에서는 그 대상이 끝내 완료로 안 잡힌다 - 실제로 겪은 문제다.
+# 그래서 슬래시 없는 "arch", "archive", 한글 "아카이브"도 같은 영역으로 본다.
+# "ARCHIVE"는 \bARCH\b에 안 걸리므로(뒤가 단어문자) 따로 둔다.
+_ARCH_PATTERNS = [
+    re.compile(r"/arch", re.I),
+    re.compile(r"\bRECO(?!VERY)", re.I),
+    re.compile(r"\bARCH\b", re.I),
+    re.compile(r"\bARCHIVE\b", re.I),
+    re.compile(r"아카이브"),
+]
 
 
 def classify_capacity_sheet(match_text: str) -> set[str]:
@@ -97,6 +113,16 @@ def build_capacity_ticket_summary(
     이 필터 때문에 정작 원인 파악이 안 되는 상황을 만들지 않으려고 둔 예외다.
     """
     tickets = build_ticket_summary(issues, field_id, kind_fn=capacity_ticket_kind)
+    # 원본 issue에만 있는 이슈 연결을 티켓 요약에 옮겨 둔다 (아래에서 키로 따라간다)
+    for t, issue in zip(tickets, issues):
+        t["linked_keys"] = linked_issue_keys(issue["fields"], settings.jira_project)
+        t["linked"] = []
+
+    # 연결 티켓 조회를 여기(목록을 만드는 한 지점)에서 한다. 호출부마다 따로 부르게
+    # 두면 어떤 화면은 변경이관 티켓의 완료일을 보고 어떤 화면은 못 보는 상태가 되는데,
+    # 그렇게 화면마다 기준이 어긋나는 문제를 이미 여러 번 겪었다.
+    attach_linked_change_tickets(tickets)
+
     if include_other:
         return tickets
     return [t for t in tickets if t["kind"] in CAPACITY_KINDS]
@@ -122,14 +148,23 @@ def trace_ticket(t: dict, sheet: str, as_of: date, base_year: int) -> tuple[str,
 
     done_on = capacity_ticket_done_date(t)
     if not done_on:
-        return "drop", "변경계획완료일이 비어 있음 (완료 판정은 이 날짜만 본다)"
+        linked = ", ".join(link["key"] for link in (t.get("linked") or []))
+        extra = (
+            f" 연결된 변경관리 티켓({linked})에도 완료일이 없음"
+            if linked
+            else " 연결된 변경관리 티켓도 없음"
+        )
+        return "drop", f"변경계획완료일이 비어 있음.{extra}"
+
+    src = done_date_source(t)
+    basis = f"변경이관 티켓 {src['key']}의 변경계획완료일" if src else "변경계획완료일"
 
     start, end = half_window(base_year, "H2")
     if not (start <= done_on <= end):
-        return "drop", f"변경계획완료일 {done_on}이 집계 구간({start} ~ {end}) 밖"
+        return "drop", f"{basis} {done_on}이 집계 구간({start} ~ {end}) 밖"
     if done_on > as_of:
-        return "wait", f"변경계획완료일 {done_on}이 아직 오지 않음 → '미완료'로 표시"
-    return "ok", f"완료로 인정 ({done_on})"
+        return "wait", f"{basis} {done_on}이 아직 오지 않음 → '미완료'로 표시"
+    return "ok", f"완료로 인정 ({done_on}, 근거: {basis})"
 
 
 def filter_tickets_by_sheet(ticket_map: dict[str, list[dict]], sheet: str) -> dict[str, list[dict]]:
@@ -192,11 +227,102 @@ def build_no_reply_details(items: list[dict], base_year: int) -> list[dict]:
     return result
 
 
+def linked_issue_keys(f: dict, project: str) -> list[str]:
+    """
+    이슈 연결에서 같은 프로젝트의 연결 티켓 키만. (JSM 요청 프로젝트처럼 다른
+    프로젝트로 걸린 링크는 변경관리 티켓이 아니므로 뺀다.)
+    """
+    prefix = f"{project}-"
+    keys = []
+    for link in f.get("issuelinks") or []:
+        for side in ("outwardIssue", "inwardIssue"):
+            issue = link.get(side) or {}
+            key = issue.get("key") or ""
+            if key.startswith(prefix):
+                keys.append(key)
+    return keys
+
+
+def attach_linked_change_tickets(tickets: list[dict]) -> list[dict]:
+    """
+    '변경이관'으로 연결된 변경관리(CM) 티켓의 날짜를 각 티켓에 붙인다 (원본을 수정).
+
+    증설은 요청(SR) 티켓에서 시작해 변경관리 티켓으로 넘겨 진행한다. 우리 대상과
+    호스트명/IP로 매칭되는 건 SR 티켓인데(요청 본문에 서버 정보가 적힌다),
+    변경계획완료일은 CM 티켓에만 들어간다. 게다가 CM 티켓 제목은
+    "[서버][변경관리][이마트] ... DISK 자원조정 작업(09/28)"처럼 '증설'이라는 말이
+    없어서 조회(JQL)에도 안 걸린다. 그래서 링크를 따라가 키로 직접 불러온다.
+
+    이걸 안 하면 SR 티켓은 "변경계획완료일 없음"으로 완료 판정에서 빠지고, 증설이
+    끝났는데도 화면에는 '미계획'으로 남는다 - 실제로 그런 대상들이 있었다.
+
+    날짜가 이미 있는 티켓은 링크를 보지 않는다 (불필요한 조회를 줄이고, 자기 날짜가
+    연결 티켓 날짜로 덮이지 않게).
+    """
+    need = [t for t in tickets if not t.get("planned_end_date") and t.get("linked_keys")]
+    if not need:
+        return tickets
+
+    keys = sorted({k for t in need for k in t["linked_keys"]})
+    try:
+        issues = jira.get_issues_by_keys(keys, fields=[
+            "summary",
+            "status",
+            settings.planned_end_date_field,
+            settings.planned_start_date_field,
+        ])
+    except Exception as e:
+        # 연결 티켓을 못 불러와도 나머지 판정은 그대로 돌아간다
+        logger.warning(f"변경관리 연결 티켓 조회 실패 (연결 없이 판정): {e}")
+        return tickets
+
+    by_key = {
+        i["key"]: {
+            "key": i["key"],
+            "summary": i["fields"].get("summary", ""),
+            "status": (i["fields"].get("status") or {}).get("name", ""),
+            "planned_end_date": parse_jira_date(i["fields"].get(settings.planned_end_date_field)),
+            "planned_start_date": parse_jira_date(
+                i["fields"].get(settings.planned_start_date_field)
+            ),
+        }
+        for i in issues
+    }
+    for t in need:
+        t["linked"] = [by_key[k] for k in t["linked_keys"] if k in by_key]
+    return tickets
+
+
 def capacity_ticket_done_date(t: dict) -> date | None:
-    """완료로 볼 날짜: 변경계획완료일 (증설은 실전환/무중단 구분이 없다)"""
-    if t.get("kind") in CAPACITY_KINDS:
-        return t.get("planned_end_date")
-    return None
+    """
+    완료로 볼 날짜: 변경계획완료일 (증설은 실전환/무중단 구분이 없다).
+
+    요청(SR) 티켓은 이 칸이 비어 있고 실제 작업은 '변경이관'된 변경관리(CM) 티켓에서
+    진행된다. 그래서 자기 날짜가 없으면 연결된 CM 티켓의 변경계획완료일을 대신 본다
+    (attach_linked_change_tickets 참고).
+    """
+    if t.get("kind") not in CAPACITY_KINDS:
+        return None
+    if t.get("planned_end_date"):
+        return t["planned_end_date"]
+    dates = [
+        d for link in (t.get("linked") or [])
+        if (d := link.get("planned_end_date"))
+    ]
+    return max(dates) if dates else None
+
+
+def done_date_source(t: dict) -> dict | None:
+    """완료일을 어느 티켓에서 가져왔는지 (자기 날짜면 None, 연결 티켓이면 그 티켓)"""
+    if t.get("planned_end_date"):
+        return None
+    done_on = capacity_ticket_done_date(t)
+    if not done_on:
+        return None
+    return next(
+        (link for link in (t.get("linked") or []) if link.get("planned_end_date") == done_on),
+        None,
+    )
 
 
 def is_untagged(t: dict | None) -> bool:
@@ -227,8 +353,14 @@ def judge_capacity(
     ]
     if in_window:
         t = max(in_window, key=lambda x: x.get("created") or "")
-        note = " · 예방4 태그 없음" if is_untagged(t) else ""
-        return True, f"JIRA {t['key']} 증설완료 ({t['planned_end_date']}){note}", t
+        notes = []
+        if is_untagged(t):
+            notes.append("예방4 태그 없음")
+        if (src := done_date_source(t)):
+            # 어느 티켓의 날짜로 인정했는지 밝혀둔다 - 나중에 숫자를 되짚을 때 필요하다
+            notes.append(f"변경이관 티켓 {src['key']}의 완료일")
+        note = (" · " + " · ".join(notes)) if notes else ""
+        return True, f"JIRA {t['key']} 증설완료 ({capacity_ticket_done_date(t)}){note}", t
 
     return False, "", None
 
