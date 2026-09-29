@@ -92,37 +92,55 @@ class TestNoReplyPromotion:
         base.update(kw)
         return base
 
-    def test_완료로_인정되는_티켓이_있으면_승격_조건을_만족한다(self):
-        ticket = {
+    def _ticket(self, **kw):
+        # judge_capacity는 완료 근거 문구에 티켓 키를 넣으므로 key가 꼭 있어야 한다
+        base = {
+            "key": "IMDC-30625",
             "kind": "증설",
-            "planned_end_date": date(2026, 9, 10),
+            "status": "완료",
             "created": "2026-09-01",
+            "planned_end_date": None,
             "linked": [],
         }
-        completed, _, _ = judge_capacity(
+        base.update(kw)
+        return base
+
+    def test_완료로_인정되는_티켓이_있으면_승격_조건을_만족한다(self):
+        ticket = self._ticket(planned_end_date=date(2026, 9, 10))
+        completed, reason, sel = judge_capacity(
             self._item(), [ticket], date(2026, 9, 29), 2026
         )
         assert completed is True
+        assert sel is ticket
+        # 근거 문구까지 확인한다 - 화면과 리포트에 그대로 나가는 문장이고,
+        # 여기를 안 보면 문구를 만들다 난 오류를 테스트가 놓친다(실제로 놓쳤다).
+        assert "IMDC-30625" in reason and "2026-09-10" in reason
 
     def test_완료일이_없는_티켓은_승격_조건을_만족하지_않는다(self):
         # 이름/IP만 스친 무관한 티켓이 분모를 늘리던 경로
-        ticket = {"kind": "증설", "planned_end_date": None, "created": "2026-09-01", "linked": []}
         completed, _, _ = judge_capacity(
-            self._item(), [ticket], date(2026, 9, 29), 2026
+            self._item(), [self._ticket()], date(2026, 9, 29), 2026
         )
         assert completed is False
 
     def test_완료일이_반기_밖이면_승격되지_않는다(self):
-        ticket = {
-            "kind": "증설",
-            "planned_end_date": date(2026, 5, 20),   # 상반기
-            "created": "2026-05-01",
-            "linked": [],
-        }
+        ticket = self._ticket(planned_end_date=date(2026, 5, 20), created="2026-05-01")
         completed, _, _ = judge_capacity(
             self._item(), [ticket], date(2026, 9, 29), 2026
         )
         assert completed is False
+
+    def test_변경이관_티켓의_완료일로도_승격된다(self):
+        # 요청(SR) 티켓엔 날짜가 없고 연결된 변경관리 티켓에만 있는 실제 구조
+        ticket = self._ticket(
+            status="변경이관",
+            linked=[{"key": "IMDC-30626", "planned_end_date": date(2026, 9, 28)}],
+        )
+        completed, reason, _ = judge_capacity(
+            self._item(), [ticket], date(2026, 9, 29), 2026
+        )
+        assert completed is True
+        assert "IMDC-30626" in reason
 
 
 class TestLinkedIssueKeys:
