@@ -101,10 +101,6 @@
           <a href="/capacity?sheet={{ sheet }}&status=untagged" class="chip {% if filter_status == 'untagged' %}active{% endif %}"
              title="제목에 [예방4] 태그 없이 올라온 증설 티켓으로 연결된 대상 - 담당자에게 태그 추가를 요청할 목록입니다">태그없음 {{ untagged_cnt }}</a>
           {% endif %}
-          {% if promoted_cnt %}
-          <a href="/capacity?sheet={{ sheet }}&status=promoted" class="chip {% if filter_status == 'promoted' %}active{% endif %}"
-             title="증설 여부 회신은 없었지만 증설 티켓이 확인돼 대상으로 집계된 대상 - 완료율 분모가 엑셀 '증설 O' 대수보다 많은 이유입니다">회신없이 증설 {{ promoted_cnt }}</a>
-          {% endif %}
         </div>
         <button id="bulkSaveBtn" class="btn-sm" onclick="bulkSave()">💾 현재 목록 일괄 저장</button>
       </div>
@@ -169,10 +165,6 @@
             {% elif d.completed %}<span class="badge ok" title="{{ d.reason }}">완료</span>
             {% elif not d.planned %}<span class="badge warn">미계획</span>
             {% else %}<span class="badge bad">미완료</span>{% endif %}
-            {# 미회신이었는데 증설 티켓이 확인돼 대상(완료율 분모)으로 올라온 건.
-               분모가 늘었을 때 어느 대상 때문인지 화면에서 바로 찾을 수 있어야 한다. #}
-            {% if d.promoted %}<span class="badge soft small"
-               title="증설 여부 회신은 없었지만 증설 티켓이 확인돼 대상으로 집계된 건입니다.">회신없이 증설</span>{% endif %}
           </td>
           <td><button class="btn-save" onclick="saveRow(this)" aria-label="{{ d.ci_name }} 저장">저장</button></td>
           <td class="admin-only">
