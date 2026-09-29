@@ -10,6 +10,7 @@ from datetime import date
 from app.services.capacity import (
     capacity_ticket_done_date,
     classify_capacity_sheet,
+    judge_capacity,
     linked_issue_keys,
 )
 
@@ -27,6 +28,11 @@ class TestClassifyCapacitySheet:
 
     def test_asm_디스크그룹_표기(self):
         assert classify_capacity_sheet("+DATA 2T, +RECO 1T 증설") == {"DATA", "ARCH"}
+
+    def test_디스크그룹_이름에_접미사가_붙어도_인식한다(self):
+        # 실제 티켓은 "+DATAC1", "+RECOC1"처럼 뒤에 식별자가 붙어서 온다.
+        # 한 티켓으로 두 영역을 같이 증설하는 경우라 양쪽 다 잡혀야 한다.
+        assert classify_capacity_sheet("+DATAC1 2T, +RECOC1 500G 증설") == {"DATA", "ARCH"}
 
     def test_마운트경로_표기(self):
         assert classify_capacity_sheet("/oradata 2T, /arch 1T 증설") == {"DATA", "ARCH"}
@@ -70,6 +76,53 @@ class TestCapacityTicketDoneDate:
     def test_증설_티켓이_아니면_날짜를_안_준다(self):
         t = {"kind": "기타", "planned_end_date": date(2026, 9, 10), "linked": []}
         assert capacity_ticket_done_date(t) is None
+
+
+class TestNoReplyPromotion:
+    """
+    미회신 대상의 대상(분모) 승격 - 승격 기준은 완료 판정과 같은 함수여야 한다.
+
+    예전엔 "티켓이 하나라도 걸렸다"로 승격시켜서, 완료로는 절대 안 잡히는 티켓까지
+    분모를 늘렸다(증설한 적 없는 서버 6대가 들어와 17대가 23대가 됐다). 두 기준이
+    다시 갈라지면 같은 일이 반복된다.
+    """
+
+    def _item(self, **kw):
+        base = {"no": "1", "excel_done": "", "schedule_raw": ""}
+        base.update(kw)
+        return base
+
+    def test_완료로_인정되는_티켓이_있으면_승격_조건을_만족한다(self):
+        ticket = {
+            "kind": "증설",
+            "planned_end_date": date(2026, 9, 10),
+            "created": "2026-09-01",
+            "linked": [],
+        }
+        completed, _, _ = judge_capacity(
+            self._item(), [ticket], date(2026, 9, 29), 2026
+        )
+        assert completed is True
+
+    def test_완료일이_없는_티켓은_승격_조건을_만족하지_않는다(self):
+        # 이름/IP만 스친 무관한 티켓이 분모를 늘리던 경로
+        ticket = {"kind": "증설", "planned_end_date": None, "created": "2026-09-01", "linked": []}
+        completed, _, _ = judge_capacity(
+            self._item(), [ticket], date(2026, 9, 29), 2026
+        )
+        assert completed is False
+
+    def test_완료일이_반기_밖이면_승격되지_않는다(self):
+        ticket = {
+            "kind": "증설",
+            "planned_end_date": date(2026, 5, 20),   # 상반기
+            "created": "2026-05-01",
+            "linked": [],
+        }
+        completed, _, _ = judge_capacity(
+            self._item(), [ticket], date(2026, 9, 29), 2026
+        )
+        assert completed is False
 
 
 class TestLinkedIssueKeys:
