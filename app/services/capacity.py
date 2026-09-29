@@ -11,54 +11,6 @@ from app.services.completion import DONE_MARKS, build_ticket_summary
 # 판정 기준은 동일하게 둔다 (태그 없음은 근거 문구/화면 배지로만 구분).
 CAPACITY_KINDS = ("예방4", "증설")
 
-# 태그 없는 티켓을 증설로 인정할 때 쓰는 표현들.
-# '증설' 한 단어만 보면 메모리/CPU/서버 증설까지 걸리므로, 증설을 뜻하는 말과
-# 디스크 영역을 가리키는 말이 함께 있어야 용량관리 티켓으로 본다.
-# 디스크 쪽 표현은 일부러 좁게 잡았다 - '용량', '마운트'처럼 변경 티켓 양식에
-# 흔히 들어가는 낱말을 넣으면 사실상 아무 티켓이나 통과해버린다.
-_EXPAND_RE = re.compile(r"증설|확장|extend", re.I)
-_DISK_RE = re.compile(
-    r"디스크|파일\s*시스템|filesystem|file\s*system|볼륨|volume"
-    r"|\bASM\b|디스크\s*그룹|diskgroup|/oradata|/arch|\bLVM\b",
-    re.I,
-)
-
-
-def capacity_ticket_kind(f: dict) -> str:
-    """
-    티켓 종류 판별.
-
-    - "예방4": 제목에 예방4 태그가 붙은 정식 용량관리 티켓
-    - "증설" : 태그는 없지만 디스크/파일시스템/ASM 증설로 읽히는 티켓
-    - "기타" : 그 밖 (완료 판정에 쓰이지 않는다)
-
-    예방4 태그를 빼고 올리는 경우가 잦아서, 태그가 없어도 증설 티켓이면 같은 종류로
-    본다. 제목만 보면 '[영향도협의] OO서버 증설'처럼 어느 영역인지 안 드러나는 경우가
-    많아 본문과 변경작업 대상까지 같이 읽는다 (매칭에 쓰는 텍스트와 같은 범위 -
-    completion.build_ticket_summary의 match_text 참고).
-
-    이 함수가 마지막 방어선은 아니다. 여기를 통과한 티켓도
-    match_items_by_ip(대상과 IP/호스트명 일치) -> filter_tickets_by_sheet(DATA/ARCH
-    영역 확인)를 다시 지나야 대상에 연결된다.
-    """
-    summary = f.get("summary", "") or ""
-    if "예방4" in summary:
-        return "예방4"
-    if not settings.capacity_accept_untagged_jira:
-        return "기타"
-
-    extra = "\n".join(str(f.get(k) or "") for k in settings.match_field_list)
-    text = f"{summary}\n{f.get('description') or ''}\n{extra}"
-    if _EXPAND_RE.search(text) and _DISK_RE.search(text):
-        return "증설"
-    return "기타"
-
-
-def build_capacity_ticket_summary(issues: list[dict], field_id: str) -> list[dict]:
-    """JIRA 원본 -> 필요 필드만 (kind 판별만 예방4 기준으로 다름)"""
-    return build_ticket_summary(issues, field_id, kind_fn=capacity_ticket_kind)
-
-
 # 변경작업내용(match_text) 안의 마운트/디스크그룹 표기로 DATA(일반)/ARCH(아카이브) 티켓 판별
 # 같은 서버가 DATA·ARCH 양쪽 시트에 다 나오는 경우가 많아서, IP/호스트명만으로는 어느 쪽
 # 작업인지 구분이 안 됨 -> 변경작업내용 텍스트로 소속 시트를 가려낸다.
@@ -84,6 +36,62 @@ def classify_capacity_sheet(match_text: str) -> set[str]:
     if any(p.search(text) for p in _ARCH_PATTERNS):
         sheets.add("ARCH")
     return sheets
+
+
+# 증설을 뜻하는 표현. 태그 없는 티켓에서 '증설 작업이 맞는지'를 보는 데 쓴다
+# (디스크 교체/장애 처리 티켓이 같은 서버에 걸려도 들어오지 않게).
+_EXPAND_RE = re.compile(r"증설|확장|extend", re.I)
+
+
+def capacity_ticket_kind(f: dict) -> str:
+    """
+    티켓 종류 판별.
+
+    - "예방4": 제목에 예방4 태그가 붙은 정식 용량관리 티켓
+    - "증설" : 태그는 없지만 디스크 영역 증설로 읽히는 티켓
+    - "기타" : 그 밖 (build_capacity_ticket_summary에서 목록에 아예 안 담긴다)
+
+    예방4 태그를 빼고 올리는 경우가 잦아서, 태그가 없어도 증설 티켓이면 같은 종류로
+    본다. 판별은 '증설 표현' + '디스크 영역 표기(classify_capacity_sheet)' 두 조건이다.
+
+    영역 판별을 classify_capacity_sheet로 하는 게 중요하다. 처음엔 여기에
+    '디스크/파일시스템/볼륨/ASM' 같은 낱말 목록을 따로 뒀는데, 실제 티켓은
+    "DATA 영역 500G 증설"처럼 적혀서 그 목록에 하나도 안 걸렸다. 그 결과 실제로 증설이
+    끝난 대상이 완료로 안 잡히면서, 승격 때문에 분모만 늘고 완료는 안 늘어나는
+    상태가 됐다. 같은 판별을 두 군데서 따로 구현하면 이렇게 어긋난다 - 시트 분류에
+    이미 쓰이고 검증된 함수 하나로 모은다.
+
+    읽는 텍스트는 build_ticket_summary의 match_text와 똑같이
+    제목+본문+변경작업 대상이다. 그래서 filter_tickets_by_sheet가 남긴 티켓은
+    반드시 이 함수에서도 "증설"/"예방4"로 판정된다 (두 판정이 어긋날 수 없다).
+    """
+    summary = f.get("summary", "") or ""
+    if "예방4" in summary:
+        return "예방4"
+    if not settings.capacity_accept_untagged_jira:
+        return "기타"
+
+    extra = "\n".join(str(f.get(k) or "") for k in settings.match_field_list)
+    text = f"{summary}\n{f.get('description') or ''}\n{extra}"
+    if _EXPAND_RE.search(text) and classify_capacity_sheet(text):
+        return "증설"
+    return "기타"
+
+
+def build_capacity_ticket_summary(issues: list[dict], field_id: str) -> list[dict]:
+    """
+    JIRA 원본 -> 필요 필드만. 용량관리 증설 티켓이 아닌 것(kind "기타")은 여기서 버린다.
+
+    버리는 이유: 조회 JQL을 "예방4"에서 "예방4 또는 증설"로 넓힌 뒤로 메모리/CPU/서버
+    증설처럼 무관한 티켓이 결과에 섞여 들어오는데, 뒤쪽 코드 중에는 종류를 안 보고
+    "매칭된 티켓이 있다"만 보는 곳이 있다. 특히 미응답 대상의 target 승격
+    (capacity_data.get_matched_items)이 그렇다 - 무관한 티켓 하나에 승격이 일어나
+    완료율 분모만 늘어난다. 예전엔 조회가 예방4만 받아와서 "목록에 있는 티켓은 전부
+    용량관리 티켓"이 자동으로 보장됐는데, 조회를 넓히면서 그 전제가 깨졌다.
+    목록을 만드는 이 지점에서 걸러 전제를 되돌린다.
+    """
+    tickets = build_ticket_summary(issues, field_id, kind_fn=capacity_ticket_kind)
+    return [t for t in tickets if t["kind"] in CAPACITY_KINDS]
 
 
 def filter_tickets_by_sheet(ticket_map: dict[str, list[dict]], sheet: str) -> dict[str, list[dict]]:
@@ -129,6 +137,7 @@ def build_no_reply_details(items: list[dict], base_year: int) -> list[dict]:
             "jira_key": "",
             "jira_matched": False,
             "jira_untagged": False,
+            "promoted": False,
             "completed": False,
             "reason": "",
             "input_source": item.get("input_source", "excel"),
@@ -254,6 +263,8 @@ def calc_capacity_completion(
             # 예방4 태그 없이 올라온 티켓으로 잡힌 건 - 화면에 표시해서 담당자에게
             # 태그를 붙여달라고 요청할 수 있게 한다 (연결 자체는 정상으로 본다)
             "jira_untagged": is_untagged(display_ticket),
+            # 미회신이었는데 증설 티켓이 확인돼 대상(분모)으로 올라온 건
+            "promoted": bool(item.get("promoted_from_no_reply")),
             "completed": completed,
             "reason": reason,
             "input_source": item.get("input_source", "excel"),
