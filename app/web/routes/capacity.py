@@ -1,5 +1,5 @@
 # app/web/routes/capacity.py
-"""용량관리(ASM/파일시스템 증설 - [예방4]) 관련 라우트"""
+"""용량관리(ASM/파일시스템 증설 - [예방4] 및 태그 없는 증설 티켓) 관련 라우트"""
 import io
 import logging
 from datetime import date
@@ -77,9 +77,13 @@ def capacity_dashboard(
     # 증설 여부(O,X)가 공란이면서 아직 일정도 없는 '진짜 미회신' 대상만 미응답으로 (완료율
     # 분모엔 안 들어가지만 상세 목록엔 같이 보여줌). 일정이 들어온 순간부터는 status_kind가
     # "target"으로 바뀌어 result["details"]에 정상적으로 이미 포함돼 있다 - 매칭된
-    # [예방4] 티켓이 있어 target으로 승격된 미응답 대상도 마찬가지다.
+    # 증설 티켓이 있어 target으로 승격된 미응답 대상도 마찬가지다.
     excluded_items = [i for i in all_items if i["status_kind"] == "excluded"]
     excluded_cnt = len(excluded_items)
+
+    # [예방4] 태그 없이 올라온 티켓으로 연결된 대상 수 (필터/검색 적용 전 전체 기준).
+    # 이 숫자가 곧 "태그를 빼먹은 티켓" 목록이라 담당자에게 태그 추가를 요청할 때 쓴다.
+    untagged_cnt = sum(1 for d in result["details"] if d.get("jira_untagged"))
     no_reply_raw = [i for i in all_items if i["status_kind"] == "no_reply"]
     no_reply_details = build_no_reply_details(no_reply_raw, today.year)
 
@@ -93,6 +97,8 @@ def capacity_dashboard(
         details = [d for d in details if not d["completed"]]
     elif status == "unplanned":
         details = [d for d in details if not d["planned"]]
+    elif status == "untagged":
+        details = [d for d in details if d.get("jira_untagged")]
     if q:
         kw = q.lower()
 
@@ -115,6 +121,7 @@ def capacity_dashboard(
         "details": details,
         "excluded_items": excluded_items,
         "excluded_cnt": excluded_cnt,
+        "untagged_cnt": untagged_cnt,
         "by_team": dict(sorted(by_team.items(), key=lambda x: x[1]["rate"])),
         "report_warning": report_warning,
         # 발송 직후에만(sent=1) 방금 나간 본문을 화면에 띄운다
@@ -246,7 +253,7 @@ def capacity_remind_preview(
     blank_groups = group_capacity_unplanned(combined_details, hinted=False)
     hinted_groups = group_capacity_unplanned(combined_details, hinted=True)
     # 미회신(증설 여부 O/X 자체가 공란)은 대상(O)이 아니라 엑셀 전체 행 기준으로 판단.
-    # get_capacity_dashboard_data가 돌려준 items를 그대로 쓴다 - 이미 매칭된 [예방4]
+    # get_capacity_dashboard_data가 돌려준 items를 그대로 쓴다 - 이미 매칭된 증설
     # 티켓이 있는 미응답 대상은 target으로 승격돼 있어서(회신 없이 조용히 증설한
     # 경우), 여기서 다시 load_capacity_items_merged를 불러 별도로 판단하면 이미
     # 처리된 대상한테까지 "회신 안 함" 리마인드가 나가는 문제가 생긴다.

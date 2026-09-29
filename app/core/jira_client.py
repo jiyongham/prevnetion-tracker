@@ -119,10 +119,24 @@ class JiraClient:
         return self.search(jql, fields=fields)
 
     def get_capacity_tickets(self):
-        """용량관리(ASM/파일시스템 증설) 티켓 조회 - 제목에 "예방4" """
+        """
+        용량관리(ASM/파일시스템 증설) 티켓 조회.
+
+        제목에 "예방4"가 없어도 증설 티켓이면 같이 받아온다 - 담당자가 태그를 빼고
+        올리는 경우가 잦아서, [예방4]만 고집하면 실제로 증설을 했는데도 포털에는
+        계속 미계획으로 남는다. 여기서는 넓게 받아오고 실제 용량관리 티켓인지는
+        뒤 세 단계에서 걸러낸다:
+          1) 우리 대상 목록과 IP/호스트명이 겹치는지 (matcher.match_items_by_ip)
+          2) 변경작업내용이 그 시트(DATA/ARCH) 영역인지 (capacity.classify_capacity_sheet)
+          3) 디스크/파일시스템/ASM 증설로 읽히는지 (capacity.capacity_ticket_kind)
+        EoS(get_eos_tickets)가 "예방1" 없는 IP전환 티켓을 이미 같은 방식으로 받아온다.
+        """
+        tag_clause = 'summary ~ "예방4"'
+        if settings.capacity_accept_untagged_jira:
+            tag_clause = f'({tag_clause} OR summary ~ "증설")'
         jql = (
             f'project = {settings.jira_project} '
-            f'AND summary ~ "예방4" '
+            f'AND {tag_clause} '
             f'ORDER BY created DESC'
         )
         fields = [
