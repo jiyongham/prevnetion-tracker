@@ -38,31 +38,51 @@
         <button type="submit" class="btn-sm">추적</button>
       </form>
     </div>
-    {% if not searched %}
-    <p class="muted" style="padding:16px">
-      CI명·호스트명·IP 중 아무거나 넣고 추적을 누르세요. 예) <span class="mono">ez1</span>
-    </p>
-    {% elif not rows %}
-    <p class="muted" style="padding:16px">
-      <span class="mono">{{ q }}</span>와(과) 일치하는 {{ sheet }} 시트 대상이 없습니다.
-      시트를 바꿔보거나 검색어를 줄여보세요.
-    </p>
+    {% if searched %}
+      {% if rows %}
+      <p class="muted" style="padding:0 16px 12px">
+        <span class="mono">{{ q }}</span> — {{ rows|length }}건 일치 ·
+        조회된 증설 관련 티켓 {{ ticket_cnt }}건 (걸러진 것 포함)
+      </p>
+      {% else %}
+      <p class="muted" style="padding:16px">
+        <span class="mono">{{ q }}</span>와(과) 일치하는 {{ sheet }} 시트 대상이 없습니다.
+        시트를 바꿔보거나 검색어를 줄여보세요.
+      </p>
+      {% endif %}
     {% else %}
-    <p class="muted" style="padding:0 16px 12px">
-      {{ rows|length }}건 일치 · 조회된 증설 관련 티켓 {{ ticket_cnt }}건 (걸러진 것 포함)
-    </p>
+      {% if rows %}
+      <p class="muted" style="padding:0 16px 12px">
+        검색어가 없어 <strong>{{ sheet }} 시트 전체를 일괄 점검</strong>했습니다 —
+        티켓은 걸렸는데 완료로 안 잡힌 <strong>{{ rows|length }}건</strong>입니다
+        (미응답 대상도 티켓이 걸렸으면 같이 나옵니다).
+        조회된 증설 관련 티켓 {{ ticket_cnt }}건, 걸러진 것 포함.
+      </p>
+      {% else %}
+      <p class="muted" style="padding:16px">
+        {{ sheet }} 시트에는 <strong>티켓이 걸렸는데 완료로 안 잡힌 대상이 없습니다.</strong>
+        특정 대상을 보려면 CI명·호스트명·IP로 검색하세요 (완료된 대상, 티켓이 아예 안 걸린
+        대상도 그때는 그대로 보여줍니다).
+      </p>
+      {% endif %}
     {% endif %}
   </section>
 
   {% for r in rows %}
   <section class="panel">
     <div class="panel-head">
-      <h2>{{ r.item.ci_name }} <span class="muted small">{{ r.item.hostname }} · {{ r.item.ip }}</span></h2>
+      <h2>{{ r.item.ci_name }} <span class="muted small">{{ r.item.hostname }} · {{ r.item.ip }}</span>
+        {% if r.completed %}<span class="badge ok">완료</span>{% else %}<span class="badge bad">완료 아님</span>{% endif %}
+      </h2>
     </div>
 
     <table>
       <tbody>
-        <tr><th scope="row" style="width:180px">대상 여부 판정</th><td>{{ r.target_reason }}</td></tr>
+        <tr>
+          <th scope="row" style="width:180px">완료 판정</th>
+          <td>{{ r.reason or "완료로 인정할 티켓이 없음 - 아래 표에서 각 티켓이 어디서 빠졌는지 확인하세요" }}</td>
+        </tr>
+        <tr><th scope="row">대상 여부 판정</th><td>{{ r.target_reason }}</td></tr>
         <tr>
           <th scope="row">엑셀 증설 여부</th>
           <td class="mono">{{ r.item.expand_flag or "(공란)" }}</td>
