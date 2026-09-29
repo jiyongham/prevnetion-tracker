@@ -90,9 +90,6 @@ def capacity_dashboard(
     # [예방4] 태그 없이 올라온 티켓으로 연결된 대상 수 (필터/검색 적용 전 전체 기준).
     # 이 숫자가 곧 "태그를 빼먹은 티켓" 목록이라 담당자에게 태그 추가를 요청할 때 쓴다.
     untagged_cnt = sum(1 for d in result["details"] if d.get("jira_untagged"))
-    # 미회신이었는데 증설 티켓이 확인돼 대상(분모)으로 올라온 대수. 완료율 분모가
-    # 엑셀상 "증설 O" 대수보다 많아 보이는 이유가 정확히 이 숫자다.
-    promoted_cnt = sum(1 for d in result["details"] if d.get("promoted"))
     no_reply_raw = [i for i in all_items if i["status_kind"] == "no_reply"]
     no_reply_details = build_no_reply_details(no_reply_raw, today.year)
 
@@ -108,8 +105,6 @@ def capacity_dashboard(
         details = [d for d in details if not d["planned"]]
     elif status == "untagged":
         details = [d for d in details if d.get("jira_untagged")]
-    elif status == "promoted":
-        details = [d for d in details if d.get("promoted")]
     if q:
         kw = q.lower()
 
@@ -133,7 +128,6 @@ def capacity_dashboard(
         "excluded_items": excluded_items,
         "excluded_cnt": excluded_cnt,
         "untagged_cnt": untagged_cnt,
-        "promoted_cnt": promoted_cnt,
         "by_team": dict(sorted(by_team.items(), key=lambda x: x[1]["rate"])),
         "report_warning": report_warning,
         # 발송 직후에만(sent=1) 방금 나간 본문을 화면에 띄운다
@@ -159,9 +153,14 @@ def _target_reason(item: dict) -> str:
     if item["status_kind"] == "excluded":
         return "제외 - 엑셀 '증설 여부'가 X 또는 웹에서 제외 처리"
     if item["status_kind"] == "no_reply":
-        return "대상 아님 (미회신) - 증설 여부 공란 + 일정 없음 + 매칭된 증설 티켓 없음"
-    if item.get("promoted_from_no_reply"):
-        return "대상 - 증설 여부 회신은 없지만 매칭된 증설 티켓이 있어 승격됨"
+        base = "대상 아님 (미회신) - 증설 여부 공란 + 일정 없음"
+        if item.get("expanded_without_reply"):
+            return (
+                f"{base}. 다만 완료로 인정할 만한 증설 티켓"
+                f"({item.get('no_reply_jira_key')})이 확인됨 - 엑셀 '증설 여부'를 "
+                f"O로 고치면 정식 대상이 된다 (코드가 분모를 자동으로 바꾸지는 않는다)"
+            )
+        return base
     if item["expand_flag"] == "O":
         return "대상 - 엑셀 '증설 여부'가 O"
     if (item.get("schedule_raw") or "").strip():

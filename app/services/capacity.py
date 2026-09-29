@@ -172,10 +172,13 @@ def build_no_reply_details(items: list[dict], base_year: int) -> list[dict]:
             "schedule": sched,
             "schedule_disp": f"{sched.month}/{sched.day}" if sched else (item.get("schedule_raw") or ""),
             "planned": False,
+            # 미회신 행은 대상 목록에서 다른 미응답과 똑같이 보인다. 증설 티켓이
+            # 확인된 건이라도 여기서는 구분하지 않는다 - "티켓이 걸렸다"를 증설했다는
+            # 뜻으로 화면에 내보냈다가, 증설한 적 없는 서버가 증설된 것처럼 표시된
+            # 적이 있다. 그 정보는 판정 추적 화면(/capacity/trace)에서만 확인한다.
             "jira_key": "",
             "jira_matched": False,
             "jira_untagged": False,
-            "promoted": False,
             "completed": False,
             "reason": "",
             "input_source": item.get("input_source", "excel"),
@@ -301,8 +304,6 @@ def calc_capacity_completion(
             # 예방4 태그 없이 올라온 티켓으로 잡힌 건 - 화면에 표시해서 담당자에게
             # 태그를 붙여달라고 요청할 수 있게 한다 (연결 자체는 정상으로 본다)
             "jira_untagged": is_untagged(display_ticket),
-            # 미회신이었는데 증설 티켓이 확인돼 대상(분모)으로 올라온 건
-            "promoted": bool(item.get("promoted_from_no_reply")),
             "completed": completed,
             "reason": reason,
             "input_source": item.get("input_source", "excel"),
