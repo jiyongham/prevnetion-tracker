@@ -1,0 +1,170 @@
+{% extends "_layout.html" %}
+
+{% block title %}팀별 대상 조회{% endblock %}
+
+{% block content %}
+  <header>
+    <h1>👥 팀별 대상 조회</h1>
+  </header>
+
+  <div class="alert alert-info">
+    팀 이름을 넣으면 <strong>DR훈련 · 용량관리 · EoS · 커널패치</strong> 대상 건수를 한 번에 봅니다.
+    건수를 누르면 해당 영역의 그 팀 목록으로 바로 갑니다.
+    {% if not selected %}<br>지금은 <strong>전체 {{ all_teams|length }}개 팀</strong>을 대상 수 순으로 보여주고 있습니다.{% endif %}
+  </div>
+
+  {% set failed = domains | selectattr("failed") | map(attribute="label") | list %}
+  {% if failed %}
+  <div class="alert">⚠️ {{ failed | join(", ") }} 집계를 불러오지 못했습니다 (해당 열은 0건으로 표시됩니다).</div>
+  {% endif %}
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>팀 검색</h2>
+    </div>
+
+    <div class="team-picker">
+      <label for="teamInput" class="sr-only">팀 이름</label>
+      <input type="text" id="teamInput" class="search" autocomplete="off"
+             placeholder="팀 이름을 입력하세요 (예: 데이터센터)"
+             role="combobox" aria-expanded="false" aria-controls="teamSuggest" aria-autocomplete="list">
+      <ul id="teamSuggest" class="suggest hidden" role="listbox" aria-label="팀 이름 후보"></ul>
+    </div>
+
+    {% if chips %}
+    <div class="chips">
+      {% for c in chips %}
+      <span class="chip-sel">{{ c.name }}
+        <a class="chip-x" href="{{ c.remove_url }}" title="{{ c.name }} 빼기" aria-label="{{ c.name }} 빼기">✕</a>
+      </span>
+      {% endfor %}
+      <a href="/teams" class="btn-sm">전체 보기</a>
+    </div>
+    {% endif %}
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>대상 현황 ({{ rows|length }}개 팀)</h2>
+      <span class="muted small">기준일 {{ as_of }} · 건수는 각 영역의 대상 수, 괄호는 완료</span>
+    </div>
+    <div class="table-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">팀</th>
+          {% for d in domains %}<th scope="col">{{ d.label }}</th>{% endfor %}
+          <th scope="col">대상 수</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for r in rows %}
+        <tr>
+          <td class="strong">{{ r.team }}</td>
+          {% for c in r.cells %}
+          <td>
+            {% if c.total %}
+              {% if c.links|length == 1 %}
+              <a class="link strong" href="{{ c.links[0].href }}">{{ c.total }}</a>
+              {% else %}
+              <span class="strong">{{ c.total }}</span>
+              {% endif %}
+              <span class="muted small">({{ c.done }} 완료)</span>
+              {# 화면이 갈리는 영역(용량관리 DATA/ARCH, 커널 개발기/운영기)은 어디로
+                 갈지 고를 수 있게 아래에 나눠 둔다. 한 곳뿐이면 위 숫자가 곧 링크다. #}
+              {% if c.links|length > 1 %}
+              <div class="small">
+                {% for l in c.links %}<a class="link" href="{{ l.href }}">{{ l.label }} {{ l.count }}</a>{% if not loop.last %} · {% endif %}{% endfor %}
+              </div>
+              {% endif %}
+            {% else %}
+            <span class="muted">-</span>
+            {% endif %}
+          </td>
+          {% endfor %}
+          <td class="mono">{{ r.total }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% if not rows %}
+    <p class="muted" style="padding:20px">해당하는 팀이 없습니다.</p>
+    {% endif %}
+  </section>
+{% endblock %}
+
+{% block after %}
+<script>
+const ALL_TEAMS = {{ all_teams | tojson }};
+const SELECTED = {{ selected | tojson }};
+
+const input = document.getElementById("teamInput");
+const list = document.getElementById("teamSuggest");
+let active = -1;   // 키보드로 고른 후보 위치
+
+function urlFor(teams) {
+  const qs = teams.map(t => "team=" + encodeURIComponent(t)).join("&");
+  return "/teams" + (qs ? "?" + qs : "");
+}
+
+function candidates(kw) {
+  const q = kw.trim().toLowerCase();
+  if (!q) return [];
+  // 이미 고른 팀은 빼고, 앞에서부터 일치하는 팀을 먼저 보여준다
+  const rest = ALL_TEAMS.filter(t => !SELECTED.includes(t) && t.toLowerCase().includes(q));
+  return rest.sort((a, b) => a.toLowerCase().indexOf(q) - b.toLowerCase().indexOf(q)).slice(0, 10);
+}
+
+function closeSuggest() {
+  list.className = "suggest hidden";
+  list.innerHTML = "";
+  input.setAttribute("aria-expanded", "false");
+  active = -1;
+}
+
+function pick(team) {
+  location.href = urlFor(SELECTED.concat([team]));
+}
+
+function render() {
+  const items = candidates(input.value);
+  if (!items.length) { closeSuggest(); return; }
+  list.innerHTML = items.map((t, i) =>
+    `<li role="option" class="suggest-item${i === active ? " active" : ""}" data-team="${t}">${t}</li>`
+  ).join("");
+  list.className = "suggest";
+  input.setAttribute("aria-expanded", "true");
+}
+
+input.addEventListener("input", () => { active = -1; render(); });
+
+input.addEventListener("keydown", e => {
+  const items = list.querySelectorAll(".suggest-item");
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    if (!items.length) return;
+    e.preventDefault();
+    active = (active + (e.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
+    render();
+  } else if (e.key === "Enter") {
+    // 한글 입력 조합 중 Enter는 글자를 확정하는 동작이라 선택으로 보면 안 된다
+    if (e.isComposing) return;
+    e.preventDefault();
+    if (active >= 0 && items[active]) pick(items[active].dataset.team);
+    else if (items.length) pick(items[0].dataset.team);
+  } else if (e.key === "Escape") {
+    closeSuggest();
+  }
+});
+
+// mousedown으로 받는다 - click은 blur 뒤에 와서 목록이 이미 닫혀 있다
+list.addEventListener("mousedown", e => {
+  const item = e.target.closest(".suggest-item");
+  if (item) { e.preventDefault(); pick(item.dataset.team); }
+});
+
+document.addEventListener("click", e => {
+  if (!e.target.closest(".team-picker")) closeSuggest();
+});
+</script>
+{% endblock %}
