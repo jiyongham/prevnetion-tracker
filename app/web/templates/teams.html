@@ -10,7 +10,10 @@
   <div class="alert alert-info">
     팀 이름을 넣으면 <strong>DR훈련 · 용량관리 · EoS · 커널패치</strong> 대상 건수를 한 번에 봅니다.
     건수를 누르면 해당 영역의 그 팀 목록으로 바로 갑니다.
-    {% if not selected %}<br>지금은 <strong>전체 {{ all_teams|length }}개 팀</strong>을 대상 수 순으로 보여주고 있습니다.{% endif %}
+    <br>
+    이름이 <strong>포함된 팀을 모두</strong> 찾습니다 — 예를 들어 <span class="mono">라이브쇼핑팀</span>으로 찾으면
+    <span class="mono">라이브쇼핑팀</span>과 <span class="mono">라이브쇼핑팀||재무서비스팀</span>이 함께 나옵니다.
+    {% if not selected %}<br>지금은 <strong>전체 {{ team_count }}개 팀</strong>을 대상 수 순으로 보여주고 있습니다.{% endif %}
   </div>
 
   {% set failed = domains | selectattr("failed") | map(attribute="label") | list %}
@@ -96,7 +99,7 @@
 
 {% block after %}
 <script>
-const ALL_TEAMS = {{ all_teams | tojson }};
+const TEAM_OPTIONS = {{ team_options | tojson }};
 const SELECTED = {{ selected | tojson }};
 
 const input = document.getElementById("teamInput");
@@ -112,7 +115,7 @@ function candidates(kw) {
   const q = kw.trim().toLowerCase();
   if (!q) return [];
   // 이미 고른 팀은 빼고, 앞에서부터 일치하는 팀을 먼저 보여준다
-  const rest = ALL_TEAMS.filter(t => !SELECTED.includes(t) && t.toLowerCase().includes(q));
+  const rest = TEAM_OPTIONS.filter(t => !SELECTED.includes(t) && t.toLowerCase().includes(q));
   return rest.sort((a, b) => a.toLowerCase().indexOf(q) - b.toLowerCase().indexOf(q)).slice(0, 10);
 }
 
