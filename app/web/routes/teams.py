@@ -15,6 +15,7 @@
 "우리 팀 용량관리 몇 건"이라는 질문에 답이 안 된다.
 """
 import logging
+import re
 from datetime import date
 from urllib.parse import quote
 
@@ -152,6 +153,45 @@ def build_rows(domains: list[dict], teams: list[str]) -> list[dict]:
     return rows
 
 
+# 운영팀 칸에 여러 팀이 함께 적히는 구분자 (예: "라이브쇼핑팀||재무서비스팀").
+# 담당자 칸(reminder.parse_owners)과 같은 표기라 구분자도 같게 본다.
+_TEAM_SPLIT_RE = re.compile(r"\|+|,")
+
+
+def split_team_names(value: str) -> list[str]:
+    """'라이브쇼핑팀||재무서비스팀' -> ['라이브쇼핑팀', '재무서비스팀']"""
+    return [p.strip() for p in _TEAM_SPLIT_RE.split(value or "") if p.strip()]
+
+
+def team_options(all_teams: list[str]) -> list[str]:
+    """
+    검색 후보로 띄울 팀 이름.
+
+    엑셀 운영팀 칸에는 "라이브쇼핑팀"처럼 한 팀만 적힌 행과 "라이브쇼핑팀||재무서비스팀"
+    처럼 여러 팀이 같이 적힌 행이 섞여 있다. 사람은 '라이브쇼핑팀'이라는 단위로
+    생각하므로 묶인 값을 쪼갠 낱개 팀 이름도 후보에 넣는다. 원래 값도 같이 남겨서
+    "그 조합만" 보고 싶을 때도 고를 수 있게 한다.
+    """
+    options = set(all_teams)
+    for t in all_teams:
+        options.update(split_team_names(t))
+    return sorted(options)
+
+
+def match_teams(all_teams: list[str], keywords: list[str]) -> list[str]:
+    """
+    검색어를 '포함'으로 맞춰 본다. 키워드가 없으면 전체.
+
+    정확히 일치로 찾으면 '라이브쇼핑팀'을 검색했을 때 "라이브쇼핑팀||재무서비스팀"
+    행이 빠진다. 같은 팀이 관여하는 대상인데 표기가 묶여 있다는 이유로 안 보이면
+    "우리 팀 대상"을 세는 목적 자체가 어긋난다. 그래서 부분 일치로 본다.
+    """
+    if not keywords:
+        return list(all_teams)
+    lowered = [k.lower() for k in keywords]
+    return [t for t in all_teams if any(k in t.lower() for k in lowered)]
+
+
 def _teams_url(teams: list[str]) -> str:
     """선택한 팀들로 이 화면 주소를 만든다 (팀이 없으면 전체 보기)"""
     qs = "&".join(f"team={quote(t)}" for t in teams)
@@ -163,12 +203,14 @@ def team_lookup(request: Request, team: list[str] | None = Query(None)):
     today = date.today()
     domains, all_teams = collect_domains(today)
 
-    known = set(all_teams)
-    # 중복/오타는 조용히 버린다 (주소를 직접 고쳐 들어오는 경우가 있다)
-    selected = list(dict.fromkeys(t for t in (team or []) if t in known))
+    # 너무 긴 값은 잘라서 주소가 이상해지는 것만 막는다 (검색어라 내용은 안 따진다)
+    selected = list(dict.fromkeys(
+        t.strip()[:100] for t in (team or []) if t and t.strip()
+    ))
+    shown = match_teams(all_teams, selected)
     # 아무것도 안 고르면 전체를 보여준다 - 집계는 이미 다 끝나 있어서 비용이 같고,
     # 빈 화면보다 "우리 팀이 목록 어디쯤인지" 훑는 쪽이 쓸모 있다.
-    rows = build_rows(domains, selected or all_teams)
+    rows = build_rows(domains, shown)
     if not selected:
         rows = sorted(rows, key=lambda r: (-r["total"], r["team"]))
 
@@ -188,6 +230,8 @@ def team_lookup(request: Request, team: list[str] | None = Query(None)):
         "rows": rows,
         "selected": selected,
         "chips": chips,
-        "all_teams": all_teams,
+        # 검색 후보(낱개 팀 이름 포함)와 표에 실제로 있는 팀 수는 다르다
+        "team_options": team_options(all_teams),
+        "team_count": len(all_teams),
         "as_of": today,
     })
