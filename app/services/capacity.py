@@ -113,9 +113,10 @@ def build_capacity_ticket_summary(
     이 필터 때문에 정작 원인 파악이 안 되는 상황을 만들지 않으려고 둔 예외다.
     """
     tickets = build_ticket_summary(issues, field_id, kind_fn=capacity_ticket_kind)
-    # 원본 issue에만 있는 이슈 연결을 티켓 요약에 옮겨 둔다 (아래에서 키로 따라간다)
-    for t, issue in zip(tickets, issues):
-        t["linked_keys"] = linked_issue_keys(issue["fields"], settings.jira_project)
+    for t in tickets:
+        # 이슈 연결은 전체 조회에 안 담긴다 (응답이 너무 커진다) - 필요한 티켓만
+        # attach_linked_change_tickets가 따로 받아 채운다
+        t["linked_keys"] = []
         t["linked"] = []
 
     # 연결 티켓 조회를 여기(목록을 만드는 한 지점)에서 한다. 호출부마다 따로 부르게
@@ -258,12 +259,39 @@ def attach_linked_change_tickets(tickets: list[dict]) -> list[dict]:
 
     날짜가 이미 있는 티켓은 링크를 보지 않는다 (불필요한 조회를 줄이고, 자기 날짜가
     연결 티켓 날짜로 덮이지 않게).
+
+    조회를 두 번으로 나눈 이유: 이슈 연결은 항목마다 연결된 이슈를 통째로 품고 있어
+    응답이 몇 배로 커진다. 티켓 수백 건을 받는 전체 조회에 끼워 넣었더니 본문이
+    중간에 끊기는 일("Connection broken: IncompleteRead")이 생겼다. 연결이 필요한 건
+    날짜가 빈 일부뿐이라, 그 키들만 골라 연결을 받고(1) 거기서 나온 변경관리 티켓의
+    날짜를 다시 받는다(2).
     """
-    need = [t for t in tickets if not t.get("planned_end_date") and t.get("linked_keys")]
+    need = [t for t in tickets if not t.get("planned_end_date")]
     if not need:
         return tickets
 
+    # (1) 날짜가 빈 티켓들의 이슈 연결만 따로 받아온다
+    try:
+        linked_issues = jira.get_issues_by_keys(
+            sorted({t["key"] for t in need}), fields=["issuelinks"]
+        )
+    except Exception as e:
+        # 연결을 못 불러와도 나머지 판정은 그대로 돌아간다
+        logger.warning(f"이슈 연결 조회 실패 (연결 없이 판정): {e}")
+        return tickets
+
+    links_by_key = {
+        i["key"]: linked_issue_keys(i["fields"], settings.jira_project)
+        for i in linked_issues
+    }
+    for t in need:
+        t["linked_keys"] = links_by_key.get(t["key"], [])
+
     keys = sorted({k for t in need for k in t["linked_keys"]})
+    if not keys:
+        return tickets
+
+    # (2) 연결된 변경관리 티켓의 날짜를 받아온다
     try:
         issues = jira.get_issues_by_keys(keys, fields=[
             "summary",
@@ -272,7 +300,6 @@ def attach_linked_change_tickets(tickets: list[dict]) -> list[dict]:
             settings.planned_start_date_field,
         ])
     except Exception as e:
-        # 연결 티켓을 못 불러와도 나머지 판정은 그대로 돌아간다
         logger.warning(f"변경관리 연결 티켓 조회 실패 (연결 없이 판정): {e}")
         return tickets
 
