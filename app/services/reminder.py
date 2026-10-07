@@ -91,10 +91,17 @@ def inputter_of(item: dict) -> str:
     input_source가 'web'일 때만 updated_by를 입력자로 본다 - 엑셀에서 일정을 읽어온
     행에도 (비고만 남긴 경우처럼) updated_by가 붙을 수 있어서, 그것까지 '일정을 넣은
     사람'으로 취급하면 일정과 무관한 사람에게 작업 안내가 간다.
+
+    관리자가 입력한 건은 입력자가 없는 것으로 본다. 관리자는 담당자에게 받은 일정을
+    대신 넣어주거나 취합분을 일괄로 채우는 일이 많아서, 그 사람이 작업을 준비하는
+    당사자가 아니다. 관리자에게 "작업이 코앞이니 변경 티켓을 내달라"고 보내면 정작
+    티켓을 낼 담당자는 아무 안내도 못 받는다. 이런 건은 기존대로 서비스별 대표
+    담당자에게 간다 (group_unplanned_by_service 참고).
     """
     if item.get("input_source") != "web":
         return ""
-    return clean_name(item.get("updated_by") or "")
+    name = clean_name(item.get("updated_by") or "")
+    return "" if name in settings.admin_set else name
 
 
 def team_of_inputter(name: str, items: list[dict], cmdb_map: dict | None = None) -> str:
