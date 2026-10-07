@@ -1,6 +1,7 @@
 # app/core/jira_client.py
 import concurrent.futures
 import logging
+import time
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -16,6 +17,18 @@ PAGE_SIZE = 100
 MAX_PAGE_WORKERS = 6
 # 'key in (...)' 한 번에 넣을 키 수 (JQL 길이 제한과 실패 시 재시도 비용의 절충)
 KEY_CHUNK = 40
+
+# 본문이 끊겼을 때 그 페이지만 다시 받아보는 횟수 (_search_page 참고)
+PAGE_RETRY = 2
+PAGE_RETRY_BACKOFF_SEC = 0.5
+
+# 응답을 받다가 끊긴 경우들. 연결 자체는 맺혔으므로 어댑터의 Retry가 안 잡는다.
+_TRUNCATED_RESPONSE_ERRORS = (
+    requests.exceptions.ChunkedEncodingError,   # Connection broken: IncompleteRead(...)
+    requests.exceptions.ConnectionError,        # 받는 도중 연결이 끊김/리셋
+    requests.exceptions.Timeout,
+    requests.exceptions.JSONDecodeError,        # 잘린 본문이라 JSON 파싱 실패
+)
 
 
 class JiraClient:
@@ -42,13 +55,32 @@ class JiraClient:
         self.session.mount("http://", adapter)
 
     def _search_page(self, url: str, jql: str, fields_param: str | None, start_at: int, page_size: int) -> dict:
-        """검색 한 페이지"""
+        """
+        검색 한 페이지. 본문이 중간에 끊기면 그 페이지만 다시 받아온다.
+
+        HTTPAdapter에 붙인 Retry는 연결 수립 실패와 5xx를 다루지만, 응답을 받다가
+        중간에 끊기는 경우("Connection broken: IncompleteRead(8090 bytes read,
+        102 more expected)")는 그대로 예외로 올라와 조회 전체가 실패했다 - 티켓
+        수백 건을 한 번에 받는 호출이라 본문이 커서 실제로 종종 발생한다.
+        여기서 몇 번 더 시도한다. 잘려서 JSON이 깨지는 경우도 같은 증상이라 같이 본다.
+        """
         params = {"jql": jql, "startAt": start_at, "maxResults": page_size}
         if fields_param:
             params["fields"] = fields_param
-        resp = self.session.get(url, params=params, timeout=30)
-        resp.raise_for_status()
-        return resp.json()
+
+        for attempt in range(PAGE_RETRY + 1):
+            try:
+                resp = self.session.get(url, params=params, timeout=30)
+                resp.raise_for_status()
+                return resp.json()
+            except _TRUNCATED_RESPONSE_ERRORS as e:
+                if attempt == PAGE_RETRY:
+                    raise
+                logger.info(
+                    f"JIRA 응답이 끊겨 다시 시도 ({attempt + 1}/{PAGE_RETRY}, "
+                    f"startAt={start_at}): {e}"
+                )
+                time.sleep(PAGE_RETRY_BACKOFF_SEC * (attempt + 1))
 
     def search(self, jql: str, fields: list[str] | None = None):
         """
@@ -133,11 +165,11 @@ class JiraClient:
           3) 디스크/파일시스템/ASM 증설로 읽히는지 (capacity.capacity_ticket_kind)
         EoS(get_eos_tickets)가 "예방1" 없는 IP전환 티켓을 이미 같은 방식으로 받아온다.
 
-        issuelinks를 같이 받는 이유: 증설은 요청(SR) 티켓에서 시작해 '변경이관'으로
-        변경관리(CM) 티켓을 만들어 진행한다. 호스트명/IP가 적혀 우리 대상과 매칭되는
-        건 SR 티켓인데, 변경계획완료일은 CM 티켓에만 들어간다. 연결을 따라가지 않으면
-        증설이 끝났는데도 "완료일 없음"으로 빠진다
-        (capacity.attach_linked_change_tickets 참고).
+        이슈 연결(issuelinks)은 여기서 안 받는다. 연결 항목 하나하나가 연결된 이슈를
+        통째로 품고 있어서 응답이 몇 배로 커지는데, 티켓 수백 건을 한 번에 받는 호출이라
+        본문이 중간에 끊기는 일("Connection broken: IncompleteRead")이 실제로 생겼다.
+        연결이 필요한 건 변경계획완료일이 비어 있는 일부 티켓뿐이라, 그것만 골라
+        나중에 따로 받아온다 (capacity.attach_linked_change_tickets 참고).
         """
         tag_clause = 'summary ~ "예방4"'
         if settings.capacity_accept_untagged_jira:
@@ -152,7 +184,6 @@ class JiraClient:
             "description",
             "status",
             "created",
-            "issuelinks",
             settings.jsm_requester_field,
             settings.planned_end_date_field,
             settings.planned_start_date_field,
