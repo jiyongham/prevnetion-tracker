@@ -7,6 +7,8 @@
 """
 from datetime import date
 
+from app.config import settings
+from app.services import capacity as capacity_mod
 from app.services.capacity import (
     capacity_ticket_done_date,
     classify_capacity_sheet,
@@ -158,3 +160,78 @@ class TestLinkedIssueKeys:
 
     def test_연결이_없으면_빈_목록(self):
         assert linked_issue_keys({}, "IMDC") == []
+
+
+class TestAttachLinkedChangeTickets:
+    """
+    변경이관 티켓의 날짜를 붙이는 2단계 조회.
+
+    이슈 연결은 항목마다 연결된 이슈를 통째로 품고 있어 응답이 몇 배로 커진다.
+    전체 조회에 끼워 넣었더니 본문이 중간에 끊겨("IncompleteRead") 조회가 통째로
+    실패했다. 그래서 날짜가 빈 티켓의 키만 골라 따로 받아온다.
+    """
+
+    def _issue(self, key, fields):
+        return {"key": key, "fields": fields}
+
+    def _key(self, n):
+        # 연결은 같은 프로젝트 티켓만 따라간다 (JSM 요청 프로젝트는 변경관리가 아니다)
+        return f"{settings.jira_project}-{n}"
+
+    def test_날짜가_빈_티켓만_연결을_조회한다(self, monkeypatch):
+        sr, other, cm = self._key(1), self._key(2), self._key(9)
+        asked = []
+
+        def fake_get_issues_by_keys(keys, fields):
+            asked.append((sorted(keys), list(fields)))
+            if fields == ["issuelinks"]:
+                return [self._issue(sr, {"issuelinks": [{"outwardIssue": {"key": cm}}]})]
+            return [self._issue(cm, {"summary": "자원조정", "status": {"name": "완료"}})]
+
+        monkeypatch.setattr(capacity_mod.jira, "get_issues_by_keys", fake_get_issues_by_keys)
+        tickets = [
+            {"key": sr, "planned_end_date": None, "linked_keys": [], "linked": []},
+            {"key": other, "planned_end_date": date(2026, 9, 1), "linked_keys": [], "linked": []},
+        ]
+        capacity_mod.attach_linked_change_tickets(tickets)
+
+        # 1단계: 날짜 없는 티켓만 연결 조회 (날짜가 있는 쪽은 빠진다)
+        assert asked[0] == ([sr], ["issuelinks"])
+        # 2단계: 거기서 나온 변경관리 티켓만 날짜 조회
+        assert asked[1][0] == [cm]
+
+    def test_다른_프로젝트_연결은_따라가지_않는다(self, monkeypatch):
+        """JSM 요청 티켓(DCIT5-...)은 변경관리 티켓이 아니라 날짜를 가져오면 안 된다"""
+        sr = self._key(1)
+        calls = []
+
+        def fake_get_issues_by_keys(keys, fields):
+            calls.append(list(fields))
+            return [self._issue(sr, {"issuelinks": [{"inwardIssue": {"key": "DCIT5-19003"}}]})]
+
+        monkeypatch.setattr(capacity_mod.jira, "get_issues_by_keys", fake_get_issues_by_keys)
+        tickets = [{"key": sr, "planned_end_date": None, "linked_keys": [], "linked": []}]
+        capacity_mod.attach_linked_change_tickets(tickets)
+        assert calls == [["issuelinks"]]
+
+    def test_연결이_없으면_두번째_조회를_안_한다(self, monkeypatch):
+        sr = self._key(1)
+        calls = []
+
+        def fake_get_issues_by_keys(keys, fields):
+            calls.append(list(fields))
+            return [self._issue(sr, {"issuelinks": []})]
+
+        monkeypatch.setattr(capacity_mod.jira, "get_issues_by_keys", fake_get_issues_by_keys)
+        tickets = [{"key": sr, "planned_end_date": None, "linked_keys": [], "linked": []}]
+        capacity_mod.attach_linked_change_tickets(tickets)
+        assert calls == [["issuelinks"]]
+
+    def test_조회가_실패해도_판정은_계속된다(self, monkeypatch):
+        def boom(keys, fields):
+            raise RuntimeError("Connection broken")
+
+        monkeypatch.setattr(capacity_mod.jira, "get_issues_by_keys", boom)
+        tickets = [{"key": self._key(1), "planned_end_date": None, "linked_keys": [], "linked": []}]
+        assert capacity_mod.attach_linked_change_tickets(tickets) is tickets
+        assert tickets[0]["linked"] == []
