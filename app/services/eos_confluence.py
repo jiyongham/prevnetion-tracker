@@ -62,11 +62,31 @@ def find_week_page(parent_page_id: str, week_start: date, week_end: date) -> dic
     return None
 
 
+_IP_TRANSITION_RE = re.compile(r"IP\s*전환", re.I)
+
+
+def _section_of(table) -> str:
+    """
+    표 바로 앞의 소제목 ('정기작업(수-목)', '비정기 야간' 등). 못 찾으면 빈 값.
+    집계에는 안 쓰고, 어느 구역을 읽었는지 확인(/eos/plan-trace)하는 데만 쓴다.
+    """
+    node = table.find_previous(["h1", "h2", "h3", "h4", "h5", "strong", "b"])
+    return node.get_text(" ", strip=True) if node else ""
+
+
 def extract_eos_rows(page_id: str) -> list[dict]:
     """
-    페이지 안 작업표에서 IP전환 작업 행 추출 ('[예방1]' 태그는 요구하지 않음 - 태그 없이
+    페이지 안 모든 표에서 IP전환 작업 행 추출 ('[예방1]' 태그는 요구하지 않음 - 태그 없이
     등록된 IP전환 작업도 있어서, 실제 EoS 대상 여부는 이후 호스트명 매칭 단계에서 우리
     대상 목록과 겹치는지로 가려낸다).
+
+    칸 위치를 못 박지 않는다. 예전에는 '4번째 칸이 작업 계획'으로 보고 cells[3]만 읽고
+    칸이 4개 미만인 행은 건너뛰었는데, 주간 작업계획 페이지는 구역마다 표가 따로 있고
+    (정기작업(수-목), 비정기 야간 등) 칸 구성이 서로 달라서 그런 구역이 통째로 빠졌다.
+    대신 '행 안에서 IP전환이 적힌 칸'을 작업 계획으로 본다.
+
+    이렇게 넓게 긁어도 안전한 이유는 위와 같다 - 여기서 걸러낸 행이 곧 집계가 아니라,
+    호스트명/시스템명 매칭을 통과한 것만 센다(get_week_plan_count의 count).
     """
     body = confluence.get_content(page_id, expand="body.storage")
     storage = body.get("body", {}).get("storage", {}).get("value", "")
@@ -74,15 +94,17 @@ def extract_eos_rows(page_id: str) -> list[dict]:
 
     rows = []
     for table in soup.find_all("table"):
+        section = _section_of(table)
         for tr in table.find_all("tr"):
-            cells = tr.find_all(["td", "th"])
-            if len(cells) < 4:
+            texts = [c.get_text(" ", strip=True) for c in tr.find_all(["td", "th"])]
+            plan_idx = next(
+                (i for i, t in enumerate(texts) if _IP_TRANSITION_RE.search(t)), None
+            )
+            if plan_idx is None:
                 continue
-            plan = cells[3].get_text(" ", strip=True)
-            if "IP전환" not in plan and "IP 전환" not in plan:
-                continue
-            worker = cells[2].get_text(" ", strip=True)
-            rows.append({"worker": worker, "text": plan})
+            # 작업자는 작업 계획 바로 앞 칸에 적는 게 보통이다 (예전 구조도 3번째/4번째였다)
+            worker = texts[plan_idx - 1] if plan_idx > 0 else ""
+            rows.append({"worker": worker, "text": texts[plan_idx], "section": section})
     return rows
 
 
@@ -269,6 +291,9 @@ def get_week_plan_count(parent_page_id: str, week_start: date, week_end: date, i
 
     rows = extract_eos_rows(page["id"])
     result = match_eos_rows_combined(page["id"], rows, items)
+    # 어느 구역(정기작업(수-목)/비정기 야간 등)에서 몇 행을 읽었는지 - 특정 구역이
+    # 통째로 안 잡히는 일이 있었어서 확인할 수 있게 같이 돌려준다
+    sections = Counter(r.get("section") or "(제목 없음)" for r in rows)
     return {
         "found": True,
         "page_id": page["id"],
@@ -277,4 +302,6 @@ def get_week_plan_count(parent_page_id: str, week_start: date, week_end: date, i
         "unmatched_rows": result["unmatched_rows"],
         "count": len(result["matched"]),
         "row_count": len(rows),
+        "sections": dict(sections),
+        "rows": rows,
     }
