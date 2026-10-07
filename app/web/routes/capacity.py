@@ -233,12 +233,14 @@ def capacity_trace(request: Request, sheet: str = "DATA", q: str | None = None):
     # 필터에서 빠졌는지가 보고 싶은 것이기 때문이다. 대상마다 부르면 티켓 인덱스를
     # 매번 다시 만들게 되므로 한 번에 넘긴다.
     all_hits = match_items_by_ip(candidates, tickets)["matched"] if tickets else {}
+    # 대시보드와 똑같이 시트 필터를 거친다 - 변경이관 티켓의 완료일도 여기서 채워지므로,
+    # 직접 걸러 쓰면 추적 화면만 그 날짜를 못 보고 다른 판정을 내놓는다.
+    kept_map = filter_tickets_by_sheet(all_hits, sheet)
 
     rows = []
     for item in candidates:
         hits = all_hits.get(item["no"]) or []
-        # 이 시트 소속으로 남는 티켓만으로 실제 완료 판정을 돌려본다 (대시보드와 동일)
-        kept = [t for t in hits if sheet in classify_capacity_sheet(t.get("match_text"))]
+        kept = kept_map.get(item["no"]) or []
         completed, reason, _ = judge_capacity(item, kept, today, today.year)
 
         # 기본(일괄 점검) 화면은 손볼 데가 있는 것만 보여준다: 티켓이 걸렸는데도
