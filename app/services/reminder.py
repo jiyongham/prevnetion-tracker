@@ -118,20 +118,59 @@ def team_of_inputter(name: str, items: list[dict], cmdb_map: dict | None = None)
     return team_via_cmdb(name, items, cmdb_map, "")
 
 
-def build_body(items: list[dict], show_raw: bool = False) -> str:
-    """대상 목록 본문 (시스템명 / 호스트명 / IP). show_raw면 현재 등록된 텍스트도 같이 표기"""
-    lines = []
+# 수행방식 표시 순서. 방식이 없는 대상은 맨 뒤로 보낸다.
+MODE_ORDER = ("실전환", "무중단")
+MODE_UNKNOWN = "방식 미정"
+
+
+def mode_of(item: dict) -> str:
+    """
+    대상의 수행방식을 화면과 같은 말로 정리한다.
+
+    엑셀 표기가 '실 전환'처럼 띄어져 있거나 '실전환(예정)'처럼 꼬리가 붙는 경우가 있어
+    포함 여부로 본다 (excel_loader.norm_mode가 공백은 이미 지웠다).
+    """
+    mode = (item.get("mode") or "").strip()
+    for known in MODE_ORDER:
+        if known in mode:
+            return known
+    return mode or MODE_UNKNOWN
+
+
+def group_by_mode(items: list[dict]) -> list[tuple[str, list[dict]]]:
+    """[(수행방식, 대상들)] - 실전환 -> 무중단 -> 그 밖 순서"""
+    buckets: dict[str, list[dict]] = {}
     for d in items:
-        line = f"{d.get('system_name', '')} / {d.get('hostname', '')} / {d.get('ip', '')}"
-        if show_raw and d.get("schedule_raw"):
-            # 예정 안내는 정규화된 M/D로, 미기입 재확인은 담당자가 적은 원문 그대로 보여준다
-            if d.get("status_label") == "예정":
-                line += f" (예정: {d.get('schedule_disp') or d['schedule_raw']})"
-            else:
-                line += f" (현재 등록: {d['schedule_raw']})"
-        # 줄 앞에 탭/공백을 두면 Teams가 그 줄을 코드블록으로 잡아 대시와 본문이 갈라진다
-        lines.append(f"- {line}")
-    return "\n".join(lines) if lines else "(대상 없음)"
+        buckets.setdefault(mode_of(d), []).append(d)
+    ordered = [m for m in MODE_ORDER if m in buckets]
+    ordered += sorted(m for m in buckets if m not in MODE_ORDER)
+    return [(m, buckets[m]) for m in ordered]
+
+
+def build_body(items: list[dict], show_raw: bool = False) -> str:
+    """
+    대상 목록 본문 (시스템명 / 호스트명 / IP). show_raw면 현재 등록된 텍스트도 같이 표기.
+
+    수행방식(실전환/무중단)별로 나눠 적는다. 한 담당자가 두 방식을 같이 맡는 경우가
+    있는데 준비할 내용이 서로 달라서(실전환은 실제 전환, 무중단은 무중단 절차) 섞여
+    있으면 받는 쪽이 어느 게 어느 건지 구분할 수 없다. DM은 한 통으로 보내되 목록만
+    나눈다 - 방식마다 따로 보내면 같은 사람에게 알림만 두 번 간다.
+    """
+    sections = []
+    for mode, group in group_by_mode(items):
+        lines = [f"[{mode}]"]
+        for d in group:
+            line = f"{d.get('system_name', '')} / {d.get('hostname', '')} / {d.get('ip', '')}"
+            if show_raw and d.get("schedule_raw"):
+                # 예정 안내는 정규화된 M/D로, 미기입 재확인은 담당자가 적은 원문 그대로 보여준다
+                if d.get("status_label") == "예정":
+                    line += f" (예정: {d.get('schedule_disp') or d['schedule_raw']})"
+                else:
+                    line += f" (현재 등록: {d['schedule_raw']})"
+            # 줄 앞에 탭/공백을 두면 Teams가 그 줄을 코드블록으로 잡아 대시와 본문이 갈라진다
+            lines.append(f"- {line}")
+        sections.append("\n".join(lines))
+    return "\n\n".join(sections) if sections else "(대상 없음)"
 
 
 def greeting_suffix(items: list[dict], kind: str = "blank") -> str:
@@ -321,6 +360,8 @@ def _draft(
         "team": team,               # DM 발송용 (CMDB 보정)
         "given": given,
         "count": len(items),
+        # 방식별 대수 (미리보기에서 "실전환 3 · 무중단 2"로 한눈에 보려고)
+        "mode_counts": [(m, len(g)) for m, g in group_by_mode(items)],
         "targets": items,           # 'items'는 Jinja에서 dict.items()와 충돌 → targets
         "greeting_suffix": greeting_suffix(items, msg_kind),  # 이름 뒤 고정 문구+대상
         "candidates": candidates,   # 받는 담당자 후보
