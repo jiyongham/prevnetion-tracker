@@ -26,9 +26,17 @@ PAGE_RETRY_BACKOFF_SEC = 0.5
 _TRUNCATED_RESPONSE_ERRORS = (
     requests.exceptions.ChunkedEncodingError,   # Connection broken: IncompleteRead(...)
     requests.exceptions.ConnectionError,        # 받는 도중 연결이 끊김/리셋
-    requests.exceptions.Timeout,
     requests.exceptions.JSONDecodeError,        # 잘린 본문이라 JSON 파싱 실패
 )
+# 읽기 타임아웃은 여기 안 넣는다 - 어댑터의 Retry(read=2)가 이미 다시 시도하고 있어서
+# (운영 로그에 "Retrying ... after ... ReadTimeoutError"가 그대로 찍힌다), 여기서 또
+# 감싸면 한 번 느려진 요청이 30초 x 재시도 x 재시도로 불어난다.
+
+
+def _is_bad_request(exc: Exception) -> bool:
+    """JQL이 잘못돼 400이 난 경우인지 (없는 키가 섞인 경우가 대표적)"""
+    resp = getattr(exc, "response", None)
+    return resp is not None and resp.status_code == 400
 
 
 class JiraClient:
@@ -193,20 +201,32 @@ class JiraClient:
 
     def get_issues_by_keys(self, keys: list[str], fields: list[str]) -> list[dict]:
         """
-        키 목록으로 이슈 조회. 없는 키가 하나라도 섞이면 JQL 전체가 400으로 떨어지므로
-        청크로 나눠 조회하고, 실패한 청크만 한 건씩 다시 시도한다
-        (evidence_check._fetch_statuses와 같은 방식).
+        키 목록으로 이슈 조회.
+
+        없는 키(또는 권한 없는 키)가 하나라도 섞이면 JQL 전체가 400으로 떨어진다.
+        그때만 그 묶음을 한 건씩 다시 조회해 멀쩡한 키라도 건진다.
+
+        400이 아닌 실패(타임아웃·연결 끊김)에는 한 건씩 돌리지 않는다. 그렇게 하면
+        이미 느려진 서버에 같은 요청을 묶음 크기만큼 더 보내게 되는데(묶음 하나가
+        40키면 40번 x 타임아웃 30초), 조회가 끝나지 않는 것처럼 보이고 서버도 더
+        느려진다 - 실제로 그 상태의 로그가 관측됐다. 그런 실패는 그대로 올려서
+        호출부가 '연결 없이 판정'으로 넘어가게 둔다.
         """
         result: list[dict] = []
         for i in range(0, len(keys), KEY_CHUNK):
             chunk = keys[i:i + KEY_CHUNK]
             try:
                 result += self.search(f"key in ({','.join(chunk)})", fields=fields)
-            except Exception:
+            except requests.exceptions.HTTPError as e:
+                if not _is_bad_request(e):
+                    raise
+                logger.info(f"키 {len(chunk)}건 묶음이 400 - 한 건씩 다시 조회한다")
                 for k in chunk:
                     try:
                         result += self.search(f"key = {k}", fields=fields)
-                    except Exception:
+                    except requests.exceptions.HTTPError as ke:
+                        if not _is_bad_request(ke):
+                            raise
                         logger.info(f"연결 티켓 조회 불가 (없는 키이거나 권한 없음): {k}")
         return result
 
