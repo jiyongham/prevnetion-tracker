@@ -15,7 +15,8 @@
     {% if by_inputter %}입력자별{% else %}서비스별{% endif %} <strong>{{ total_unplanned }}건</strong> ·
     아래는 <strong>발송 전 초안</strong>입니다.
     {% if by_inputter %}
-    일정을 웹에 입력한 사람에게 보냅니다 (엑셀 원본 일정이라 입력자가 없는 대상은 서비스별 대표 담당자).
+    일정을 웹에 입력한 사람에게 보냅니다.
+    엑셀 원본 일정이거나 <strong>관리자가 대신 입력한</strong> 대상은 서비스별 대표 담당자에게 갑니다.
     {% else %}
     받는 팀명은 CMDB(운영팀) 기준으로 자동 보정됩니다.
     {% endif %}
