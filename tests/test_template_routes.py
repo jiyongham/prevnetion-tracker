@@ -58,7 +58,6 @@ ROUTES = [
     ("GET", "/eos/remind-preview", "eos_remind_preview.html"),
     ("GET", "/eos/owner-check", "eos_owner_check.html"),
     ("GET", "/eos/plan-chat", "eos_plan_chat.html"),
-    ("GET", "/eos/plan-trace", "eos_plan_trace.html"),
     ("GET", "/kernel", "kernel.html"),
     ("GET", "/kernel/owner-check", "kernel_owner_check.html"),
     ("GET", "/teams", "teams.html"),
@@ -124,14 +123,6 @@ def _apply_no_network_patches(monkeypatch):
     monkeypatch.setattr(eos_data, "get_eos_data", empty_eos_data)
     monkeypatch.setattr(eos_routes, "get_eos_data", empty_eos_data)
     monkeypatch.setattr(eos_routes, "load_eos_items_merged", lambda: [])
-    # 주간계획 추적은 Confluence를 직접 부른다 - 네트워크로 나가지 않게 막는다
-    monkeypatch.setattr(
-        eos_routes, "get_week_plan_count",
-        lambda parent, start, end, items: {
-            "found": False, "matched": {}, "unmatched_rows": [],
-            "count": 0, "row_count": 0, "sections": {}, "rows": [],
-        },
-    )
     monkeypatch.setattr(
         eos_routes,
         "collect_eos_targets_with_tickets",

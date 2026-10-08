@@ -2,7 +2,7 @@
 """EoS(노후 OS/DB 전환 - [예방1]) 관련 라우트"""
 import io
 import logging
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from urllib.parse import quote
 
 from fastapi import APIRouter, Request
@@ -16,7 +16,6 @@ from fastapi.responses import (
 
 from app.config import eos_sender, settings
 from app.core.date_utils import week_ranges
-from app.core.eos_loader import get_targets as get_eos_targets
 from app.core.eos_loader import load_eos_items_merged
 from app.core.teams_client import send_teams_dm
 from app.models.db import (
@@ -39,7 +38,6 @@ from app.services.eos_data import (
     invalidate_cache as invalidate_eos_cache,
     prewarm as prewarm_eos,
 )
-from app.services.eos_confluence import get_week_plan_count
 from app.services.eos_plan_chat import build_candidates, parse_plan_message
 from app.services.eos_reminder import group_eos_no_reply, group_eos_unplanned
 from app.services.eos_report import send_eos_report
@@ -346,59 +344,6 @@ def trigger_eos_report():
 # ─────────────────────────────────────────────
 # 차주 계획 챗봇 (JIRA/Confluence로 못 찾은 주에 관리자가 아는 대로 자유 텍스트 입력)
 # ─────────────────────────────────────────────
-@router.get("/eos/plan-trace", response_class=HTMLResponse)
-def eos_plan_trace(request: Request, week: str | None = None):
-    """
-    주간 작업계획(Confluence)에서 무엇을 읽어왔는지 보여주는 확인 화면.
-
-    금주 실적은 이 페이지 파싱 결과로 세는데, 어느 구역(정기작업(수-목)/비정기 야간 등)이
-    잡히고 안 잡히는지 확인할 방법이 없어서 "빠진 것 같다"를 코드로만 따져야 했다.
-    구역별 읽은 행 수와 매칭 결과를 그대로 펼쳐 보여준다.
-
-    week를 주면(YYYY-MM-DD, 그 주 월요일) 그 주를, 없으면 리포트가 '금주 실적'으로
-    세는 주를 본다.
-    """
-    today = date.today()
-    perf_start, perf_end, _, _ = week_ranges(today)
-    if week:
-        try:
-            perf_start = date.fromisoformat(week)
-            perf_end = perf_start + timedelta(days=4)
-        except ValueError:
-            pass
-
-    items, _, _, _ = get_eos_data()
-    targets = get_eos_targets(items)
-
-    result, error = {}, None
-    try:
-        result = get_week_plan_count(
-            settings.confluence_eos_parent_page_id, perf_start, perf_end, targets
-        )
-    except Exception as e:
-        logger.warning(f"EoS 주간계획 추적 실패: {e}")
-        error = str(e)
-
-    # 매칭 결과는 {대상: 작업행}이라 행 기준으로 뒤집어 행에 직접 달아준다
-    # (matched의 값은 rows 안에 있는 바로 그 dict다)
-    by_item = {i["item_no"]: i for i in targets}
-    for row in result.get("rows") or []:
-        row["matched_items"] = []
-    for item_no, row in (result.get("matched") or {}).items():
-        row.setdefault("matched_items", []).append(
-            by_item.get(item_no) or {"item_no": item_no}
-        )
-
-    return templates.TemplateResponse(request, "eos_plan_trace.html", {
-        "request": request,
-        "week_start": perf_start,
-        "week_end": perf_end,
-        "result": result,
-        "error": error,
-        "target_count": len(targets),
-    })
-
-
 @router.get("/eos/plan-chat", response_class=HTMLResponse)
 def eos_plan_chat_page(request: Request):
     today = date.today()
