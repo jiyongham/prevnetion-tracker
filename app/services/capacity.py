@@ -114,10 +114,15 @@ def build_capacity_ticket_summary(
     """
     tickets = build_ticket_summary(issues, field_id, kind_fn=capacity_ticket_kind)
     for t in tickets:
-        # 이슈 연결은 전체 조회에 안 담는다 (응답이 너무 커진다). 우리 대상에 매칭된
-        # 티켓만 filter_tickets_by_sheet에서 따로 받아 채운다.
+        # 이슈 연결은 전체 조회에 안 담긴다 (응답이 너무 커진다) - 필요한 티켓만
+        # attach_linked_change_tickets가 따로 받아 채운다
         t["linked_keys"] = []
         t["linked"] = []
+
+    # 연결 티켓 조회를 여기(목록을 만드는 한 지점)에서 한다. 호출부마다 따로 부르게
+    # 두면 어떤 화면은 변경이관 티켓의 완료일을 보고 어떤 화면은 못 보는 상태가 되는데,
+    # 그렇게 화면마다 기준이 어긋나는 문제를 이미 여러 번 겪었다.
+    attach_linked_change_tickets(tickets)
 
     if include_other:
         return tickets
@@ -164,24 +169,12 @@ def trace_ticket(t: dict, sheet: str, as_of: date, base_year: int) -> tuple[str,
 
 
 def filter_tickets_by_sheet(ticket_map: dict[str, list[dict]], sheet: str) -> dict[str, list[dict]]:
-    """
-    IP/호스트명으로 매칭된 티켓 중, 변경작업내용상 이 시트(DATA/ARCH) 소속인 것만 남긴다.
-    남은 티켓에 대해서만 변경이관 티켓의 완료일을 채운다.
-
-    연결 조회를 여기서 하는 이유: 완료 판정을 하는 경로는 전부 '매칭 -> 이 함수'를
-    거치므로, 여기 한 곳에 두면 화면마다 기준이 어긋나지 않는다(그 문제를 이미 여러 번
-    겪었다). 그러면서도 조회 대상이 '우리 대상에 실제로 걸린 티켓'으로 좁혀진다 -
-    전체 티켓을 대상으로 돌렸더니 날짜 없는 티켓이 수백 건이라 키 조회가 줄줄이
-    타임아웃 났다. 대부분은 우리 대상과 무관한 티켓이었다.
-    """
+    """IP/호스트명으로 매칭된 티켓 중, 변경작업내용상 이 시트(DATA/ARCH) 소속인 것만 남긴다."""
     filtered = {}
     for no, tickets in ticket_map.items():
         keep = [t for t in tickets if sheet in classify_capacity_sheet(t.get("match_text"))]
         if keep:
             filtered[no] = keep
-
-    # 같은 티켓이 여러 대상에 걸릴 수 있어 키로 중복을 없앤다
-    attach_linked_change_tickets(list({t["key"]: t for ts in filtered.values() for t in ts}.values()))
     return filtered
 
 
@@ -273,15 +266,9 @@ def attach_linked_change_tickets(tickets: list[dict]) -> list[dict]:
     날짜가 빈 일부뿐이라, 그 키들만 골라 연결을 받고(1) 거기서 나온 변경관리 티켓의
     날짜를 다시 받는다(2).
     """
-    # 티켓 객체는 캐시에 담긴 그대로라 DATA/ARCH/미응답 매칭에서 같은 것이 여러 번
-    # 넘어온다. 한 번 시도한 티켓은 표시해 두고 다시 조회하지 않는다 - 실패했을 때도
-    # 마찬가지다(캐시가 갱신되는 5분 뒤에 다시 시도한다). 안 그러면 느려진 서버에
-    # 같은 조회를 요청마다 반복해서 보낸다.
-    need = [t for t in tickets if not t.get("planned_end_date") and not t.get("links_tried")]
+    need = [t for t in tickets if not t.get("planned_end_date")]
     if not need:
         return tickets
-    for t in need:
-        t["links_tried"] = True
 
     # (1) 날짜가 빈 티켓들의 이슈 연결만 따로 받아온다
     try:

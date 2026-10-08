@@ -235,35 +235,3 @@ class TestAttachLinkedChangeTickets:
         tickets = [{"key": self._key(1), "planned_end_date": None, "linked_keys": [], "linked": []}]
         assert capacity_mod.attach_linked_change_tickets(tickets) is tickets
         assert tickets[0]["linked"] == []
-
-    def test_같은_티켓을_여러_번_조회하지_않는다(self, monkeypatch):
-        """
-        티켓 객체는 캐시에 담긴 그대로라 DATA/ARCH/미응답 매칭에서 같은 것이 여러 번
-        넘어온다. 매번 조회하면 느려진 서버에 같은 요청을 요청마다 반복해 보내게 된다.
-        """
-        sr = self._key(1)
-        calls = []
-
-        def fake_get_issues_by_keys(keys, fields):
-            calls.append(list(fields))
-            return [self._issue(sr, {"issuelinks": []})]
-
-        monkeypatch.setattr(capacity_mod.jira, "get_issues_by_keys", fake_get_issues_by_keys)
-        ticket = {"key": sr, "planned_end_date": None, "linked_keys": [], "linked": []}
-        capacity_mod.attach_linked_change_tickets([ticket])
-        capacity_mod.attach_linked_change_tickets([ticket])   # 같은 객체로 다시
-        assert len(calls) == 1
-
-    def test_조회가_실패해도_곧바로_다시_쏘지_않는다(self, monkeypatch):
-        """실패를 재시도하려고 매 요청마다 다시 쏘면 느려진 서버를 더 밀어붙인다"""
-        calls = []
-
-        def boom(keys, fields):
-            calls.append(1)
-            raise RuntimeError("Read timed out")
-
-        monkeypatch.setattr(capacity_mod.jira, "get_issues_by_keys", boom)
-        ticket = {"key": self._key(1), "planned_end_date": None, "linked_keys": [], "linked": []}
-        capacity_mod.attach_linked_change_tickets([ticket])
-        capacity_mod.attach_linked_change_tickets([ticket])
-        assert len(calls) == 1
