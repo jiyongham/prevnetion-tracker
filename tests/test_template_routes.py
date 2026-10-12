@@ -241,7 +241,8 @@ def test_dr_sidebar_keeps_half_and_active_page(monkeypatch):
     for path, label in [("/dr?half=H1&compare=true", "상·하반기 비교"),
                         ("/remind-preview?half=H1", "Teams 리마인드"),
                         ("/owner-check?half=H1", "담당자 확인"),
-                        ("/logs?half=H1", "변경 이력")]:
+                        ("/logs?half=H1", "변경 이력"),
+                        ("/dr/guide?half=H1", "설명 보기")]:
         response = client.get(path)
         assert response.status_code == 200
         soup = BeautifulSoup(response.text, "html.parser")
@@ -252,8 +253,25 @@ def test_dr_sidebar_keeps_half_and_active_page(monkeypatch):
         assert active[0].get_text(strip=True) == label
         assert all("half=H1" in a["href"] for a in menu.select("a"))
         assert len(menu.select(".dr-nav-admin")) == 2
+        assert soup.select_one("details.dr-nav-group").has_attr("open")
+        assert soup.select_one("summary .dr-nav-arrow") is not None
     response = client.get("/capacity")
-    assert 'class="dr-subnav"' not in response.text
+    group = BeautifulSoup(response.text, "html.parser").select_one("details.dr-nav-group")
+    assert group is not None and not group.has_attr("open")
+
+
+def test_dr_guide_does_not_load_external_data(monkeypatch, tmp_path):
+    def forbidden(*args, **kwargs):
+        raise AssertionError("설명 화면에서 운영 데이터를 조회하면 안 됩니다")
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(dr_data, "load_items", forbidden)
+    monkeypatch.setattr(jira_client.jira, "get_dr_tickets", forbidden)
+    response = TestClient(app).get("/dr/guide")
+    assert response.status_code == 200
+    assert "DR훈련 설명 보기" in response.text
+    assert "서비스요청관리" in response.text
+    assert "완료 여부 무관" in response.text
 
 
 def test_dr_dashboard_returns_200_and_renders_details_table(monkeypatch):
