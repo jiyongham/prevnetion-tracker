@@ -75,7 +75,9 @@ def ticket_kind(f: dict) -> str:
     """
     티켓 종류 판별.
     - 실전환 티켓 제목에 "예방3" 포함
-    - 무중단 티켓 제목에 "무중단" 포함 (예방3 없음)
+    - 무중단 티켓 제목에 "무중단" 포함(예방3 없음)이면서, issuetype이 "서비스요청관리"인 것만 인정한다.
+      무중단 훈련은 실제 서비스 단절 없이 진행되는 점검이라 사내 프로세스상 변경관리가 아닌 서비스요청관리로
+      등록되어야 한다 - 제목에 "무중단"이 적혀도 issuetype이 변경관리면 실제 무중단 훈련이 아닌 것으로 보고 "기타"로 놓는다.
     - 제목에 둘 다 없어도, 작업 구분 필드에 "DR훈련"이 체크돼 있으면 실전환으로 기본 처리
       (전환기: 아직 이 필드를 안 쓰는 티켓이 대부분이라, 제목 태그를 우선 신뢰하고 이 필드는 보조로만 씀)
     """
@@ -83,7 +85,8 @@ def ticket_kind(f: dict) -> str:
     if "예방3" in summary:
         return "실전환"
     if "무중단" in summary:
-        return "무중단"
+        issuetype = (f.get("issuetype") or {}).get("name", "")
+        return "무중단" if issuetype == "서비스요청관리" else "기타"
     work_types = {opt.get("value") for opt in (f.get(settings.dr_work_type_field) or [])}
     if "DR훈련" in work_types:
         return "실전환"

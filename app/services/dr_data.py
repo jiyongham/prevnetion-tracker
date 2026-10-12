@@ -95,7 +95,6 @@ def compute_h2_items(use_jira: bool = True) -> list[dict]:
     다른 숫자를 보여줄 수 있다(이번 세션에서 계속 겪은 버그 유형).
     """
     h1_items = load_dr_items_merged(half="H1")
-    h1_items = load_dr_items_merged(half="H1")
     h1_ticket_map, _ = get_ticket_map("H1", h1_items, use_jira=use_jira)
     h1_result = calc_completion(h1_items, h1_ticket_map, date.today())
     # no -> (H1 mode, H1 완료여부) 루퍼 (calc_completion은 대상(get_targets)만 가진다).
