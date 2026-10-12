@@ -35,7 +35,7 @@
   </div>
   <div class="tabs">
     <a href="/remind-preview?half={{ half }}{% if mode %}&mode={{ mode }}{% endif %}&kind=blank" class="tab {% if kind not in ['hinted', 'upcoming'] %}active{% endif %}">
-      폈 미기입 <span class="cnt">{{ blank_total }}</span>
+      완전 미기입 <span class="cnt">{{ blank_total }}</span>
     </a>
     <a href="/remind-preview?half={{ half }}{% if mode %}&mode={{ mode }}{% endif %}&kind=hinted" class="tab {% if kind == 'hinted' %}active{% endif %}">
       대략적 일정만 있음 <span class="cnt">{{ hinted_total }}</span>

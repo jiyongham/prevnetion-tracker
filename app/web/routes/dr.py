@@ -22,7 +22,9 @@ from app.core.scheduler import get_jobs_info
 from app.core.teams_client import send_teams_dm, send_teams_message
 from app.models.db import get_input, get_logs, get_remind_log_summary, log_remind, upsert_input
 from app.services import ai_diagnose, chatbot, dr_data, evidence_check, last_report
+from app.services.change_history import mask_changer
 from app.services.completion import build_ticket_summary, calc_completion, group_by
+from app.services.dr_view import ACTION_LABELS, action_counts, decorate_details
 from app.services.owner_check import (
     collect_targets_with_tickets,
     find_owner_mismatches,
@@ -86,6 +88,8 @@ def dashboard(
     mode: str | None = None,
     report_warning: str | None = None,
     sent: str | None = None,
+    action: str = "all",
+    compare: bool = False,
 ):
     half = half or get_current_half()
     today = date.today()
@@ -193,10 +197,34 @@ def dashboard(
     evidence_check.annotate(details)
     evidence_warn_cnt = sum(1 for d in details if d.get("evidence_level"))
 
+    decorate_details(details, settings.timezone, half=half)
+    counts = action_counts(details)
+    if action not in ACTION_LABELS:
+        action = "all"
+    if action != "all":
+        details = [d for d in details if d["actions"][action]]
+    action_links = {
+        key: str(request.url.include_query_params(action=key)) for key in ACTION_LABELS
+    }
+    comparison = {}
+    comparison_error = None
+    if compare:
+        other_half = "H1" if half == "H2" else "H2"
+        other_result, comparison_error = get_dashboard_data(other_half, today)
+        comparison = {d["no"]: d for d in other_result["details"]}
+
     return templates.TemplateResponse(request, "dashboard.html", {
         "request": request,
         "result": result,
         "details": details,
+        "action_labels": ACTION_LABELS,
+        "action_counts": counts,
+        "action_links": action_links,
+        "filter_action": action,
+        "compare": compare,
+        "comparison": comparison,
+        "comparison_error": comparison_error,
+        "compare_url": str(request.url.include_query_params(compare="false" if compare else "true")),
         "excluded_items": excluded_items,
         "excluded_cnt": excluded_cnt,
         "evidence_warn_cnt": evidence_warn_cnt,
@@ -381,6 +409,9 @@ def hostname_by_no() -> dict[str, str]:
 @router.get("/logs", response_class=HTMLResponse)
 def view_logs(request: Request, item_no: str | None = None):
     logs = get_logs(item_no=item_no, limit=200)
+    # 화면에 보여줄 변경자 라벨만 가린다 - 감사 추적용 원본(log['updated_by'])은 그대로 두고, display_by만 추가로 붙인다.
+    for log in logs:
+        log["display_by"] = mask_changer(log.get("updated_by") or "")
     try:
         hostnames = hostname_by_no()
     except Exception as e:

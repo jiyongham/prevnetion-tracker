@@ -24,7 +24,7 @@
           <td>{{ l.field }}</td>
           <td class="muted">{{ l.old_value or '-' }}</td>
           <td class="strong">{{ l.new_value or '-' }}</td>
-          <td>{{ l.updated_by or '-' }}</td>
+          <td>{{ l.display_by or l.updated_by or '-' }}</td>
         </tr>
       {% endfor %}
       </tbody>
