@@ -9,6 +9,20 @@
   </header>
 
   <section class="panel">
+    <form method="get" action="/logs" class="head-right" role="search">
+      <label for="log-query" class="sr-only">변경 이력 검색</label>
+      <input id="log-query" name="q" value="{{ q }}" placeholder="호스트·번호·항목·변경값·수정자 검색" type="search">
+      <label for="log-half" class="sr-only">반기</label>
+      <select id="log-half" name="half">
+        <option value="">전체 반기</option>
+        <option value="H1" {% if half == 'H1' %}selected{% endif %}>상반기</option>
+        <option value="H2" {% if half == 'H2' %}selected{% endif %}>하반기</option>
+      </select>
+      {% if item_no %}<input type="hidden" name="item_no" value="{{ item_no }}"><span>대상 NO {{ item_no }}</span>{% endif %}
+      <button class="btn-sm" type="submit">검색</button>
+      <a class="btn-sm" href="/logs">전체 이력·초기화</a>
+    </form>
+    <p class="muted small">검색 결과 {{ total }}건 · {{ page }} / {{ pages }}페이지 (페이지당 50건)</p>
     <table>
       <thead>
         <tr><th scope="col">일시</th><th scope="col">호스트명</th><th scope="col">반기</th><th scope="col">항목</th><th scope="col">이전</th><th scope="col">변경</th><th scope="col">수정자</th></tr>
@@ -21,7 +35,7 @@
              옛 NO는 매핑이 없으므로 NO를 그대로 둔다(빈칸보다 낫다). #}
           <td class="mono small" title="NO {{ l.item_no }}">{{ hostnames.get(l.item_no) or l.item_no }}</td>
           <td>{{ l.half }}</td>
-          <td>{{ l.field }}</td>
+          <td>{{ l.field_label }}</td>
           <td class="muted">{{ l.old_value or '-' }}</td>
           <td class="strong">{{ l.new_value or '-' }}</td>
           <td>{{ l.display_by or l.updated_by or '-' }}</td>
@@ -30,7 +44,11 @@
       </tbody>
     </table>
     {% if not logs %}<p class="muted" style="padding:20px">
-    아직 변경 이력이 없습니다. 대시보드에서 일정·완료·증적을 저장하면 여기에 기록됩니다.
+    현재 검색 조건에 맞는 변경 이력이 없습니다.
   </p>{% endif %}
+    <nav class="filters" aria-label="변경 이력 페이지">
+      {% if page > 1 %}<a class="btn-sm" href="{{ previous_url }}">이전</a>{% endif %}
+      {% if page < pages %}<a class="btn-sm" href="{{ next_url }}">다음</a>{% endif %}
+    </nav>
   </section>
 {% endblock %}
