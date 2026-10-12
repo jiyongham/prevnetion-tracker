@@ -76,3 +76,27 @@ def parse_jira_date(value) -> date | None:
         return datetime.strptime(str(value)[:10], "%Y-%m-%d").date()
     except ValueError:
         return None
+
+
+def parse_db_datetime(value) -> datetime | None:
+    """
+    SQLite 'YYYY-MM-DD HH:MM:SS' 로컬시각 문자열(app.models.db가 datetime('now','localtime')로
+    저장) -> naive datetime. 최근 변경(대시보드) 판정용.
+
+    타임존을 들고 있지 않은 로컬시각 문자열이므로 비교 대상(datetime.now())도 같은 방식의
+    naive 로컬시각이어야 앞뒤가 맞는다 - 한쪽만 UTC로 바꾸면 서버 시간대에 따라 '최근'
+    판정이 몇 시간씩 틀어진다. 형식이 깨졌거나(과거 수기 데이터 등) 비어 있으면 None을
+    반환해 호출부가 그 행을 '최근 아님'으로 안전하게 건너뛸 수 있게 한다.
+    """
+    if not value:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+        try:
+            width = 19 if fmt == "%Y-%m-%d %H:%M:%S" else 10
+            return datetime.strptime(text[:width], fmt)
+        except ValueError:
+            continue
+    return None
