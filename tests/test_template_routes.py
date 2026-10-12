@@ -284,13 +284,47 @@ def test_dr_guide_does_not_load_external_data(monkeypatch, tmp_path):
         assert "완료 여부 무관" in response.text
         soup = BeautifulSoup(response.text, "html.parser")
         menu = soup.select_one("nav.side-nav")
-        guide = menu.find("a", recursive=False)
-        assert guide["href"] == "/guide"
+        dashboard = menu.find("a", recursive=False)
+        assert dashboard["href"] == "/"
+        assert dashboard.get_text(strip=True).endswith("대시보드")
+        groups = menu.find_all("details", recursive=False)
+        assert len(groups) == 2
+        assert "guide-nav-group" in groups[0]["class"]
+        assert "status-nav-group" in groups[1]["class"]
+        assert not groups[0].has_attr("open")
+        guide = groups[0].select_one('a[href="/guide"]')
         assert guide["aria-current"] == "page"
+        status_links = {link["href"].split("?")[0] for link in groups[1].select("a")}
+        assert {"/teams", "/dr", "/capacity", "/eos", "/kernel"} <= status_links
         assert not soup.select('.dr-subnav a[href^="/dr/guide"]')
         assert [li["value"] for li in soup.select("ol.guide-steps > li")] == ["1", "2", "3", "4"]
         for section in ("guide-dashboard", "guide-dr", "guide-capacity", "guide-eos", "guide-kernel"):
-            assert soup.find(id=section) is not None
+            panel = soup.find(id=section)
+            assert panel.name == "details"
+            assert panel.find("summary", recursive=False) is not None
+            assert not panel.has_attr("open")
+        assert len(soup.select("details.guide-panel")) == 8
+
+
+def test_dashboard_reuses_selected_half_snapshot(monkeypatch, tmp_path):
+    from unittest.mock import Mock
+    _apply_no_network_patches(monkeypatch)
+    monkeypatch.chdir(tmp_path)
+    load = Mock(return_value=[])
+    tickets = Mock(return_value=({}, None))
+    monkeypatch.setattr(dr_data, "load_items", load)
+    monkeypatch.setattr(dr_data, "get_ticket_map", tickets)
+    client = TestClient(app)
+    response = client.get("/dr?half=H2&mode=nonstop")
+    assert response.status_code == 200
+    load.assert_called_once_with("H2")
+    assert tickets.call_count == 1
+    load.reset_mock()
+    tickets.reset_mock()
+    response = client.get("/dr?half=H2&compare=true")
+    assert response.status_code == 200
+    assert [call.args[0] for call in load.call_args_list] == ["H2", "H1"]
+    assert tickets.call_count == 2
 
 
 def test_dr_dashboard_returns_200_and_renders_details_table(monkeypatch):

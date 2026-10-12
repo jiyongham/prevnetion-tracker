@@ -24,7 +24,7 @@ from app.models.db import get_input, get_logs, get_remind_log_summary, log_remin
 from app.services import ai_diagnose, chatbot, dr_data, evidence_check, last_report
 from app.services.change_history import mask_changer
 from app.services.completion import build_ticket_summary, calc_completion, group_by
-from app.services.dr_view import ACTION_LABELS, action_counts, decorate_details
+from app.services.dr_view import ACTION_LABELS, STATUS_LABELS, decorate_details, select_details
 from app.services.owner_check import (
     collect_targets_with_tickets,
     find_owner_mismatches,
@@ -105,10 +105,11 @@ def dashboard(
     if mode not in MODE_TABS:
         mode = None
 
-    result, jira_error = get_dashboard_data(half, today, mode=mode)
-    # 제외 대상은 mode 필터와 무관하게 전체에서 계산한다.
-    # mode 필터 훈에 계산하면 '무중단' 탭에서 실전환 제외 항목이 안 보이는 문제가 생괴다.
-    result_all, _ = get_dashboard_data(half, today, mode=None)
+    # 같은 요청의 통계·탭·제외 목록이 동일한 데이터 스냅샷을 사용한다.
+    items = dr_data.load_items(half)
+    ticket_map, jira_error = dr_data.get_ticket_map(half, items)
+    result_all = calc_completion(items, ticket_map, today)
+    result = calc_completion(filter_by_mode(items, mode), ticket_map, today) if mode else result_all
     by_team = group_by(result, "ops_team")
     by_company = group_by(result, "company")
 
@@ -131,7 +132,7 @@ def dashboard(
         company_services[c] = dict(sorted(services.items()))
 
     # 탭에 표시할 방식별 대수 (필터 적용 전 기준)
-    scope_targets = get_dr_targets(dr_data.load_items(half))
+    scope_targets = get_dr_targets(items)
     mode_counts = {
         "": len(scope_targets),
         **{k: len(filter_by_mode(scope_targets, k)) for k in MODE_TABS},
@@ -143,7 +144,8 @@ def dashboard(
     half_items = load_dr_items_merged(half=half)
     excluded_cnt = len(half_items) - len(get_dr_targets(half_items))
 
-    details = result["details"]
+    # 표시용 경고/최근 변경을 붙여도 통계 원본에는 영향이 없도록 행 사본을 사용한다.
+    details = [dict(d) for d in result["details"]]
 
     def _apply_common_filters(items: list[dict]) -> list[dict]:
         """team/company/service 필터"""
@@ -157,7 +159,7 @@ def dashboard(
 
     details = _apply_common_filters(details)
 
-    # 제외 대상은 mode 필터 훈 details가 아닌 result_all(전체) 기준으로 계산한다.
+    # 제외 대상은 mode 필터 후 details가 아닌 result_all(전체) 기준으로 계산한다.
     # team/company/service 필터는 일관성을 위해 동일하게 적용한다.
     all_details_filtered = _apply_common_filters(result_all["details"])
     excluded_nos = {
@@ -196,34 +198,13 @@ def dashboard(
     evidence_warn_cnt = sum(1 for d in details if d.get("evidence_level"))
 
     decorate_details(details, settings.timezone, half=half)
-    counts = action_counts(details)
-    # 상태/조치 필터는 같은 모수에서 하나만 선택한다. 옛 URL도 계속 지원한다.
-    status_labels = {"pending": "미완료", "scheduled": "예정", "overdue": "지연",
-                     "approximate": "대략", "unplanned": "미계획", "done": "완료"}
-    def matches_status(row, key):
-        if key == "done":
-            return bool(row["completed"])
-        if key == "pending":
-            return not row["completed"]
-        return row["status_label"] == status_labels[key]
-    status_counts = {key: sum(matches_status(d, key) for d in details) for key in status_labels}
-    if action not in ACTION_LABELS:
-        action = "all"
-    if action == "overdue":
-        status, action = "overdue", "all"
-    if action != "all":
-        status = None
-        details = [d for d in details if d["actions"][action]]
-    elif status in status_labels:
-        details = [d for d in details if matches_status(d, status)]
-    else:
-        status = None
+    details, status, action, counts, status_counts = select_details(details, status, action)
     filter_base = request.url.remove_query_params(["status", "action"])
     unified_filters = [{"label": "전체", "count": counts["all"],
                         "url": str(filter_base), "active": not status and action == "all"}]
     unified_filters += [{"label": label, "count": status_counts[key],
                          "url": str(filter_base.include_query_params(status=key)),
-                         "active": status == key} for key, label in status_labels.items()]
+                         "active": status == key} for key, label in STATUS_LABELS.items()]
     unified_filters += [{"label": label, "count": counts[key],
                          "url": str(filter_base.include_query_params(action=key)),
                          "active": action == key} for key, label in ACTION_LABELS.items()
