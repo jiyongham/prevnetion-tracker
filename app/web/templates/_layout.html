@@ -17,7 +17,8 @@
    빠졌다 (DR의 실제 이력 페이지 /logs 자체는 그대로 있고, 대시보드 하단에서 계속
    갈 수 있다). #}
 {% set path = request.url.path %}
-{% if path == '/' %}{% set section = 'home' %}
+{% if path in ('/guide', '/dr/guide') %}{% set section = 'guide' %}
+{% elif path == '/' %}{% set section = 'home' %}
 {% elif path.startswith('/teams') %}{% set section = 'teams' %}
 {% elif path.startswith('/capacity') %}{% set section = 'capacity' %}
 {% elif path.startswith('/eos') %}{% set section = 'eos' %}
@@ -31,7 +32,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}장애예방 관제센터{% endblock %}</title>
-  <link rel="stylesheet" href="/static/style.css?v=29">
+  <link rel="stylesheet" href="/static/style.css?v=30">
 </head>
 <body>
 <a href="#main" class="skip-link">본문으로 건너뛰기</a>
@@ -44,9 +45,11 @@
     </div>
 
     <nav class="side-nav" aria-label="주요 영역">
+      <a href="/guide" class="side-nav-item {{ 'active' if section == 'guide' }}" {% if section == 'guide' %}aria-current="page"{% endif %}>
+        <span class="side-nav-icon" aria-hidden="true">📖</span>설명 보기</a>
       <a href="/" class="side-nav-item {{ 'active' if section == 'home' }}"
          {{ 'aria-current=page' if section == 'home' }}>
-        <span class="side-nav-icon" aria-hidden="true">🏠</span>홈</a>
+        <span class="side-nav-icon" aria-hidden="true">🏠</span>대시보드</a>
       <a href="/teams" class="side-nav-item {{ 'active' if section == 'teams' }}"
          {{ 'aria-current=page' if section == 'teams' }}>
         <span class="side-nav-icon" aria-hidden="true">👥</span>팀별 조회</a>
@@ -63,7 +66,6 @@
         <a href="/remind-preview?half={{ nav_half }}" class="side-nav-item dr-nav-admin {{ 'active' if path == '/remind-preview' }}" {% if path == '/remind-preview' %}aria-current="page"{% endif %}>Teams 리마인드</a>
         <a href="/owner-check?half={{ nav_half }}" class="side-nav-item dr-nav-admin {{ 'active' if path == '/owner-check' }}" {% if path == '/owner-check' %}aria-current="page"{% endif %}>담당자 확인</a>
         <a href="/logs?half={{ nav_half }}" class="side-nav-item {{ 'active' if path == '/logs' }}" {% if path == '/logs' %}aria-current="page"{% endif %}>변경 이력</a>
-        <a href="/dr/guide?half={{ nav_half }}" class="side-nav-item {{ 'active' if path == '/dr/guide' }}" {% if path == '/dr/guide' %}aria-current="page"{% endif %}>설명 보기</a>
       </div>
       {% endif %}
       </details>

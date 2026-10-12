@@ -208,6 +208,10 @@ body {
 }
 
 .side-nav { display: flex; flex-direction: column; gap: 2px; }
+/* 긴 안내문도 번호와 첫 줄이 같은 위치에 정렬되도록 브라우저 기본 목록을 명시한다. */
+ol.guide-steps { list-style: decimal outside; padding-inline-start: 2rem; margin-block: 1rem; }
+ol.guide-steps > li { display: list-item; padding-inline-start: .3rem; margin-block: .75rem; line-height: 1.7; }
+ol.guide-steps > li::marker { font-weight: 600; font-variant-numeric: tabular-nums; }
 .dr-nav-group > summary { cursor: pointer; list-style: none; }
 .dr-nav-group > summary::-webkit-details-marker { display: none; }
 .dr-nav-arrow { margin-inline-start: auto; font-size: 20px; line-height: 1; }

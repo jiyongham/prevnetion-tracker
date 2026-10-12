@@ -190,6 +190,14 @@ def test_portal_home_returns_200_with_all_module_cards(monkeypatch):
     assert resp.status_code == 200
     for label in ("DR 모의훈련", "용량관리", "EoS 전환", "OS 커널 패치"):
         assert label in resp.text
+    from bs4 import BeautifulSoup
+    soup = BeautifulSoup(resp.text, "html.parser")
+    tabs = soup.select_one('nav[aria-label="대시보드 화면 메뉴"]')
+    assert tabs is not None
+    links = tabs.select("a")
+    assert [a["href"] for a in links] == ["/", "/guide", "/teams", "/dr", "/capacity", "/eos", "/kernel"]
+    assert links[0]["aria-current"] == "page"
+    assert links[0].get_text(strip=True) == "대시보드"
 
 
 def test_dr_tools_render_without_operational_files(monkeypatch, tmp_path):
@@ -241,8 +249,7 @@ def test_dr_sidebar_keeps_half_and_active_page(monkeypatch):
     for path, label in [("/dr?half=H1&compare=true", "상·하반기 비교"),
                         ("/remind-preview?half=H1", "Teams 리마인드"),
                         ("/owner-check?half=H1", "담당자 확인"),
-                        ("/logs?half=H1", "변경 이력"),
-                        ("/dr/guide?half=H1", "설명 보기")]:
+                        ("/logs?half=H1", "변경 이력")]:
         response = client.get(path)
         assert response.status_code == 200
         soup = BeautifulSoup(response.text, "html.parser")
@@ -267,11 +274,23 @@ def test_dr_guide_does_not_load_external_data(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(dr_data, "load_items", forbidden)
     monkeypatch.setattr(jira_client.jira, "get_dr_tickets", forbidden)
-    response = TestClient(app).get("/dr/guide")
-    assert response.status_code == 200
-    assert "DR훈련 설명 보기" in response.text
-    assert "서비스요청관리" in response.text
-    assert "완료 여부 무관" in response.text
+    from bs4 import BeautifulSoup
+
+    for url in ("/guide", "/dr/guide"):
+        response = TestClient(app).get(url)
+        assert response.status_code == 200
+        assert "장애예방 설명 보기" in response.text
+        assert "서비스요청관리" in response.text
+        assert "완료 여부 무관" in response.text
+        soup = BeautifulSoup(response.text, "html.parser")
+        menu = soup.select_one("nav.side-nav")
+        guide = menu.find("a", recursive=False)
+        assert guide["href"] == "/guide"
+        assert guide["aria-current"] == "page"
+        assert not soup.select('.dr-subnav a[href^="/dr/guide"]')
+        assert [li["value"] for li in soup.select("ol.guide-steps > li")] == ["1", "2", "3", "4"]
+        for section in ("guide-dashboard", "guide-dr", "guide-capacity", "guide-eos", "guide-kernel"):
+            assert soup.find(id=section) is not None
 
 
 def test_dr_dashboard_returns_200_and_renders_details_table(monkeypatch):

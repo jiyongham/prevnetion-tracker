@@ -8,7 +8,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>장애예방 관제센터</title>
-  <link rel="stylesheet" href="/static/style.css?v=27">
+  <link rel="stylesheet" href="/static/style.css?v=30">
 </head>
 <body>
 <a href="#main" class="skip-link">본문으로 건너뛰기</a>
@@ -20,7 +20,17 @@
     <span id="portalClock" class="portal-clock mono">-</span>
   </header>
 
-  <p class="portal-lead">확인할 화면을 선택하세요.</p>
+  <nav class="tabs" aria-label="대시보드 화면 메뉴">
+    <a class="tab active" href="/" aria-current="page">대시보드</a>
+    <a class="tab" href="/guide">설명 보기</a>
+    <a class="tab" href="/teams">팀별 조회</a>
+    <a class="tab" href="/dr">DR훈련</a>
+    <a class="tab" href="/capacity">용량관리</a>
+    <a class="tab" href="/eos">EoS</a>
+    <a class="tab" href="/kernel">커널패치</a>
+  </nav>
+  <h2>전체 대시보드</h2>
+  <p class="portal-lead">업무별 진척을 확인하고 상세 화면으로 이동하세요.</p>
 
   <div class="module-grid">
     {% for m in modules %}

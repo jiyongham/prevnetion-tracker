@@ -39,9 +39,10 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.get("/dr/guide", response_class=HTMLResponse)
+@router.get("/guide", response_class=HTMLResponse)
+@router.get("/dr/guide", response_class=HTMLResponse, include_in_schema=False)
 def dr_guide(request: Request):
-    """외부 데이터 조회 없이 DR훈련 화면 사용법을 보여준다."""
+    """외부 조회 없이 전체 장애예방 사용법을 제공한다. 기존 DR 설명 URL도 유지한다."""
     return templates.TemplateResponse(request, "dr_guide.html", {
         "pre_work_days": settings.pre_work_remind_days,
     })
