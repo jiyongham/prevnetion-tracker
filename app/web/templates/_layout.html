@@ -50,10 +50,11 @@
       <a href="/teams" class="side-nav-item {{ 'active' if section == 'teams' }}"
          {{ 'aria-current=page' if section == 'teams' }}>
         <span class="side-nav-icon" aria-hidden="true">👥</span>팀별 조회</a>
-      <a href="/dr" class="side-nav-item {{ 'active' if section == 'dr' }}"
-         {{ 'aria-expanded=true' if section == 'dr' }}>
-        <span class="side-nav-icon" aria-hidden="true">🔄</span>DR훈련</a>
-      {% if section == 'dr' %}
+      <details class="dr-nav-group" {% if section == 'dr' %}open{% endif %}>
+      <summary class="side-nav-item {{ 'active' if section == 'dr' }}">
+        <span class="side-nav-icon" aria-hidden="true">🔄</span>DR훈련
+        <span class="dr-nav-arrow" aria-hidden="true">›</span>
+      </summary>
       {% set nav_compare = path == '/dr' and compare|default(false) %}
       <div class="dr-subnav" role="group" aria-label="DR훈련 하위 메뉴" data-admins='{{ dr_nav_admins|tojson }}'>
         <a href="{{ dashboard_url if path == '/dr' else '/dr?half=' ~ nav_half ~ '&compare=false' }}" class="side-nav-item {{ 'active' if path == '/dr' and not nav_compare }}" {% if path == '/dr' and not nav_compare %}aria-current="page"{% endif %}>진척 현황</a>
@@ -61,8 +62,9 @@
         <a href="/remind-preview?half={{ nav_half }}" class="side-nav-item dr-nav-admin {{ 'active' if path == '/remind-preview' }}" {% if path == '/remind-preview' %}aria-current="page"{% endif %}>Teams 리마인드</a>
         <a href="/owner-check?half={{ nav_half }}" class="side-nav-item dr-nav-admin {{ 'active' if path == '/owner-check' }}" {% if path == '/owner-check' %}aria-current="page"{% endif %}>담당자 확인</a>
         <a href="/logs?half={{ nav_half }}" class="side-nav-item {{ 'active' if path == '/logs' }}" {% if path == '/logs' %}aria-current="page"{% endif %}>변경 이력</a>
+        <a href="/dr/guide?half={{ nav_half }}" class="side-nav-item {{ 'active' if path == '/dr/guide' }}" {% if path == '/dr/guide' %}aria-current="page"{% endif %}>설명 보기</a>
       </div>
-      {% endif %}
+      </details>
       <a href="/capacity" class="side-nav-item {{ 'active' if section == 'capacity' }}"
          {{ 'aria-current=page' if section == 'capacity' }}>
         <span class="side-nav-icon" aria-hidden="true">💾</span>용량관리</a>
