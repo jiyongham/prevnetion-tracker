@@ -144,6 +144,7 @@ class JiraClient:
             "description",
             "status",
             "created",
+            "issuetype",   # 무중단 판정 시 issuetype='서비스요청관리'인지 확인하기 위해 필요 (completion.ticket_kind 참고)
             settings.jsm_requester_field,
             settings.planned_end_date_field,
             settings.planned_start_date_field,

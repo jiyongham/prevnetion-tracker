@@ -93,6 +93,9 @@ def dashboard(
         mode = None
 
     result, jira_error = get_dashboard_data(half, today, mode=mode)
+    # 제외 대상은 mode 필터와 무관하게 전체에서 계산한다.
+    # mode 필터 훈에 계산하면 '무중단' 탭에서 실전환 제외 항목이 안 보이는 문제가 생괴다.
+    result_all, _ = get_dashboard_data(half, today, mode=None)
     by_team = group_by(result, "ops_team")
     by_company = group_by(result, "company")
 
@@ -141,15 +144,15 @@ def dashboard(
 
     details = _apply_common_filters(details)
 
-    # 일정 칸에 'X'로 기입된 항목 = 제외 대상으로 별도 분류 (완료/미완료/미계획 목록에선 제외).
-    # 단, 관리자가 웹에서 직접 처리(X 입력+저장)한 경우만 포함한다 — 비관리자가 실수로 입력했거나
-    # 엑셀 원본에 그냥 X라고만 적혀있는 건(누가 처리했는지 확인 불가)은 제외 대상으로 안 본다.
+    # 제외 대상은 mode 필터 훈 details가 아닌 result_all(전체) 기준으로 계산한다.
+    # team/company/service 필터는 일관성을 위해 동일하게 적용한다.
+    all_details_filtered = _apply_common_filters(result_all["details"])
     excluded_nos = {
-        d["no"] for d in details
+        d["no"] for d in all_details_filtered
         if (d.get("schedule_raw") or "").strip().upper() == "X"
         and d.get("updated_by") in settings.admin_set
     }
-    excluded_items = [d for d in details if d["no"] in excluded_nos]
+    excluded_items = [d for d in all_details_filtered if d["no"] in excluded_nos]
     details = [d for d in details if d["no"] not in excluded_nos]
 
     if status == "done":
@@ -401,17 +404,25 @@ def remind_preview(
     half: str | None = None,
     service: str | None = None,
     kind: str = "blank",
+    mode: str | None = None,  # 실전환 / 무중단 필터 (탭 분리용)
 ):
     half = half or get_current_half()
     result, jira_error = get_dashboard_data(half, date.today())
-    unplanned = [d for d in result["details"] if not d["planned"]]
-    cmdb_map = lookup_cmdb_assets(unplanned)
+    cmdb_map = lookup_cmdb_assets([d for d in result["details"] if not d["planned"]])
+
+    # mode 파라미터로 특정 수행방식만 필터링한 details
+    if mode in ("real", "nonstop"):
+        mode_label = MODE_TABS[mode]
+        filtered = [d for d in result["details"] if mode_label in (d.get("mode") or "")]
+    else:
+        mode = None  # 유효하지 않은 값 정리
+        filtered = result["details"]
 
     # 같은 '미계획'이라도 완전 미기입 / 대략적 일정만(예: '11월 예정') 있는 경우를 분리
-    blank_groups = group_unplanned_by_service(result["details"], cmdb_map, hinted=False)
-    hinted_groups = group_unplanned_by_service(result["details"], cmdb_map, hinted=True)
+    blank_groups = group_unplanned_by_service(filtered, cmdb_map, hinted=False)
+    hinted_groups = group_unplanned_by_service(filtered, cmdb_map, hinted=True)
     # 작업이 코앞인 대상은 '미계획'이 아니어서 위 두 목록에 안 잡힌다 (별도 모수)
-    upcoming_groups = group_unplanned_by_service(result["details"], cmdb_map, kind="upcoming")
+    upcoming_groups = group_unplanned_by_service(filtered, cmdb_map, kind="upcoming")
     groups = {"hinted": hinted_groups, "upcoming": upcoming_groups}.get(kind, blank_groups)
 
     # 서비스별 발송 이력. 종류별로 따로 조회해야 한다 - 미기입 리마인드를 보냈다고
@@ -432,6 +443,7 @@ def remind_preview(
         "half": half,
         "half_label": "상반기" if half == "H1" else "하반기",
         "kind": kind,
+        "mode": mode,
         "groups": groups,
         "selected": selected,
         "total_unplanned": sum(g["count"] for g in groups),
