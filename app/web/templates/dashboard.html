@@ -82,14 +82,8 @@
         <input type="hidden" name="half" value="{{ half }}">
         <button type="submit" class="btn-teams">📤 진척률 발송</button>
       </form>
-      <a href="/remind-preview?half={{ half }}" class="btn-remind admin-only" onclick="markNavigating(this)">📣 Teams 리마인드</a>
-      <a href="/owner-check?half={{ half }}" class="btn-sm admin-only" onclick="markNavigating(this)">🔍 담당자 확인</a>
     </div>
   </header>
-  <nav class="tabs" aria-label="DR훈련 하위 탭">
-    <a href="{{ dashboard_url }}" class="tab {% if not compare %}active{% endif %}" {% if not compare %}aria-current="page"{% endif %}>진척 현황</a>
-    <a href="{{ comparison_url }}" class="tab {% if compare %}active{% endif %}" {% if compare %}aria-current="page"{% endif %}>상·하반기 비교</a>
-  </nav>
 
   {% if sent_report %}
   <div class="alert sent-report" id="sentReport">
@@ -206,10 +200,6 @@
 
   <!-- 상세 목록 (편집 가능) -->
   <section class="panel">
-    <div class="controls">
-      <label><input type="checkbox" id="rememberDrFilters"> 필터 기억하기 (이 브라우저)</label>
-      <button type="button" class="btn-sm" id="resetDrFilters">필터 초기화</button>
-    </div>
     {% if compare %}<p class="muted small">하반기 방식: 상반기 무중단 → 실전환 / 상반기 실전환 완료 → 무중단 / 실전환 미완료 → 실전환. 완료와 증적은 반기별로 표시합니다.</p>{% endif %}
     {% if comparison_error %}<p class="alert">다른 반기 JIRA 조회에 실패했습니다. 비교의 완료 상태가 최신이 아닐 수 있습니다.</p>{% endif %}
     <div class="panel-head">
@@ -233,6 +223,12 @@
           <a href="{{ item.url }}" class="chip {% if item.active %}active{% endif %}">{{ item.label }} {{ item.count }}대</a>
           {% endfor %}
         </nav>
+        <div class="dr-filter-preferences">
+          <label class="dr-filter-remember" title="선택한 팀, 검색어와 필터를 이 브라우저에 저장합니다.">
+            <input type="checkbox" id="rememberDrFilters"> 필터 기억하기
+          </label>
+          <button type="button" class="btn-sm" id="resetDrFilters">검색·필터 초기화</button>
+        </div>
         {% if not compare %}<button id="bulkSaveBtn" class="btn-sm" onclick="bulkSave()">💾 현재 목록 일괄 저장</button>{% endif %}
       </div>
     </div>
