@@ -12,14 +12,6 @@
     <td class="strong">{{ d.system_name }}
       {% if d.recent_change %}{% if d.recent_change is mapping %}<span class="badge info" title="{{ d.recent_change.summary }} · {{ d.recent_change.by_display or '알 수 없음' }} · {{ d.recent_change.at }}">최근 변경</span>{% else %}<span class="badge info" title="최근 수정: {{ d.updated_at }}">최근 변경</span>{% endif %}
       <a class="small" href="/logs?item_no={{ d.no|urlencode }}">변경 이력</a>{% endif %}
-      {% if compare %}
-      {% set other = comparison.get(d.no) %}
-      <details class="small"><summary>상·하반기 비교</summary>
-        <div>{{ half_label }}: {{ d.mode or '방식 미정' }} · {{ d.status_label }} · 증적 {{ d.evidence or '없음' }}</div>
-        {% if other %}<div>{{ '상반기' if half == 'H2' else '하반기' }}: {{ other.mode or '방식 미정' }} · {{ other.status_label }} · 증적 {{ other.evidence or '없음' }}</div>
-        {% else %}<div>다른 반기 대상 이력 없음</div>{% endif %}
-      </details>
-      {% endif %}
     </td>
     <td class="mono small">{{ d.hostname }}</td>
     <td class="small">{{ d.ops_team }}</td>
@@ -78,6 +70,7 @@
     <h1>🔄 DR 모의훈련 진척 현황</h1>
     <div class="controls">
       <form method="get" class="inline-form">
+        {% if compare %}<input type="hidden" name="compare" value="true">{% endif %}
         {% if mode %}<input type="hidden" name="mode" value="{{ mode }}">{% endif %}
         <label for="half" class="sr-only">반기 선택</label>
         <select id="half" name="half" onchange="this.form.submit()">
@@ -93,6 +86,10 @@
       <a href="/owner-check?half={{ half }}" class="btn-sm admin-only" onclick="markNavigating(this)">🔍 담당자 확인</a>
     </div>
   </header>
+  <nav class="tabs" aria-label="DR훈련 하위 탭">
+    <a href="{{ dashboard_url }}" class="tab {% if not compare %}active{% endif %}" {% if not compare %}aria-current="page"{% endif %}>진척 현황</a>
+    <a href="{{ comparison_url }}" class="tab {% if compare %}active{% endif %}" {% if compare %}aria-current="page"{% endif %}>상·하반기 비교</a>
+  </nav>
 
   {% if sent_report %}
   <div class="alert sent-report" id="sentReport">
@@ -111,9 +108,9 @@
 
   <!-- 수행방식 탭 (실제 이동) + 제외 대상(클라이언트 전환, 아래 mainView/excludedView 참고) -->
   <div class="tabs">
-    <a href="/dr?half={{ half }}" class="tab {% if not mode %}active{% endif %}" data-mode-active="{{ '1' if not mode else '' }}">전체 {{ mode_counts[''] }}대</a>
-    <a href="/dr?half={{ half }}&mode=real" class="tab {% if mode == 'real' %}active{% endif %}" data-mode-active="{{ '1' if mode == 'real' else '' }}">실전환 {{ mode_counts['real'] }}대</a>
-    <a href="/dr?half={{ half }}&mode=nonstop" class="tab {% if mode == 'nonstop' %}active{% endif %}" data-mode-active="{{ '1' if mode == 'nonstop' else '' }}">무중단 {{ mode_counts['nonstop'] }}대</a>
+    <a href="/dr?half={{ half }}{% if compare %}&compare=true{% endif %}" class="tab {% if not mode %}active{% endif %}" data-mode-active="{{ '1' if not mode else '' }}">전체 {{ mode_counts[''] }}대</a>
+    <a href="/dr?half={{ half }}&mode=real{% if compare %}&compare=true{% endif %}" class="tab {% if mode == 'real' %}active{% endif %}" data-mode-active="{{ '1' if mode == 'real' else '' }}">실전환 {{ mode_counts['real'] }}대</a>
+    <a href="/dr?half={{ half }}&mode=nonstop{% if compare %}&compare=true{% endif %}" class="tab {% if mode == 'nonstop' %}active{% endif %}" data-mode-active="{{ '1' if mode == 'nonstop' else '' }}">무중단 {{ mode_counts['nonstop'] }}대</a>
     {% if excluded_items %}
     <button type="button" id="excludedTabBtn" class="tab" onclick="showExcludedTab()">🚫 제외 대상 {{ excluded_items|length }}건</button>
     {% endif %}
@@ -209,42 +206,53 @@
 
   <!-- 상세 목록 (편집 가능) -->
   <section class="panel">
-    <nav class="filters" aria-label="조치 필요 대상">
-      {% for key, label in action_labels.items() %}
-      <a href="{{ action_links[key] }}" class="chip {% if filter_action == key %}active{% endif %}">{{ label }} {{ action_counts[key] }}대</a>
-      {% endfor %}
-    </nav>
     <div class="controls">
-      <a class="btn-sm" href="{{ compare_url }}">{{ '반기 비교 닫기' if compare else '상·하반기 비교' }}</a>
       <label><input type="checkbox" id="rememberDrFilters"> 필터 기억하기 (이 브라우저)</label>
       <button type="button" class="btn-sm" id="resetDrFilters">필터 초기화</button>
     </div>
     {% if compare %}<p class="muted small">하반기 방식: 상반기 무중단 → 실전환 / 상반기 실전환 완료 → 무중단 / 실전환 미완료 → 실전환. 완료와 증적은 반기별로 표시합니다.</p>{% endif %}
     {% if comparison_error %}<p class="alert">다른 반기 JIRA 조회에 실패했습니다. 비교의 완료 상태가 최신이 아닐 수 있습니다.</p>{% endif %}
     <div class="panel-head">
-      <h2>대상 목록 ({{ details|length }}건)</h2>
+      <h2>{{ '상·하반기 비교' if compare else '대상 목록' }} ({{ details|length }}건)</h2>
       <div class="head-right">
         <form method="get" class="inline-form">
+          {% if compare %}<input type="hidden" name="compare" value="true">{% endif %}
+          {% if filter_team %}<input type="hidden" name="team" value="{{ filter_team }}">{% endif %}
+          {% if filter_company %}<input type="hidden" name="company" value="{{ filter_company }}">{% endif %}
+          {% if filter_service %}<input type="hidden" name="service" value="{{ filter_service }}">{% endif %}
+          {% if filter_status %}<input type="hidden" name="status" value="{{ filter_status }}">{% endif %}
+          {% if filter_action != 'all' %}<input type="hidden" name="action" value="{{ filter_action }}">{% endif %}
           <input type="hidden" name="half" value="{{ half }}">
           {% if mode %}<input type="hidden" name="mode" value="{{ mode }}">{% endif %}
           <label for="q" class="sr-only">목록 검색</label>
           <input type="text" id="q" name="q" value="{{ q }}" placeholder="팀/시스템/호스트/IP 검색" class="search">
           <button type="submit" class="btn-sm">검색</button>
         </form>
-        <div class="filters">
-          <a href="/dr?half={{ half }}{{ mode_qs }}" class="chip {% if not filter_status and not filter_team and not filter_company and not filter_service %}active{% endif %}">전체</a>
-          <a href="/dr?half={{ half }}{{ mode_qs }}&status=pending" class="chip {% if filter_status == 'pending' %}active{% endif %}">미완료 {{ result.total - result.done }}</a>
-          <a href="/dr?half={{ half }}{{ mode_qs }}&status=scheduled" class="chip {% if filter_status == 'scheduled' %}active{% endif %}">예정 {{ result.scheduled }}</a>
-          <a href="/dr?half={{ half }}{{ mode_qs }}&status=overdue" class="chip {% if filter_status == 'overdue' %}active{% endif %}">지연 {{ result.overdue }}</a>
-          <a href="/dr?half={{ half }}{{ mode_qs }}&status=approximate" class="chip {% if filter_status == 'approximate' %}active{% endif %}">대략 {{ result.approximate }}</a>
-          <a href="/dr?half={{ half }}{{ mode_qs }}&status=unplanned" class="chip {% if filter_status == 'unplanned' %}active{% endif %}">미계획 {{ result.unplanned }}</a>
-          <a href="/dr?half={{ half }}{{ mode_qs }}&status=done" class="chip {% if filter_status == 'done' %}active{% endif %}">완료 {{ result.done }}</a>
-        </div>
-        <button id="bulkSaveBtn" class="btn-sm" onclick="bulkSave()">💾 현재 목록 일괄 저장</button>
+        <nav class="filters" aria-label="상태 및 조치 필터">
+          {% for item in unified_filters %}
+          <a href="{{ item.url }}" class="chip {% if item.active %}active{% endif %}">{{ item.label }} {{ item.count }}대</a>
+          {% endfor %}
+        </nav>
+        {% if not compare %}<button id="bulkSaveBtn" class="btn-sm" onclick="bulkSave()">💾 현재 목록 일괄 저장</button>{% endif %}
       </div>
     </div>
 
     <div class="table-scroll">
+    {% if compare %}
+    <table aria-label="상·하반기 비교 목록">
+      <thead><tr><th>시스템명</th><th>호스트명</th><th>운영팀</th><th>상반기 방식</th><th>상반기 상태</th><th>상반기 증적</th><th>하반기 방식</th><th>하반기 상태</th><th>하반기 증적</th></tr></thead>
+      <tbody>
+      {% for d in details %}
+        {% set h1 = d if half == 'H1' else comparison.get(d.no) %}
+        {% set h2 = d if half == 'H2' else comparison.get(d.no) %}
+        <tr><td>{{ d.system_name }}</td><td>{{ d.hostname }}</td><td>{{ d.ops_team }}</td>
+        {% for row in [h1, h2] %}
+          <td>{{ row.mode or '방식 미정' if row else '이력 없음' }}</td><td>{{ row.status_label if row else '-' }}</td><td>{{ row.evidence or '없음' if row else '-' }}</td>
+        {% endfor %}</tr>
+      {% else %}<tr><td colspan="9">현재 조건에 맞는 대상이 없습니다.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+    {% else %}
     <table class="editable">
       <thead>
         <tr>
@@ -266,6 +274,7 @@
       {% endfor %}
       </tbody>
     </table>
+    {% endif %}
     </div>
   </section>
   </div><!-- /mainView -->
