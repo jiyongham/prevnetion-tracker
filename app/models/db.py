@@ -424,6 +424,29 @@ def get_logs(item_no: str | None = None, limit: int = 50) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def get_recent_logs_by_half(half: str, since: str, limit: int = 2000) -> dict[str, list[dict]]:
+    """
+    해당 반기의, since(포함) 이후 변경 이력 -> {item_no: [log, ...]} (최근순).
+
+    대시보드의 '최근 변경' 하이라이트용. 행마다 매번 따로 조회하지 않고
+    한 번에 모아서 item_no별로 묶는다 - 대상 수백 건일 때 N+1 쿼리를 피한다.
+    """
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT * FROM change_log
+            WHERE half = ? AND updated_at >= ?
+            ORDER BY id DESC LIMIT ?
+            """,
+            (half, since, limit),
+        ).fetchall()
+    out: dict[str, list[dict]] = {}
+    for r in rows:
+        d = dict(r)
+        out.setdefault(d["item_no"], []).append(d)
+    return out
+
+
 def log_remind(
     half: str,
     service: str,
