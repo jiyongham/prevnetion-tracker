@@ -159,17 +159,6 @@ def dashboard(
     excluded_items = [d for d in all_details_filtered if d["no"] in excluded_nos]
     details = [d for d in details if d["no"] not in excluded_nos]
 
-    if status == "done":
-        details = [d for d in details if d["completed"]]
-    elif status == "pending":
-        details = [d for d in details if not d["completed"]]
-    elif status in ("scheduled", "overdue", "approximate", "unplanned"):
-        # 화면 5분류(완료/예정/지연/대략/미계획) 기준 필터
-        label = {
-            "scheduled": "예정", "overdue": "지연",
-            "approximate": "대략", "unplanned": "미계획",
-        }[status]
-        details = [d for d in details if d["status_label"] == label]
     if q:
         kw = q.lower()
 
@@ -199,10 +188,37 @@ def dashboard(
 
     decorate_details(details, settings.timezone, half=half)
     counts = action_counts(details)
+    # 상태/조치 필터는 같은 모수에서 하나만 선택한다. 옛 URL도 계속 지원한다.
+    status_labels = {"pending": "미완료", "scheduled": "예정", "overdue": "지연",
+                     "approximate": "대략", "unplanned": "미계획", "done": "완료"}
+    def matches_status(row, key):
+        if key == "done":
+            return bool(row["completed"])
+        if key == "pending":
+            return not row["completed"]
+        return row["status_label"] == status_labels[key]
+    status_counts = {key: sum(matches_status(d, key) for d in details) for key in status_labels}
     if action not in ACTION_LABELS:
         action = "all"
+    if action == "overdue":
+        status, action = "overdue", "all"
     if action != "all":
+        status = None
         details = [d for d in details if d["actions"][action]]
+    elif status in status_labels:
+        details = [d for d in details if matches_status(d, status)]
+    else:
+        status = None
+    filter_base = request.url.remove_query_params(["status", "action"])
+    unified_filters = [{"label": "전체", "count": counts["all"],
+                        "url": str(filter_base), "active": not status and action == "all"}]
+    unified_filters += [{"label": label, "count": status_counts[key],
+                         "url": str(filter_base.include_query_params(status=key)),
+                         "active": status == key} for key, label in status_labels.items()]
+    unified_filters += [{"label": label, "count": counts[key],
+                         "url": str(filter_base.include_query_params(action=key)),
+                         "active": action == key} for key, label in ACTION_LABELS.items()
+                        if key not in ("all", "overdue")]
     action_links = {
         key: str(request.url.include_query_params(action=key)) for key in ACTION_LABELS
     }
@@ -217,6 +233,9 @@ def dashboard(
         "request": request,
         "result": result,
         "details": details,
+        "unified_filters": unified_filters,
+        "dashboard_url": str(request.url.include_query_params(compare="false")),
+        "comparison_url": str(request.url.include_query_params(compare="true")),
         "action_labels": ACTION_LABELS,
         "action_counts": counts,
         "action_links": action_links,

@@ -205,7 +205,32 @@ def test_dr_tools_render_without_operational_files(monkeypatch, tmp_path):
     assert resp.context["comparison"] == {}
     assert "증적 미입력 0대" in resp.text
     assert "필터 기억하기" in resp.text
-    assert "반기 비교 닫기" in resp.text
+    assert 'aria-label="DR훈련 하위 탭"' in resp.text
+    assert 'aria-label="상·하반기 비교 목록"' in resp.text
+    assert 'aria-label="상태 및 조치 필터"' in resp.text
+    assert "반기 비교 닫기" not in resp.text
+    assert 'id="bulkSaveBtn"' not in resp.text
+
+
+def test_dr_unified_filters_replace_selection_and_keep_scope(monkeypatch, tmp_path):
+    from urllib.parse import parse_qs, urlparse
+
+    _apply_no_network_patches(monkeypatch)
+    monkeypatch.chdir(tmp_path)
+    response = TestClient(app).get(
+        "/dr?half=H2&compare=true&team=QA&status=done&action=evidence"
+    )
+    assert response.status_code == 200
+    filters = response.context["unified_filters"]
+    assert sum(bool(item["active"]) for item in filters) == 1
+    assert next(item for item in filters if item["active"])["label"] == "증적 미입력"
+    for item in filters:
+        params = parse_qs(urlparse(item["url"]).query)
+        assert params["team"] == ["QA"]
+        assert params["compare"] == ["true"]
+        assert not ("status" in params and "action" in params)
+    assert sum(item["label"] == "전체" for item in filters) == 1
+    assert sum(item["label"] in ("지연", "예정일 경과") for item in filters) == 1
 
 
 def test_dr_dashboard_returns_200_and_renders_details_table(monkeypatch):
