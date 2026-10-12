@@ -208,6 +208,11 @@ body {
 }
 
 .side-nav { display: flex; flex-direction: column; gap: 2px; }
+.dr-nav-group > summary { cursor: pointer; list-style: none; }
+.dr-nav-group > summary::-webkit-details-marker { display: none; }
+.dr-nav-arrow { margin-inline-start: auto; font-size: 20px; line-height: 1; }
+.dr-nav-group[open] > summary .dr-nav-arrow { transform: rotate(90deg); }
+.dr-nav-group > summary:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 .dr-subnav { margin: 2px 0 8px 20px; padding-left: 8px; border-left: 2px solid var(--color-divider); }
 .dr-subnav .side-nav-item { font-size: var(--text-sm); font-weight: 500; }
 .dr-subnav:not(.dr-nav-authorized) .dr-nav-admin { display: none; }
