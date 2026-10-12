@@ -13,8 +13,42 @@ ACTION_LABELS = {
     "recent": "최근 7일 변경",
 }
 
+STATUS_LABELS = {
+    "pending": "미완료", "scheduled": "예정", "overdue": "지연",
+    "approximate": "대략", "unplanned": "미계획", "done": "완료",
+}
 
-def recently_changed(value: str, now: datetime) -> bool:
+
+def matches_status(row: dict, status: str) -> bool:
+    if status == "done":
+        return bool(row["completed"])
+    if status == "pending":
+        return not row["completed"]
+    return row["status_label"] == STATUS_LABELS[status]
+
+
+def select_details(details: list[dict], status: str | None, action: str):
+    """필터 적용 전 대수를 계산하고 상태/조치 중 하나만 적용한다. 원본은 변경하지 않는다."""
+    counts = action_counts(details)
+    status_counts = {key: sum(matches_status(d, key) for d in details) for key in STATUS_LABELS}
+    if action not in ACTION_LABELS:
+        action = "all"
+    if action == "overdue":
+        status, action = "overdue", "all"
+    if action != "all":
+        status = None
+        selected = [d for d in details if d["actions"][action]]
+    elif status in STATUS_LABELS:
+        selected = [d for d in details if matches_status(d, status)]
+    else:
+        status = None
+        selected = list(details)
+    return selected, status, action, counts, status_counts
+
+
+def recently_changed(value: str | None, now: datetime) -> bool:
+    if value is None:
+        return False
     try:
         changed = datetime.fromisoformat(value)
     except (TypeError, ValueError):

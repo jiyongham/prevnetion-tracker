@@ -4,6 +4,34 @@ from zoneinfo import ZoneInfo
 import pytest
 from app.services.dr_view import action_counts, decorate_details, recently_changed
 from app.web.deps import templates
+from app.services.dr_view import select_details
+
+
+@pytest.mark.parametrize("status,action,expected,normalized", [
+    ("done", "all", ["1"], ("done", "all")),
+    ("done", "evidence", ["2"], (None, "evidence")),
+    (None, "overdue", ["2"], ("overdue", "all")),
+    ("invalid", "invalid", ["1", "2"], (None, "all")),
+])
+def test_select_details_preserves_counts_and_precedence(status, action, expected, normalized):
+    from copy import deepcopy
+    rows = [
+        {"no": "1", "completed": True, "status_label": "완료", "evidence": "TEST-1"},
+        {"no": "2", "completed": False, "status_label": "지연", "evidence": ""},
+    ]
+    decorate_details(rows, "Asia/Seoul")
+    original = deepcopy(rows)
+    selected, new_status, new_action, counts, statuses = select_details(rows, status, action)
+    assert [row["no"] for row in selected] == expected
+    assert (new_status, new_action) == normalized
+    assert counts["all"] == 2 and statuses["done"] == 1 and statuses["pending"] == 1
+    assert rows == original
+
+
+def test_select_details_empty():
+    selected, status, action, counts, statuses = select_details([], None, "all")
+    assert selected == [] and status is None and action == "all"
+    assert all(value == 0 for value in (*counts.values(), *statuses.values()))
 
 
 def test_action_counts_use_actual_rows():

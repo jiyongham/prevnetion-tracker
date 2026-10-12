@@ -9,23 +9,23 @@
   <a class="chip" href="#guide-eos">EoS</a>
   <a class="chip" href="#guide-kernel">커널패치</a>
 </nav>
-<section class="panel" id="guide-dashboard">
-  <h2>대시보드 — 전체 장애예방 현황</h2>
+<details class="panel guide-panel" id="guide-dashboard">
+  <summary><h2>대시보드 — 전체 장애예방 현황</h2></summary>
   <p>대시보드는 DR훈련·용량관리·EoS·커널패치의 진척을 카드로 모아 보여줍니다. 각 카드를 누르면 해당 업무의 상세 화면으로 이동합니다. 각 업무의 대상과 완료 기준이 다르므로 완료율은 업무별로 해석하세요.</p>
   <p>팀별 조회에서는 여러 업무를 팀 기준으로 함께 확인할 수 있습니다. 데이터 조회 오류나 기준 시각 안내가 있으면 상세 화면에서 근거를 확인하세요.</p>
   <a class="btn-sm" href="/">대시보드 열기</a>
-</section>
-<section class="panel">
-  <h2>화면 이용 순서</h2>
+</details>
+<details class="panel guide-panel">
+  <summary><h2>화면 이용 순서</h2></summary>
   <ol class="guide-steps" start="1">
     <li value="1">왼쪽에서 DR훈련·용량관리·EoS·커널패치 중 업무를 선택합니다. 여러 업무를 함께 확인하려면 팀별 조회를 이용합니다.</li>
     <li value="2">해당 화면의 팀·검색어·분류 필터로 대상을 찾습니다. DR훈련에서는 필터 기억하기로 팀과 검색 조건을 브라우저에 저장할 수 있습니다.</li>
     <li value="3">입력자명을 확인하고 일정·증적·비고 등 필요한 항목을 수정한 뒤 저장합니다. 화면별 제공 항목과 관리자 권한은 다릅니다.</li>
     <li value="4">저장 결과와 완료 근거를 확인합니다. DR훈련의 반기 비교·변경 이력이나 각 업무의 상세 내역을 활용하고, 리포트·리마인드 발송 전 대상과 수신자를 확인합니다.</li>
   </ol>
-</section>
-<section class="panel" id="guide-dr">
-  <h2>DR훈련 — 반기별 수행방식</h2>
+</details>
+<details class="panel guide-panel" id="guide-dr">
+  <summary><h2>DR훈련 — 반기별 수행방식</h2></summary>
   <p>하반기는 상반기 결과를 기준으로 수행방식을 계산합니다. 대상 수는 현재 데이터에 따라 달라지며 고정 숫자가 아닙니다.</p>
   <table><thead><tr><th scope="col">상반기 방식</th><th scope="col">상반기 완료</th><th scope="col">하반기 방식</th></tr></thead>
   <tbody>
@@ -34,38 +34,41 @@
     <tr><td>실전환</td><td>미완료</td><td>실전환</td></tr>
   </tbody></table>
   <p>하반기 증적은 상반기 엑셀의 공용 증적을 이어받지 않습니다. 하반기에 입력한 증적을 별도로 확인하세요.</p>
-</section>
-<section class="panel">
-  <h2>완료와 증적 확인</h2>
+</details>
+<details class="panel guide-panel">
+  <summary><h2>완료와 증적 확인</h2></summary>
   <p>완료율은 대상 여부가 O인 항목을 기준으로 계산합니다. 엑셀·웹의 완료 표기, 관리자 제외 인정일, 해당 반기의 JIRA 근거를 순서대로 판정합니다. 일정이 지났다는 이유만으로 완료 처리하지 않습니다.</p>
   <p>JIRA 근거는 실전환을 우선하며 변경계획완료일을 사용합니다. 무중단은 제목의 '무중단'과 이슈 유형 '서비스요청관리'를 확인하고 생성일을 사용합니다. 날짜는 해당 반기 안이면서 기준일 이전이어야 합니다.</p>
   <p>증적 티켓의 상태 경고와 완료 판정은 별도로 표시됩니다. 증적을 입력했다는 사실만으로 완료가 보장되는 것은 아닙니다.</p>
-</section>
-<section class="panel">
-  <h2>Teams 리마인드와 변경 이력</h2>
+</details>
+<details class="panel guide-panel">
+  <summary><h2>Teams 리마인드와 변경 이력</h2></summary>
   <p>리마인드는 실전환/무중단 및 완전 미기입/대략적 일정/작업 {{ pre_work_days }}일 이내로 나누어 초안을 확인합니다. 발송 전 대상과 수신자를 확인하세요.</p>
   <p>사전 안내는 일정 입력자를 기준으로 하되, 관리자가 대신 입력했거나 엑셀 원본 일정인 경우 서비스별 대표 담당자를 사용합니다.</p>
   <p>관리자 수정은 일반 변경자 표시에서 가리지만 감사 이력은 보존됩니다. 메뉴의 관리자 표시 여부는 편의 기능이며 실제 권한 검사와는 별개입니다.</p>
-</section>
-<section class="panel" id="guide-capacity">
-  <h2>용량관리 — 디스크·ASM 증설</h2>
+</details>
+<details class="panel guide-panel" id="guide-capacity">
+  <summary><h2>용량관리 — 디스크·ASM 증설</h2></summary>
   <p>DATA와 ARCH 영역을 구분해 증설 대상, 일정, 담당자와 완료 근거를 확인합니다. 같은 호스트라도 두 영역은 별개의 작업일 수 있으므로 영역과 파일시스템·ASM 종류를 함께 확인하세요.</p>
   <p>JIRA 티켓의 제목·본문·작업 대상에서 증설 내용과 DATA/ARCH 영역을 판별합니다. 한 티켓에 두 영역이 명시되면 양쪽에 연결될 수 있습니다. 예방4 태그가 없는 증설 티켓의 인정 여부는 운영 설정을 따릅니다.</p>
   <p>단순 호스트명 일치나 일정 경과만으로 증설 완료를 단정하지 말고 화면에 표시된 완료 근거를 확인하세요. 매칭이 예상과 다르면 판정 추적 화면에서 후보 티켓과 제외 사유를 확인합니다.</p>
   <a class="btn-sm" href="/capacity">용량관리 열기</a>
-</section>
-<section class="panel" id="guide-eos">
-  <h2>EoS — 노후 OS·DB 전환</h2>
+</details>
+<details class="panel guide-panel" id="guide-eos">
+  <summary><h2>EoS — 노후 OS·DB 전환</h2></summary>
   <p>지원 종료 대상의 OS·DB 트랙, 전환 일정과 담당자를 확인합니다. 신규 서버 생성과 실제 전환은 다릅니다. 생성 티켓만으로 완료되지 않으며 IP전환 티켓과 자산 전환 근거를 확인합니다.</p>
   <p>CMDB 자산 Key와 작업 완료 필드, Polestar의 자산 전환 상태 등을 활용합니다. 전환 후 자산이 폐기되어 조회에서 사라져도 이전에 확인한 관측 기록을 보존하는 경로가 있습니다.</p>
   <p>미응답 항목은 화면에 보이더라도 진행 대상 집계와 구분될 수 있습니다. OS/DB 분류와 대상 여부를 함께 확인하고, 외부 조회 실패 안내가 있으면 완료 수치의 근거를 재확인하세요.</p>
   <a class="btn-sm" href="/eos">EoS 열기</a>
-</section>
-<section class="panel" id="guide-kernel">
-  <h2>커널패치 — OS 보안 패치</h2>
+</details>
+<details class="panel guide-panel" id="guide-kernel">
+  <summary><h2>커널패치 — OS 보안 패치</h2></summary>
   <p>개발기·운영기 중 등록된 대상 목록에서 일정과 패치 진행 상태를 관리합니다. 대상 데이터가 등록되지 않은 구분은 표시되지 않을 수 있습니다.</p>
   <p>완료 근거는 관리자 완료 표기 또는 외부에서 확인된 패치 완료 호스트 목록입니다. 외부 근거가 제공되지 않으면 수동 완료 표기를 사용하며, 모든 서버의 패치 버전을 자동 검증하는 것은 아닙니다.</p>
   <p>OS별 목표 버전이 다를 수 있으므로 버전 문자열이나 예정일만 보고 완료 처리하지 말고 실제 패치 확인 결과를 확인하세요.</p>
   <a class="btn-sm" href="/kernel">커널패치 열기</a>
-</section>
+</details>
+{% endblock %}
+{% block after %}
+<script src="/static/guide.js" defer></script>
 {% endblock %}

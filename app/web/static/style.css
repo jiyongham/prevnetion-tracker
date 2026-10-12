@@ -208,6 +208,19 @@ body {
 }
 
 .side-nav { display: flex; flex-direction: column; gap: 2px; }
+.side-nav-group > summary { cursor: pointer; list-style: none; }
+.side-nav-group > summary::-webkit-details-marker { display: none; }
+.side-nav-arrow { margin-inline-start: auto; font-size: 20px; line-height: 1; }
+.side-nav-group[open] > summary .side-nav-arrow { transform: rotate(90deg); }
+.side-nav-group > summary:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.side-subnav { margin: 4px 0 8px 12px; padding-left: 8px; border-left: 2px solid var(--color-divider); }
+.guide-nav-group { margin-bottom: 8px; }
+.guide-nav-group .side-subnav .side-nav-item { font-size: var(--text-sm); font-weight: 500; }
+.status-nav-group { border-top: 1px solid var(--color-divider); padding-top: 10px; }
+.guide-panel { scroll-margin-top: 16px; }
+.guide-panel > summary::after { content: '›'; margin-inline-start: auto; font-size: 20px; }
+.guide-panel[open] > summary::after { transform: rotate(90deg); }
+.guide-panel > summary:focus-visible { outline: 2px solid currentColor; }
 /* 긴 안내문도 번호와 첫 줄이 같은 위치에 정렬되도록 브라우저 기본 목록을 명시한다. */
 ol.guide-steps { list-style: decimal outside; padding-inline-start: 2rem; margin-block: 1rem; }
 ol.guide-steps > li { display: list-item; padding-inline-start: .3rem; margin-block: .75rem; line-height: 1.7; }

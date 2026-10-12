@@ -32,7 +32,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}장애예방 관제센터{% endblock %}</title>
-  <link rel="stylesheet" href="/static/style.css?v=30">
+  <link rel="stylesheet" href="/static/style.css?v=31">
 </head>
 <body>
 <a href="#main" class="skip-link">본문으로 건너뛰기</a>
@@ -45,11 +45,29 @@
     </div>
 
     <nav class="side-nav" aria-label="주요 영역">
-      <a href="/guide" class="side-nav-item {{ 'active' if section == 'guide' }}" {% if section == 'guide' %}aria-current="page"{% endif %}>
-        <span class="side-nav-icon" aria-hidden="true">📖</span>설명 보기</a>
       <a href="/" class="side-nav-item {{ 'active' if section == 'home' }}"
          {{ 'aria-current=page' if section == 'home' }}>
         <span class="side-nav-icon" aria-hidden="true">🏠</span>대시보드</a>
+      <details class="side-nav-group guide-nav-group">
+        <summary class="side-nav-item {{ 'active' if section == 'guide' }}">
+          <span class="side-nav-icon" aria-hidden="true">📖</span>설명
+          <span class="side-nav-arrow" aria-hidden="true">›</span>
+        </summary>
+        <div class="side-subnav" role="group" aria-label="설명 메뉴">
+          <a href="/guide" class="side-nav-item" {% if section == 'guide' %}aria-current="page"{% endif %}>전체 설명</a>
+          <a href="/guide#guide-dashboard" class="side-nav-item">대시보드 안내</a>
+          <a href="/guide#guide-dr" class="side-nav-item">DR훈련 안내</a>
+          <a href="/guide#guide-capacity" class="side-nav-item">용량관리 안내</a>
+          <a href="/guide#guide-eos" class="side-nav-item">EoS 안내</a>
+          <a href="/guide#guide-kernel" class="side-nav-item">커널패치 안내</a>
+        </div>
+      </details>
+      <details class="side-nav-group status-nav-group" {% if section not in ('home', 'guide') %}open{% endif %}>
+        <summary class="side-nav-item">
+          <span class="side-nav-icon" aria-hidden="true">📊</span>현황 조회
+          <span class="side-nav-arrow" aria-hidden="true">›</span>
+        </summary>
+        <div class="side-subnav" role="group" aria-label="현황 조회 메뉴">
       <a href="/teams" class="side-nav-item {{ 'active' if section == 'teams' }}"
          {{ 'aria-current=page' if section == 'teams' }}>
         <span class="side-nav-icon" aria-hidden="true">👥</span>팀별 조회</a>
@@ -58,7 +76,6 @@
         <span class="side-nav-icon" aria-hidden="true">🔄</span>DR훈련
         <span class="dr-nav-arrow" aria-hidden="true">›</span>
       </summary>
-      {% if section == 'dr' %}
       {% set nav_compare = path == '/dr' and compare|default(false) %}
       <div class="dr-subnav" role="group" aria-label="DR훈련 하위 메뉴" data-admins='{{ dr_nav_admins|tojson }}'>
         <a href="{{ dashboard_url if path == '/dr' else '/dr?half=' ~ nav_half ~ '&compare=false' }}" class="side-nav-item {{ 'active' if path == '/dr' and not nav_compare }}" {% if path == '/dr' and not nav_compare %}aria-current="page"{% endif %}>진척 현황</a>
@@ -67,7 +84,6 @@
         <a href="/owner-check?half={{ nav_half }}" class="side-nav-item dr-nav-admin {{ 'active' if path == '/owner-check' }}" {% if path == '/owner-check' %}aria-current="page"{% endif %}>담당자 확인</a>
         <a href="/logs?half={{ nav_half }}" class="side-nav-item {{ 'active' if path == '/logs' }}" {% if path == '/logs' %}aria-current="page"{% endif %}>변경 이력</a>
       </div>
-      {% endif %}
       </details>
       <a href="/capacity" class="side-nav-item {{ 'active' if section == 'capacity' }}"
          {{ 'aria-current=page' if section == 'capacity' }}>
@@ -78,6 +94,8 @@
       <a href="/kernel" class="side-nav-item {{ 'active' if section == 'kernel' }}"
          {{ 'aria-current=page' if section == 'kernel' }}>
         <span class="side-nav-icon" aria-hidden="true">🧩</span>커널패치</a>
+        </div>
+      </details>
     </nav>
 
     <div class="side-nav-foot">
