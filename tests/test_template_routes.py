@@ -205,7 +205,7 @@ def test_dr_tools_render_without_operational_files(monkeypatch, tmp_path):
     assert resp.context["comparison"] == {}
     assert "증적 미입력 0대" in resp.text
     assert "필터 기억하기" in resp.text
-    assert 'aria-label="DR훈련 하위 탭"' in resp.text
+    assert 'aria-label="DR훈련 하위 메뉴"' in resp.text
     assert 'aria-label="상·하반기 비교 목록"' in resp.text
     assert 'aria-label="상태 및 조치 필터"' in resp.text
     assert "반기 비교 닫기" not in resp.text
@@ -231,6 +231,29 @@ def test_dr_unified_filters_replace_selection_and_keep_scope(monkeypatch, tmp_pa
         assert not ("status" in params and "action" in params)
     assert sum(item["label"] == "전체" for item in filters) == 1
     assert sum(item["label"] in ("지연", "예정일 경과") for item in filters) == 1
+
+
+def test_dr_sidebar_keeps_half_and_active_page(monkeypatch):
+    from bs4 import BeautifulSoup
+
+    _apply_no_network_patches(monkeypatch)
+    client = TestClient(app)
+    for path, label in [("/dr?half=H1&compare=true", "상·하반기 비교"),
+                        ("/remind-preview?half=H1", "Teams 리마인드"),
+                        ("/owner-check?half=H1", "담당자 확인"),
+                        ("/logs?half=H1", "변경 이력")]:
+        response = client.get(path)
+        assert response.status_code == 200
+        soup = BeautifulSoup(response.text, "html.parser")
+        menu = soup.select_one("aside.sidebar .dr-subnav")
+        assert menu is not None
+        active = menu.select('[aria-current="page"]')
+        assert len(active) == 1
+        assert active[0].get_text(strip=True) == label
+        assert all("half=H1" in a["href"] for a in menu.select("a"))
+        assert len(menu.select(".dr-nav-admin")) == 2
+    response = client.get("/capacity")
+    assert 'class="dr-subnav"' not in response.text
 
 
 def test_dr_dashboard_returns_200_and_renders_details_table(monkeypatch):

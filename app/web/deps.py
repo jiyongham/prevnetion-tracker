@@ -1,12 +1,21 @@
 # app/web/deps.py
 """라우터 모듈들이 공유하는 것들 (Jinja2 templates, 저장 시 공통으로 쓰는 검증 로직)."""
 from pathlib import Path
+from datetime import date
 
 from fastapi import HTTPException
 from fastapi.templating import Jinja2Templates
+from app.config import settings
 
 WEB_DIR = Path(__file__).resolve().parent
-templates = Jinja2Templates(directory=str(WEB_DIR / "templates"))
+def navigation_context(request):
+    half = request.query_params.get("half")
+    if half not in ("H1", "H2"):
+        half = "H1" if date.today().month <= 6 else "H2"
+    return {"nav_half": half, "dr_nav_admins": sorted(settings.admin_set)}
+
+
+templates = Jinja2Templates(directory=str(WEB_DIR / "templates"), context_processors=[navigation_context])
 
 
 def require_updated_by(updated_by: str) -> str:

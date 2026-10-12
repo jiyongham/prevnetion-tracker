@@ -1,7 +1,7 @@
-// 검색어와 사용자 이름은 저장하지 않는다. 명시적인 URL이 저장된 필터보다 우선한다.
+// 사용자가 선택한 경우 팀/검색어/필터를 함께 저장한다. 사용자 이름은 저장하지 않는다.
 (() => {
   const key = "prevention-tracker.dr.filters.v1";
-  const allowed = ["half", "mode", "team", "company", "service", "status", "action", "compare"];
+  const allowed = ["half", "mode", "team", "company", "service", "status", "action", "compare", "q"];
   const checkbox = document.getElementById("rememberDrFilters");
   const reset = document.getElementById("resetDrFilters");
   if (!checkbox || !reset) return;
@@ -14,10 +14,13 @@
   }
   checkbox.checked = Boolean(saved && saved.enabled);
   function store() {
+    const currentUrl = new URL(window.location.href);
     const filters = {};
     for (const name of allowed) {
-      if (url.searchParams.has(name)) filters[name] = url.searchParams.get(name);
+      if (currentUrl.searchParams.has(name)) filters[name] = currentUrl.searchParams.get(name);
     }
+    const search = document.getElementById("q");
+    if (search) filters.q = search.value;
     try {
       if (checkbox.checked) localStorage.setItem(key, JSON.stringify({enabled: true, filters}));
       else localStorage.removeItem(key);
@@ -38,6 +41,11 @@
     }
   }
   checkbox.addEventListener("change", store);
+  const search = document.getElementById("q");
+  if (search) {
+    search.addEventListener("change", () => { if (checkbox.checked) store(); });
+    if (search.form) search.form.addEventListener("submit", () => { if (checkbox.checked) store(); });
+  }
   reset.addEventListener("click", () => {
     checkbox.checked = false;
     store();
