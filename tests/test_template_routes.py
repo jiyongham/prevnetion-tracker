@@ -192,6 +192,22 @@ def test_portal_home_returns_200_with_all_module_cards(monkeypatch):
         assert label in resp.text
 
 
+def test_dr_tools_render_without_operational_files(monkeypatch, tmp_path):
+    """빈 작업 폴더에서도 반기 비교/조치 필터를 열 수 있어야 한다."""
+    _apply_no_network_patches(monkeypatch)
+    monkeypatch.chdir(tmp_path)
+    client = TestClient(app)
+    resp = client.get("/dr?half=H2&compare=true&action=evidence")
+    assert resp.status_code == 200
+    assert resp.context["compare"] is True
+    assert resp.context["action_counts"]["all"] == 0
+    assert resp.context["result"]["total"] == 0
+    assert resp.context["comparison"] == {}
+    assert "증적 미입력 0대" in resp.text
+    assert "필터 기억하기" in resp.text
+    assert "반기 비교 닫기" in resp.text
+
+
 def test_dr_dashboard_returns_200_and_renders_details_table(monkeypatch):
     """DR 대시보드 - 프로덕션 장애 리포트에 명시된 첫 번째 재현 경로(home.py:122)와
     같은 계열인 dr.py:187(dashboard.html)을 별도로 한 번 더 강하게 검증한다."""
