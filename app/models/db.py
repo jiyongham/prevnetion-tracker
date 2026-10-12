@@ -424,6 +424,50 @@ def get_logs(item_no: str | None = None, limit: int = 50) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def search_logs(q: str = "", item_no: str | None = None, half: str = "",
+                page: int = 1, hostnames: dict | None = None,
+                admin_names=(), field_labels: dict | None = None) -> tuple[list[dict], int, int]:
+    """전체 이력에서 검색 후 페이지를 나눈다. 검색어는 SQL 값으로만 전달한다."""
+    clauses, params = [], []
+    if item_no:
+        clauses.append("item_no = ?")
+        params.append(item_no)
+    if half in ("H1", "H2"):
+        clauses.append("half = ?")
+        params.append(half)
+    if q:
+        term = q.casefold()
+        matches = []
+        for column in ("item_no", "field", "old_value", "new_value", "updated_at"):
+            matches.append(f"instr(lower(COALESCE({column}, '')), ?) > 0")
+            params.append(term)
+        # 숨긴 관리자 실명으로 검색 결과를 추론하지 못하도록 표시 이름으로 검색한다.
+        admins = sorted(admin_names)
+        if admins:
+            slots = ",".join("?" for _ in admins)
+            matches.append(f"instr(lower(CASE WHEN trim(updated_by) IN ({slots}) THEN '관리자' ELSE COALESCE(updated_by, '') END), ?) > 0")
+            params.extend(admins)
+            params.append(term)
+        else:
+            matches.append("instr(lower(COALESCE(updated_by, '')), ?) > 0")
+            params.append(term)
+        for column, values in (
+            ("item_no", [no for no, host in (hostnames or {}).items() if term in host.casefold()]),
+            ("field", [key for key, label in (field_labels or {}).items() if term in label.casefold()]),
+        ):
+            if values:
+                matches.append(f"{column} IN ({','.join('?' for _ in values)})")
+                params.extend(values)
+        clauses.append("(" + " OR ".join(matches) + ")")
+    where = " WHERE " + " AND ".join(clauses) if clauses else ""
+    with get_conn() as conn:
+        total = conn.execute("SELECT COUNT(*) FROM change_log" + where, params).fetchone()[0]
+        page = min(max(page, 1), max(1, (total + 49) // 50))
+        rows = conn.execute("SELECT * FROM change_log" + where + " ORDER BY id DESC LIMIT 50 OFFSET ?",
+                            [*params, (page - 1) * 50]).fetchall()
+    return [dict(r) for r in rows], total, page
+
+
 def get_recent_logs_by_half(half: str, since: str, limit: int = 2000) -> dict[str, list[dict]]:
     """
     해당 반기의, since(포함) 이후 변경 이력 -> {item_no: [log, ...]} (최근순).

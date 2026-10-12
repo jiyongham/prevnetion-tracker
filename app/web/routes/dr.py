@@ -426,22 +426,33 @@ def hostname_by_no() -> dict[str, str]:
 
 
 @router.get("/logs", response_class=HTMLResponse)
-def view_logs(request: Request, item_no: str | None = None):
-    logs = get_logs(item_no=item_no, limit=200)
-    # 화면에 보여줄 변경자 라벨만 가린다 - 감사 추적용 원본(log['updated_by'])은 그대로 두고, display_by만 추가로 붙인다.
-    for log in logs:
-        log["display_by"] = mask_changer(log.get("updated_by") or "")
+def view_logs(request: Request, item_no: str | None = None, q: str = "", half: str = "", page: int = 1):
+    from app.models.db import search_logs
+    from app.services.change_history import FIELD_LABELS
+
+    q = q.strip()
+    half = half if half in ("H1", "H2") else ""
     try:
         hostnames = hostname_by_no()
     except Exception as e:
         # 엑셀을 못 읽어도 이력 자체는 보여준다 (호스트명 칸만 NO로 대체된다)
         logger.warning(f"변경 이력 호스트명 매핑 실패 (NO로 표시): {e}")
         hostnames = {}
+    logs, total, page = search_logs(q=q, item_no=item_no, half=half, page=page,
+                                    hostnames=hostnames, admin_names=settings.admin_set,
+                                    field_labels=FIELD_LABELS)
+    for log in logs:
+        log["display_by"] = mask_changer(log.get("updated_by") or "")
+        log["field_label"] = FIELD_LABELS.get(log["field"], log["field"])
     return templates.TemplateResponse(request, "logs.html", {
         "request": request,
         "logs": logs,
         "hostnames": hostnames,
         "item_no": item_no or "",
+        "q": q, "half": half, "total": total, "page": page,
+        "pages": max(1, (total + 49) // 50),
+        "previous_url": str(request.url.include_query_params(page=page - 1)),
+        "next_url": str(request.url.include_query_params(page=page + 1)),
     })
 
 
