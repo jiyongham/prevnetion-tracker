@@ -446,6 +446,42 @@ def get_recent_logs_by_half(half: str, since: str, limit: int = 2000) -> dict[st
         out.setdefault(d["item_no"], []).append(d)
     return out
 
+def get_recent_capacity_logs(since: str, limit: int = 2000) -> list[dict]:
+    """
+    since(포함) 이후 용량관리 변경 이력 조회 (최근순).
+    
+    포털의 '최근 변경 모아보기'용. 반기 개념이 없으므로
+    단순히 모든 로그 중 최근 것들을 반환한다.
+    """
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT * FROM capacity_change_log
+            WHERE updated_at >= ?
+            ORDER BY updated_at DESC LIMIT ?
+            """,
+            (since, limit),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_recent_eos_logs(since: str, limit: int = 2000) -> list[dict]:
+    """
+    since(포함) 이후 EoS 변경 이력 조회 (최근순).
+    
+    포털의 '최근 변경 모아보기'용. 반기 개념이 없으므로
+    단순히 모든 로그 중 최근 것들을 반환한다.
+    """
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT * FROM eos_change_log
+            WHERE updated_at >= ?
+            ORDER BY updated_at DESC LIMIT ?
+            """,
+            (since, limit),
+        ).fetchall()
+    return [dict(r) for r in rows]
 
 def log_remind(
     half: str,

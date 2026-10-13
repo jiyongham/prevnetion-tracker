@@ -1,34 +1,41 @@
-<!-- app/web/templates/portal.html -->
-{# 포털 홈은 사이드바를 쓰지 않는다 - 이 화면 자체가 도메인 진입점이라
-   같은 화면에 진입 경로가 두 벌이 된다. 그래서 공통 레이아웃(_layout.html)을
-   상속하지 않고 독립 문서로 둔다. #}
-<!DOCTYPE html>
-<html lang="ko">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>장애예방 관제센터</title>
-  <link rel="stylesheet" href="/static/style.css?v=30">
-</head>
-<body>
-<a href="#main" class="skip-link">본문으로 건너뛰기</a>
-<div class="container portal-container">
-  <main id="main">
+{% extends "_layout.html" %}
 
+{% block title %}장애예방 관제센터{% endblock %}
+
+{% block content %}
   <header>
     <h1>🎛️ 장애예방 관제센터</h1>
     <span id="portalClock" class="portal-clock mono">-</span>
   </header>
 
-  <nav class="tabs" aria-label="대시보드 화면 메뉴">
-    <a class="tab active" href="/" aria-current="page">대시보드</a>
-    <a class="tab" href="/guide">설명 보기</a>
-    <a class="tab" href="/teams">팀별 조회</a>
-    <a class="tab" href="/dr">DR훈련</a>
-    <a class="tab" href="/capacity">용량관리</a>
-    <a class="tab" href="/eos">EoS</a>
-    <a class="tab" href="/kernel">커널패치</a>
-  </nav>
+  {# 2a: 기준일 표시 #}
+  <div style="margin-bottom: 1rem; font-size: 0.95rem; color: var(--color-text-muted);">
+    기준일: <span class="mono">{{ as_of.strftime('%Y-%m-%d') }}</span>
+  </div>
+
+  {# 2b: 전체 요약 수치 #}
+  {% if total_target > 0 %}
+  <div class="panel" style="margin-bottom: 1.5rem; padding: 1rem;">
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 1rem; text-align: center;">
+      <div>
+        <div style="font-size: 0.85rem; color: var(--color-text-muted); margin-bottom: 0.25rem;">전체 대상</div>
+        <div class="mono" style="font-size: 1.3rem; font-weight: bold;">{{ total_target }}건</div>
+      </div>
+      <div>
+        <div style="font-size: 0.85rem; color: var(--color-text-muted); margin-bottom: 0.25rem;">전체 완료</div>
+        <div class="mono" style="font-size: 1.3rem; font-weight: bold;">{{ total_done }}건</div>
+      </div>
+      <div>
+        <div style="font-size: 0.85rem; color: var(--color-text-muted); margin-bottom: 0.25rem;">전체 평균</div>
+        <div class="mono" style="font-size: 1.3rem; font-weight: bold; color: var(--color-accent-solid);">{{ overall_pct }}%</div>
+      </div>
+    </div>
+    <div style="margin-top: 0.5rem; font-size: 0.8rem; color: var(--color-text-muted); font-style: italic;">
+      ※ 업무별 완료 기준이 달라 참고용 합산입니다
+    </div>
+  </div>
+  {% endif %}
+
   <h2>전체 대시보드</h2>
   <p class="portal-lead">업무별 진척을 확인하고 상세 화면으로 이동하세요.</p>
 
@@ -78,11 +85,19 @@
       </div>
       <div class="module-tile-stat">
         {% if m.error %}
-        <span class="badge-check">확인 필요</span>
+        <span class="badge-check">확인 중요</span>
         <span class="count mono">외부 조회 실패</span>
         {% elif m.pct is not none %}
         <span class="pct mono" style="color: {{ tone }}">{{ m.pct }}%</span>
         <span class="count mono">{{ m.done }} / {{ m.total }}건</span>
+        {# 2c: 조치 중정 바로가기 #}
+        {% if m.total > m.done %}
+          <a href="{% if m.code == 'DR' %}/dr?action=evidence{% else %}{{ m.href }}{% endif %}"
+             style="display: inline-block; margin-top: 0.5rem; font-size: 0.85rem;
+                     color: var(--color-accent-solid); text-decoration: none; font-weight: 500;">
+            조치 중정 {{ m.total - m.done }}건
+          </a>
+        {% endif %}
         {% else %}
         <span class="count mono">대상 없음</span>
         {% endif %}
@@ -100,9 +115,46 @@
     {% endfor %}
   </div>
 
-  </main>
-</div>
+  {# 2d: 최근 변경 메모아보기 (DR/용량관리/EoS, 커널패 제외) #}
+  <section class="panel" style="margin-top: 2rem;">
+    <h2 style="margin-bottom: 1rem; font-size: 1.1rem; font-weight: bold;">최근 변경 (7일)</h2>
+    
+    {% if recent_changes %}
+    <table style="width: 100%; border-collapse: collapse; font-size: 0.9rem;">
+      <thead>
+        <tr style="border-bottom: 1px solid var(--color-border-light);">
+          <th style="padding: 0.5rem; text-align: left; color: var(--color-text-muted);">도메인</th>
+          <th style="padding: 0.5rem; text-align: left; color: var(--color-text-muted);">대상</th>
+          <th style="padding: 0.5rem; text-align: left; color: var(--color-text-muted);">변경</th>
+          <th style="padding: 0.5rem; text-align: left; color: var(--color-text-muted);">변경자</th>
+          <th style="padding: 0.5rem; text-align: left; color: var(--color-text-muted);">시각</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for change in recent_changes %}
+        <tr style="border-bottom: 1px solid var(--color-border-lighter);">
+          <td style="padding: 0.5rem;">
+            <a href="{{ change.domain_href }}" style="color: inherit; text-decoration: none; font-weight: 500;">
+              {{ change.domain }}
+            </a>
+          </td>
+          <td style="padding: 0.5rem; font-family: monospace; font-size: 0.85rem;">{{ change.item_no }}</td>
+          <td style="padding: 0.5rem;">{{ change.field_label }}</td>
+          <td style="padding: 0.5rem; color: var(--color-text-muted);">{{ change.updated_by_display }}</td>
+          <td style="padding: 0.5rem; color: var(--color-text-muted); font-size: 0.85rem;">{{ change.updated_at[:16] }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div style="padding: 1rem; text-align: center; color: var(--color-text-muted); font-style: italic;">
+      최근 7일간 변경 이력이 없스늵니다
+    </div>
+    {% endif %}
+  </section>
+{% endblock %}
 
+{% block after %}
 <script>
 (function () {
   var clockEl = document.getElementById("portalClock");
@@ -120,5 +172,4 @@
   setInterval(tick, 1000);
 })();
 </script>
-</body>
-</html>
+{% endblock %}

@@ -13,7 +13,7 @@
 실패해도 카드 하나가 "확인 필요"로 빠질 뿐 포털 진입 자체는 항상 뜨게 한다.
 """
 import logging
-from datetime import date
+from datetime import date, datetime
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
@@ -24,6 +24,7 @@ from app.services.completion import calc_completion
 from app.services.eos import calc_eos_completion
 from app.services.kernel import calc_kernel_completion
 from app.services.report import get_current_half
+from app.services.portal_changes import get_portal_recent_changes
 from app.web.deps import templates
 from app.web.routes.capacity import get_capacity_dashboard_data
 
@@ -119,8 +120,30 @@ def portal_home(request: Request):
             "error": error,
         })
 
+    # 2b: 전체 요약 수치 (error 또는 pct is None인 모듈 제외)
+    valid_modules = [m for m in modules if m["pct"] is not None]
+    if valid_modules:
+        total_target = sum(m["total"] for m in valid_modules)
+        total_done = sum(m["done"] for m in valid_modules)
+        overall_pct = round(total_done / total_target * 100) if total_target else 0
+    else:
+        total_target = total_done = overall_pct = 0
+    
+    # 2d: 최근 변경 (DR/용량관리/EoS)
+    try:
+        recent_changes = get_portal_recent_changes(now=datetime.now())
+    except Exception as e:
+        logger.warning(f"포털 최근 변경 조회 실패: {e}")
+        recent_changes = []
+    
     return templates.TemplateResponse(request, "portal.html", {
         "request": request,
         "modules": modules,
         "as_of": today,
+        # 2b 데이터
+        "total_target": total_target,
+        "total_done": total_done,
+        "overall_pct": overall_pct,
+        # 2d 데이터
+        "recent_changes": recent_changes,
     })
