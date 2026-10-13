@@ -289,9 +289,13 @@ def test_dr_guide_does_not_load_external_data(monkeypatch, tmp_path):
         assert "완료 여부 무관" in response.text
         soup = BeautifulSoup(response.text, "html.parser")
         menu = soup.select_one("nav.side-nav")
-        dashboard = menu.find("a", recursive=False)
+        top_level_links = menu.find_all("a", recursive=False)
+        dashboard = top_level_links[0]
         assert dashboard["href"] == "/"
         assert dashboard.get_text(strip=True).endswith("대시보드")
+        teams_link = top_level_links[1]
+        assert teams_link["href"] == "/teams"
+        assert teams_link.get_text(strip=True).endswith("팀별 조회")
         groups = menu.find_all("details", recursive=False)
         assert len(groups) == 2
         assert "guide-nav-group" in groups[0]["class"]
@@ -300,7 +304,8 @@ def test_dr_guide_does_not_load_external_data(monkeypatch, tmp_path):
         guide = groups[0].select_one('a[href="/guide"]')
         assert guide["aria-current"] == "page"
         status_links = {link["href"].split("?")[0] for link in groups[1].select("a")}
-        assert {"/teams", "/dr", "/capacity", "/eos", "/kernel"} <= status_links
+        assert status_links == {"/dr", "/remind-preview", "/owner-check", "/logs", "/capacity", "/eos", "/kernel"}
+        assert "/teams" not in status_links
         assert not soup.select('.dr-subnav a[href^="/dr/guide"]')
         assert [li["value"] for li in soup.select("ol.guide-steps > li")] == ["1", "2", "3", "4"]
         for section in ("guide-dashboard", "guide-dr", "guide-capacity", "guide-eos", "guide-kernel"):

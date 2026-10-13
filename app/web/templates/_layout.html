@@ -62,15 +62,15 @@
           <a href="/guide#guide-kernel" class="side-nav-item">커널패치 안내</a>
         </div>
       </details>
+      <a href="/teams" class="side-nav-item {{ 'active' if section == 'teams' }}"
+         {{ 'aria-current=page' if section == 'teams' }}>
+        <span class="side-nav-icon" aria-hidden="true">👥</span>팀별 조회</a>
       <details class="side-nav-group status-nav-group" open>
         <summary class="side-nav-item">
           <span class="side-nav-icon" aria-hidden="true">📊</span>현황 조회
           <span class="side-nav-arrow" aria-hidden="true">›</span>
         </summary>
         <div class="side-subnav" role="group" aria-label="현황 조회 메뉴">
-      <a href="/teams" class="side-nav-item {{ 'active' if section == 'teams' }}"
-         {{ 'aria-current=page' if section == 'teams' }}>
-        <span class="side-nav-icon" aria-hidden="true">👥</span>팀별 조회</a>
       <details class="dr-nav-group" {% if section == 'dr' %}open{% endif %}>
       <summary class="side-nav-item {{ 'active' if section == 'dr' }}">
         <span class="side-nav-icon" aria-hidden="true">🔄</span>DR훈련
