@@ -181,6 +181,9 @@ def test_portal_home_returns_200_with_all_module_cards(monkeypatch):
     카드를 집계해 보여줄 뿐이다. 여기선 상태코드까지 정확히 200인지, 그리고 실제로
     portal.html이 렌더링해 4개 모듈 라벨이 응답 본문에 담기는지까지 확인한다
     (템플릿 렌더링 자체가 통과했다는 더 강한 증거).
+    
+    portal.html이 이제 _layout.html을 상속하므로, 사이드바가 있어야 하고
+    기존 독립 nav.tabs 네비는 없어야 한다.
     """
     _apply_no_network_patches(monkeypatch)
     client = TestClient(app)
@@ -192,12 +195,14 @@ def test_portal_home_returns_200_with_all_module_cards(monkeypatch):
         assert label in resp.text
     from bs4 import BeautifulSoup
     soup = BeautifulSoup(resp.text, "html.parser")
+    
+    # 포털이 이제 _layout.html을 상속하므로 사이드바가 있어야 함
+    sidebar = soup.select_one('aside.sidebar')
+    assert sidebar is not None, "포털 홈에 사이드바가 있어야 합니다"
+    
+    # 기존 독립 탭 네비는 제거되어야 함
     tabs = soup.select_one('nav[aria-label="대시보드 화면 메뉴"]')
-    assert tabs is not None
-    links = tabs.select("a")
-    assert [a["href"] for a in links] == ["/", "/guide", "/teams", "/dr", "/capacity", "/eos", "/kernel"]
-    assert links[0]["aria-current"] == "page"
-    assert links[0].get_text(strip=True) == "대시보드"
+    assert tabs is None, "기존 탭 네비는 제거되어야 합니다"
 
 
 def test_dr_tools_render_without_operational_files(monkeypatch, tmp_path):
