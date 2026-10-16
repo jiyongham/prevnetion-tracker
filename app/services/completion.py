@@ -302,6 +302,7 @@ def calc_completion(
             "reason": reason,
             "input_source": item.get("input_source", "excel"),
             "updated_by": item.get("updated_by", ""),
+            "last_inputter": item.get("last_inputter", ""),
             "updated_at": item.get("updated_at", ""),
             "evidence": item.get("evidence", ""),
             "note": item.get("note", ""),

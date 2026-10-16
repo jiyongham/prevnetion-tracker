@@ -332,7 +332,7 @@ async def api_save(request: Request):
         data["item_no"], data["half"], bool(data.get("is_done")), updated_by
     )
     owner = resolve_owner(data.get("owner", ""), updated_by, settings.admin_set)
-    upsert_input(
+    saved = upsert_input(
         item_no=data["item_no"],
         half=data["half"],
         schedule=data.get("schedule", "").strip(),
@@ -343,7 +343,7 @@ async def api_save(request: Request):
         updated_by=updated_by,
         owner=owner,
     )
-    return JSONResponse({"ok": True})
+    return JSONResponse({"ok": True, **saved})
 
 
 @router.post("/api/bulk-save")

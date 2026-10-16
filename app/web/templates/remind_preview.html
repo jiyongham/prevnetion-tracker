@@ -17,6 +17,7 @@
     {% if by_inputter %}
     일정을 웹에 입력한 사람에게 보냅니다.
     엑셀 원본 일정이거나 <strong>관리자가 대신 입력한</strong> 대상은 서비스별 대표 담당자에게 갑니다.
+    정확한 날짜가 있는 일정은 작업 {{ pre_work_days }}일 이내일 때만, 월만 적힌 일정은 해당 월 동안 포함합니다.
     {% else %}
     받는 팀명은 CMDB(운영팀) 기준으로 자동 보정됩니다.
     {% endif %}
@@ -41,8 +42,8 @@
       대략적 일정만 있음 <span class="cnt">{{ hinted_total }}</span>
     </a>
     <a href="/remind-preview?half={{ half }}{% if mode %}&mode={{ mode }}{% endif %}&kind=upcoming" class="tab {% if kind == 'upcoming' %}active{% endif %}"
-       title="작업 예정일이 {{ pre_work_days }}일 이내인데 아직 JIRA 티켓이 매칭되지 않은 대상">
-      작업 {{ pre_work_days }}일 이내 <span class="cnt">{{ upcoming_total }}</span>
+       title="정확한 일정은 작업 {{ pre_work_days }}일 이내, 월만 적힌 일정은 해당 월 동안 포함하며 아직 JIRA 티켓이 매칭되지 않은 대상">
+      작업 임박/당월 월일정 <span class="cnt">{{ upcoming_total }}</span>
     </a>
   </div>
   {% if dm_enabled and not selected and groups %}

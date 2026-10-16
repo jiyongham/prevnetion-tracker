@@ -56,9 +56,8 @@
       {% elif d.status_label == '대략' %}<span class="badge soft" title="대략적 일정만 등록됨: {{ d.schedule_raw }} — 정확한 날짜 확정 필요">대략</span>
       {% else %}<span class="badge warn">미계획</span>{% endif %}
     </td>
-    {# 입력자: 이 행을 웹에서 마지막으로 저장한 사람. 일정이 엑셀 원본에서 온 행은
-       입력한 사람이 없으므로 '-'로 둔다 (updated_by가 비어 있는 경우와 같다). #}
-    <td class="small changer-cell" title="{% if d.updated_by %}웹 입력 {{ d.updated_at }}{% else %}엑셀 원본 (웹 입력 없음){% endif %}">{{ d.updated_by if d.updated_by and d.updated_by not in admins else "-" }}</td>
+    {# 입력자: 마지막 일반 사용자 입력자. 관리자가 마지막으로 저장했어도 기존 일반 입력자를 유지한다. #}
+    <td class="small changer-cell" title="{% if d.updated_by %}최종 수정 {{ d.updated_at }}{% else %}엑셀 원본 (웹 입력 없음){% endif %}">{{ d.last_inputter or "-" }}</td>
     <td><button class="btn-save" onclick="saveRow(this)" aria-label="{{ d.system_name }} 저장">저장</button></td>
     <td class="admin-only">
       <button class="btn-sm btn-exclude" onclick="excludeRow(this)"
@@ -554,12 +553,13 @@ async function saveRow(btn) {
     if (res.ok) {
       showToast(`NO.${payload.item_no} 저장 완료`);
       // 입력자는 열을 따로 두지 않고 행 툴팁으로만 보여준다 - 저장하면 그 툴팁을 갱신한다
-      const changer = ADMINS.includes(payload.updated_by) ? "" : payload.updated_by;
-      tr.title = `웹 입력 (${changer ? changer + ", " : ""}방금)`;
+      const changer = data.last_inputter || "";
+      const actual = ADMINS.includes(payload.updated_by) ? "" : payload.updated_by;
+      tr.title = `웹 입력 (${actual ? actual + ", " : ""}방금)`;
       const changerCell = tr.querySelector(".changer-cell");
       if (changerCell) {
         changerCell.textContent = changer || "-";
-        changerCell.title = "웹 입력 방금";
+        changerCell.title = "최종 수정 방금";
       }
       tr.classList.add("src-web");
       // 같은 행을 1.2초 안에 다시 저장하면 클래스가 이미 붙어 있어 애니메이션이

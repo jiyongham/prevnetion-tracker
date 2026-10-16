@@ -212,11 +212,13 @@ def load_eos_items_merged(excel_path: str | None = None) -> list[dict]:
             item["web_exclude_reason"] = db.get("exclude_reason") or ""
             item["note"] = db.get("note", "")
             item["updated_by"] = db.get("updated_by", "")
+            item["last_inputter"] = db.get("last_inputter", "")
             item["updated_at"] = db.get("updated_at", "")
         else:
             item["web_exclude_reason"] = ""
             item["note"] = ""
             item["updated_by"] = ""
+            item["last_inputter"] = ""
             item["updated_at"] = ""
 
     return items
