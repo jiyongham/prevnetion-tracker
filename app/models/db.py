@@ -1,5 +1,6 @@
 # app/models/db.py
 import json
+import re
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
@@ -7,6 +8,107 @@ from pathlib import Path
 from app.config import settings
 
 DB_PATH = Path(settings.db_path)
+
+_PAREN_RE = re.compile(r"\(.*?\)")
+
+
+def _normalize_actor(name: str | None) -> str:
+    """입력자명 정규화: 공백/괄호 표기 제거."""
+    return _PAREN_RE.sub("", name or "").strip()
+
+
+def _normalized_admins(names: set[str]) -> list[str]:
+    return sorted({_normalize_actor(name) for name in names if _normalize_actor(name)})
+
+
+def _ordinary_actor(name: str | None, admin_names: set[str]) -> str | None:
+    normalized = _normalize_actor(name)
+    if not normalized or normalized in _normalized_admins(admin_names):
+        return None
+    return normalized
+
+
+def _ordinary_actor_case(column: str, admin_names: list[str]) -> tuple[str, list[str]]:
+    normalized = f"normalize_actor({column})"
+    if admin_names:
+        placeholders = ", ".join("?" for _ in admin_names)
+        return (
+            f"CASE WHEN {normalized} <> '' AND {normalized} NOT IN ({placeholders}) THEN {normalized} END",
+            list(admin_names),
+        )
+    return f"CASE WHEN {normalized} <> '' THEN {normalized} END", []
+
+
+def _ensure_text_column(conn: sqlite3.Connection, table: str, column: str) -> None:
+    cols = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+    if column not in cols:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} TEXT")
+
+
+def _backfill_last_inputter_from_log(
+    conn: sqlite3.Connection,
+    table: str,
+    log_table: str,
+    scope_cols: tuple[str, ...],
+    admin_names: set[str],
+) -> None:
+    admins = _normalized_admins(admin_names)
+    current_expr, current_params = _ordinary_actor_case("updated_by", admins)
+    log_expr, log_params = _ordinary_actor_case("log.updated_by", admins)
+    scope = " AND ".join(f"log.{col} = {table}.{col}" for col in scope_cols)
+    conn.execute(
+        f"""
+        UPDATE {table}
+        SET last_inputter = COALESCE(
+            {current_expr},
+            (
+                SELECT actor FROM (
+                    SELECT {log_expr} AS actor, log.updated_at, log.id
+                    FROM {log_table} log
+                    WHERE {scope}
+                ) recent
+                WHERE actor IS NOT NULL
+                ORDER BY updated_at DESC, id DESC
+                LIMIT 1
+            ),
+            NULLIF(last_inputter, ''),
+            ''
+        )
+        """,
+        [*current_params, *log_params],
+    )
+
+
+def _backfill_kernel_last_inputter(conn: sqlite3.Connection) -> None:
+    admins = _normalized_admins(settings.kernel_admin_set)
+    current_expr, current_params = _ordinary_actor_case("updated_by", admins)
+    conn.execute(
+        f"""
+        UPDATE kernel_input
+        SET last_inputter = COALESCE({current_expr}, NULLIF(last_inputter, ''), '')
+        """,
+        current_params,
+    )
+
+
+def _backfill_last_inputters(conn: sqlite3.Connection) -> None:
+    _ensure_text_column(conn, "schedule_input", "last_inputter")
+    _ensure_text_column(conn, "capacity_input", "last_inputter")
+    _ensure_text_column(conn, "eos_input", "last_inputter")
+    _ensure_text_column(conn, "kernel_input", "last_inputter")
+    _backfill_last_inputter_from_log(conn, "schedule_input", "change_log", ("item_no", "half"), settings.admin_set)
+    _backfill_last_inputter_from_log(
+        conn, "capacity_input", "capacity_change_log", ("item_no", "sheet"), settings.capacity_admin_set
+    )
+    _backfill_last_inputter_from_log(conn, "eos_input", "eos_change_log", ("item_no",), settings.eos_admin_set)
+    _backfill_kernel_last_inputter(conn)
+
+
+def _next_last_inputter(before: dict | None, updated_by: str, admin_names: set[str]) -> str:
+    ordinary = _ordinary_actor(updated_by, admin_names)
+    if ordinary:
+        return ordinary
+    return (before or {}).get("last_inputter", "") or ""
 
 
 def init_db():
@@ -24,6 +126,7 @@ def init_db():
             evidence    TEXT,
             note        TEXT,
             updated_by  TEXT,
+            last_inputter TEXT,
             updated_at  TEXT DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(item_no, half)
         );
@@ -71,6 +174,7 @@ def init_db():
             owner       TEXT,
             is_excluded INTEGER DEFAULT 0,   -- 관리자가 "제외" 버튼으로 처리 (증설 안 함 확정)
             updated_by  TEXT,
+            last_inputter TEXT,
             updated_at  TEXT DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(item_no, sheet)
         );
@@ -110,6 +214,7 @@ def init_db():
             note        TEXT,
             owner       TEXT,
             updated_by  TEXT,
+            last_inputter TEXT,
             updated_at  TEXT DEFAULT CURRENT_TIMESTAMP
         );
 
@@ -176,6 +281,7 @@ def init_db():
             is_excluded INTEGER DEFAULT 0,
             exclude_reason TEXT,
             updated_by  TEXT,
+            last_inputter TEXT,
             updated_at  TEXT DEFAULT CURRENT_TIMESTAMP
         );
 
@@ -243,11 +349,14 @@ def init_db():
             conn.execute("ALTER TABLE remind_log ADD COLUMN kind TEXT DEFAULT 'blank'")
             conn.execute("UPDATE remind_log SET kind = 'blank' WHERE kind IS NULL")
 
+        _backfill_last_inputters(conn)
+
 
 @contextmanager
 def get_conn():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
+    conn.create_function("normalize_actor", 1, _normalize_actor)
     try:
         yield conn
         conn.commit()
@@ -284,20 +393,21 @@ def upsert_input(
     updated_by: str = "",
     owner: str | None = None,
     exclude_reason: str | None = None,
-):
+)-> dict:
     """
     일정 입력/수정 (변경 이력 기록).
     owner/exclude_reason은 명시적으로 넘겼을 때만 갱신한다 (None이면 기존 값 유지) —
     안 그러면 일반 일정 저장(대시보드)이 매번 담당자 수정이나 제외 사유를 지워버리게 된다.
     """
     before = get_input(item_no, half)
+    last_inputter = _next_last_inputter(before, updated_by, settings.admin_set)
 
     with get_conn() as conn:
         conn.execute("""
             INSERT INTO schedule_input
-                (item_no, half, schedule, mode, is_done, evidence, note, updated_by, owner,
-                 exclude_reason, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
+                (item_no, half, schedule, mode, is_done, evidence, note, updated_by, last_inputter,
+                 owner, exclude_reason, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
             ON CONFLICT(item_no, half) DO UPDATE SET
                 schedule       = excluded.schedule,
                 mode           = excluded.mode,
@@ -305,11 +415,12 @@ def upsert_input(
                 evidence       = excluded.evidence,
                 note           = excluded.note,
                 updated_by     = excluded.updated_by,
+                last_inputter  = excluded.last_inputter,
                 owner          = COALESCE(excluded.owner, schedule_input.owner),
                 exclude_reason = COALESCE(excluded.exclude_reason, schedule_input.exclude_reason),
                 updated_at     = datetime('now', 'localtime')
-        """, (item_no, half, schedule, mode, int(is_done), evidence, note, updated_by, owner,
-              exclude_reason))
+        """, (item_no, half, schedule, mode, int(is_done), evidence, note, updated_by, last_inputter,
+              owner, exclude_reason))
 
         # 변경 이력
         new_vals = {
@@ -328,6 +439,7 @@ def upsert_input(
                         (item_no, half, field, old_value, new_value, updated_by, updated_at)
                     VALUES (?, ?, ?, ?, ?, ?, datetime('now','localtime'))
                 """, (item_no, half, field, old_v, str(new_v), updated_by))
+    return {"last_inputter": last_inputter, "updated_by": updated_by}
 
 
 def get_capacity_inputs(sheet: str) -> dict[str, dict]:
@@ -359,32 +471,34 @@ def upsert_capacity_input(
     owner: str | None = None,
     excluded: bool | None = None,
     exclude_reason: str | None = None,
-):
+)-> dict:
     """
     용량관리 일정 입력/수정 (변경 이력 기록).
     owner/excluded/exclude_reason은 명시적으로 넘겼을 때만 갱신 (None이면 기존 값 유지) -
     일반 행 저장(/api/capacity/save)이 이 값들을 매번 안 넘기더라도 덮어써지지 않게 하기 위함.
     """
     before = get_capacity_input(item_no, sheet)
+    last_inputter = _next_last_inputter(before, updated_by, settings.capacity_admin_set)
 
     with get_conn() as conn:
         conn.execute("""
             INSERT INTO capacity_input
-                (item_no, sheet, schedule, is_done, evidence, note, updated_by, owner,
-                 is_excluded, exclude_reason, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
+                (item_no, sheet, schedule, is_done, evidence, note, updated_by, last_inputter,
+                 owner, is_excluded, exclude_reason, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
             ON CONFLICT(item_no, sheet) DO UPDATE SET
                 schedule       = excluded.schedule,
                 is_done        = excluded.is_done,
                 evidence       = excluded.evidence,
                 note           = excluded.note,
                 updated_by     = excluded.updated_by,
+                last_inputter  = excluded.last_inputter,
                 owner          = COALESCE(excluded.owner, capacity_input.owner),
                 is_excluded    = COALESCE(excluded.is_excluded, capacity_input.is_excluded),
                 exclude_reason = COALESCE(excluded.exclude_reason, capacity_input.exclude_reason),
                 updated_at     = datetime('now', 'localtime')
         """, (
-            item_no, sheet, schedule, int(is_done), evidence, note, updated_by, owner,
+            item_no, sheet, schedule, int(is_done), evidence, note, updated_by, last_inputter, owner,
             int(excluded) if excluded is not None else None,
             exclude_reason,
         ))
@@ -407,6 +521,7 @@ def upsert_capacity_input(
                         (item_no, sheet, field, old_value, new_value, updated_by, updated_at)
                     VALUES (?, ?, ?, ?, ?, ?, datetime('now','localtime'))
                 """, (item_no, sheet, field, old_v, str(new_v), updated_by))
+    return {"last_inputter": last_inputter, "updated_by": updated_by}
 
 
 def get_logs(item_no: str | None = None, limit: int = 50) -> list[dict]:
@@ -594,31 +709,33 @@ def upsert_eos_input(
     owner: str | None = None,
     excluded: bool | None = None,
     exclude_reason: str | None = None,
-):
+)-> dict:
     """
     EoS 조치계획 입력/수정 (변경 이력 기록).
     owner/excluded/exclude_reason은 명시적으로 넘겼을 때만 갱신 - 일반 행 저장이
     이 값들을 안 넘기더라도 덮어써지지 않게 한다.
     """
     before = get_eos_input(item_no)
+    last_inputter = _next_last_inputter(before, updated_by, settings.eos_admin_set)
 
     with get_conn() as conn:
         conn.execute("""
             INSERT INTO eos_input
-                (item_no, schedule, is_done, evidence, note, updated_by, owner,
-                 is_excluded, exclude_reason, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
+                (item_no, schedule, is_done, evidence, note, updated_by, last_inputter,
+                 owner, is_excluded, exclude_reason, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
             ON CONFLICT(item_no) DO UPDATE SET
                 schedule       = excluded.schedule,
                 is_done        = excluded.is_done,
                 evidence       = excluded.evidence,
                 note           = excluded.note,
                 updated_by     = excluded.updated_by,
+                last_inputter  = excluded.last_inputter,
                 owner          = COALESCE(excluded.owner, eos_input.owner),
                 is_excluded    = COALESCE(excluded.is_excluded, eos_input.is_excluded),
                 exclude_reason = COALESCE(excluded.exclude_reason, eos_input.exclude_reason),
                 updated_at     = datetime('now', 'localtime')
-        """, (item_no, schedule, int(is_done), evidence, note, updated_by, owner,
+        """, (item_no, schedule, int(is_done), evidence, note, updated_by, last_inputter, owner,
               int(excluded) if excluded is not None else None, exclude_reason))
 
         new_vals = {
@@ -639,6 +756,7 @@ def upsert_eos_input(
                         (item_no, field, old_value, new_value, updated_by, updated_at)
                     VALUES (?, ?, ?, ?, ?, datetime('now','localtime'))
                 """, (item_no, field, old_v, str(new_v), updated_by))
+    return {"last_inputter": last_inputter, "updated_by": updated_by}
 
 
 def log_eos_remind(
@@ -818,17 +936,20 @@ def upsert_kernel_input(
     owner: str | None = None,
     is_excluded: bool | None = None,
     exclude_reason: str | None = None,
-):
+)-> dict:
     """
     웹 입력 저장. owner/is_excluded/exclude_reason 은 None이면 기존 값을 유지한다
     (담당자 수정과 제외 처리가 서로의 값을 지우지 않도록).
     """
+    before = get_kernel_input(item_no)
+    last_inputter = _next_last_inputter(before, updated_by, settings.kernel_admin_set)
+
     with get_conn() as conn:
         conn.execute("""
             INSERT INTO kernel_input
                 (item_no, schedule, is_done, evidence, note, owner,
-                 is_excluded, exclude_reason, updated_by, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
+                 is_excluded, exclude_reason, updated_by, last_inputter, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
             ON CONFLICT(item_no) DO UPDATE SET
                 schedule       = excluded.schedule,
                 is_done        = excluded.is_done,
@@ -838,9 +959,11 @@ def upsert_kernel_input(
                 is_excluded    = COALESCE(excluded.is_excluded, kernel_input.is_excluded),
                 exclude_reason = COALESCE(excluded.exclude_reason, kernel_input.exclude_reason),
                 updated_by     = excluded.updated_by,
+                last_inputter  = excluded.last_inputter,
                 updated_at     = datetime('now', 'localtime')
         """, (
             item_no, schedule, int(is_done), evidence, note, owner,
             None if is_excluded is None else int(is_excluded),
-            exclude_reason, updated_by,
+            exclude_reason, updated_by, last_inputter,
         ))
+    return {"last_inputter": last_inputter, "updated_by": updated_by}

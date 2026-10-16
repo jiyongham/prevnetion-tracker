@@ -113,6 +113,7 @@ def load_kernel_items_merged(scope: str = "dev", excel_path: str | None = None) 
         item["evidence"] = ""
         item["note"] = ""
         item["updated_by"] = ""
+        item["last_inputter"] = ""
         item["updated_at"] = ""
 
         if not db:
@@ -132,6 +133,7 @@ def load_kernel_items_merged(scope: str = "dev", excel_path: str | None = None) 
         item["evidence"] = db.get("evidence") or ""
         item["note"] = db.get("note") or ""
         item["updated_by"] = db.get("updated_by") or ""
+        item["last_inputter"] = db.get("last_inputter") or ""
         item["updated_at"] = db.get("updated_at") or ""
 
     return items

@@ -297,7 +297,7 @@ async def api_capacity_save(request: Request):
     updated_by = require_updated_by(data.get("updated_by", ""))
     is_done = _resolve_capacity_is_done(item_no, sheet, bool(data.get("is_done")), updated_by)
     owner = resolve_owner(data.get("owner", ""), updated_by, settings.capacity_admin_set)
-    upsert_capacity_input(
+    saved = upsert_capacity_input(
         item_no=item_no,
         sheet=sheet,
         schedule=data.get("schedule", "").strip(),
@@ -307,7 +307,7 @@ async def api_capacity_save(request: Request):
         updated_by=updated_by,
         owner=owner,
     )
-    return JSONResponse({"ok": True})
+    return JSONResponse({"ok": True, **saved})
 
 
 @router.post("/api/capacity/bulk-save")

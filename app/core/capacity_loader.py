@@ -120,10 +120,12 @@ def load_capacity_items_merged(sheet: str, excel_path: str | None = None) -> lis
 
             item["note"] = db.get("note", "")
             item["updated_by"] = db.get("updated_by", "")
+            item["last_inputter"] = db.get("last_inputter", "")
             item["updated_at"] = db.get("updated_at", "")
         else:
             item["note"] = ""
             item["updated_by"] = ""
+            item["last_inputter"] = ""
             item["updated_at"] = ""
 
         # 웹에서 명시적으로 제외/해제한 적이 있으면 그 값이 엑셀보다 우선한다.

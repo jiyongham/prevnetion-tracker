@@ -3,6 +3,8 @@ import re
 from datetime import date, timedelta
 
 from app.config import settings
+from app.core.date_utils import parse_schedule
+from app.services.completion import approx_schedule
 
 # 두 글자 성 (성 제외 시 오인 방지용)
 TWO_CHAR_SURNAMES = {"남궁", "선우", "황보", "제갈", "사공", "서문", "독고", "동방"}
@@ -12,6 +14,7 @@ TWO_CHAR_SURNAMES = {"남궁", "선우", "황보", "제갈", "사공", "서문",
 # - 괄호 안의 쉼표('홍길동(A사, B사)')는 나누지 않는다.
 # - 슬래시는 구분자가 아니다 ('UI/UX팀'처럼 팀명에 들어간다).
 _OWNER_SPLIT_RE = re.compile(r"\|+|,(?![^(]*\))")
+_MONTH_YEAR_HINT_RE = re.compile(r"(?:(\d{2,4})\s*년\s*)?(\d{1,2})\s*월")
 
 
 def parse_owners(cell: str) -> list[dict]:
@@ -84,6 +87,39 @@ def has_schedule_hint(item: dict) -> bool:
     return bool((item.get("schedule_raw") or "").strip())
 
 
+def month_hint_of(raw: str, base_year: int) -> tuple[int, int] | None:
+    """월만 적힌 일정 힌트의 최종(가장 오른쪽) 연/월. '10월 → 11월'이면 11월."""
+    matches = _MONTH_YEAR_HINT_RE.findall(raw or "")
+    if not matches:
+        return None
+    year_part, month_part = matches[-1]
+    month = int(month_part)
+    if not 1 <= month <= 12:
+        return None
+    if year_part:
+        year = int(year_part)
+        year = year if year >= 1000 else 2000 + year
+    else:
+        year = base_year
+    return year, month
+
+
+def is_month_only_schedule(item: dict, base_year: int | None = None) -> bool:
+    """정확한 날짜 없이 월만 적힌 일정인지."""
+    raw = (item.get("schedule_raw") or "").strip()
+    if not raw:
+        return False
+    year = base_year or date.today().year
+    if parse_schedule(raw, year):
+        return False
+    return month_hint_of(raw, year) is not None and approx_schedule(raw, year) is not None
+
+
+def is_admin_confirmed_excluded(item: dict) -> bool:
+    raw = (item.get("schedule_raw") or "").strip().upper()
+    return raw == "X" and clean_name(item.get("updated_by") or "") in settings.admin_set
+
+
 def inputter_of(item: dict) -> str:
     """
     이 대상의 일정을 웹에 직접 입력한 사람(입력자). 엑셀 원본에서 온 일정이면 빈 값.
@@ -100,7 +136,7 @@ def inputter_of(item: dict) -> str:
     """
     if item.get("input_source") != "web":
         return ""
-    name = clean_name(item.get("updated_by") or "")
+    name = clean_name(item.get("last_inputter") or item.get("updated_by") or "")
     return "" if name in settings.admin_set else name
 
 
@@ -184,10 +220,24 @@ def greeting_suffix(items: list[dict], kind: str = "blank") -> str:
         ask = "다름아니라 공지드린 하반기 DR 훈련 하기 대략적인 일정만 등록되어 있어, 정확한 날짜로 확정해서 알려주실 수 있을까요?"
         closing = f"DR 모의훈련 진척 현황({settings.dashboard_url}/dr)에 기입 요청드립니다."
     elif kind == "upcoming":
-        ask = (
-            f"다름아니라 하기 DR 훈련 작업 일정이 {settings.pre_work_remind_days}일 이내로 다가와 "
-            "미리 안내드립니다. 변경 티켓 발행이 아직이시라면 사전 승인 기간을 고려해 준비 부탁드립니다."
-        )
+        has_month_only = any(is_month_only_schedule(item) for item in items)
+        has_exact = any(not is_month_only_schedule(item) for item in items)
+        if has_month_only and has_exact:
+            ask = (
+                f"다름아니라 하기 DR 훈련 작업 일정이 {settings.pre_work_remind_days}일 이내로 다가온 대상과 "
+                "이번 달 일정만 월 단위로 등록된 대상이 있어 미리 안내드립니다. 월 단위로 등록하신 대상은 정확한 날짜로 확정 부탁드리며, "
+                "변경 티켓 발행이 아직이시라면 사전 승인 기간을 고려해 준비 부탁드립니다."
+            )
+        elif has_month_only:
+            ask = (
+                "다름아니라 하기 DR 훈련 작업 일정이 이번 달로만 등록된 대상이 있어 미리 안내드립니다. "
+                "정확한 날짜로 확정 부탁드리며, 변경 티켓 발행이 아직이시라면 사전 승인 기간을 고려해 준비 부탁드립니다."
+            )
+        else:
+            ask = (
+                f"다름아니라 하기 DR 훈련 작업 일정이 {settings.pre_work_remind_days}일 이내로 다가와 "
+                "미리 안내드립니다. 변경 티켓 발행이 아직이시라면 사전 승인 기간을 고려해 준비 부탁드립니다."
+            )
         closing = f"진행 상황은 DR 모의훈련 진척 현황({settings.dashboard_url}/dr)에서 확인하실 수 있습니다."
     else:
         ask = "다름아니라 공지드린 하반기 DR 훈련 하기 계획된 일정 알 수 있을까요?"
@@ -306,10 +356,19 @@ def is_upcoming(item: dict, as_of: date, days: int) -> bool:
     매칭된 대상은 제외한다 - 낸 사람에게 또 내라고 보내면 안내가 아니라 잡음이 된다.
     완료된 대상도 당연히 제외.
     """
-    sched = item.get("schedule")
-    if not sched or item.get("completed") or item.get("jira_matched"):
+    if item.get("completed") or item.get("jira_matched") or is_admin_confirmed_excluded(item):
         return False
-    return as_of <= sched <= as_of + timedelta(days=days)
+    sched = item.get("schedule")
+    if sched:
+        return as_of <= sched <= as_of + timedelta(days=days)
+
+    if not is_month_only_schedule(item, as_of.year):
+        return False
+    hint = month_hint_of(item.get("schedule_raw") or "", as_of.year)
+    if not hint:
+        return False
+    year, month = hint
+    return year == as_of.year and month == as_of.month
 
 
 def _draft(
