@@ -29,7 +29,7 @@ from app.core.kernel_loader import SCOPE_LABELS, available_scopes, load_kernel_i
 from app.models.db import get_kernel_input, upsert_kernel_input
 from app.services.completion import group_by
 from app.services.kernel import calc_kernel_completion
-from app.services.kernel_patched import patched_hosts_for, read_patched_export
+from app.services.kernel_patched import patch_levels_for, read_patched_export
 from app.services.owner_check import collect_kernel_targets, find_owner_mismatches
 from app.web.deps import require_updated_by, resolve_owner, templates
 
@@ -54,8 +54,8 @@ def get_kernel_dashboard_data(scope: str, as_of: date):
     """
     items = load_kernel_items_merged(scope=scope)
     export = read_patched_export()
-    patched = patched_hosts_for(items, export) if export["rows"] else set()
-    result = calc_kernel_completion(items, as_of, patched_hosts=patched)
+    levels = patch_levels_for(items, export) if export["rows"] else {}
+    result = calc_kernel_completion(items, as_of, patch_levels=levels)
     return result, items, export
 
 
