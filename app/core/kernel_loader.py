@@ -2,8 +2,12 @@
 """
 OS 커널 패치 대상 엑셀 로드.
 
-다른 도메인과 달리 이 엑셀은 '자산 목록'만 온다 - 조치계획도 완료 컬럼도 없다.
-그래서 계획은 전적으로 화면에서 취합하고(kernel_input), 완료는 외부 근거로 판정한다.
+차수별 패치 계획서('커널 패치_N차.xlsx') 형식을 읽는다. 예전 자산목록 형식과 달리
+작업일자/완료여부가 엑셀 안에 들어 있어서, 계획과 수동 완료표기가 파일에서 바로 온다
+(웹 입력은 그 위에 덮어쓴다 - load_kernel_items_merged).
+
+컬럼은 머리글 이름으로 찾되 별칭을 넓게 둔다. 차수마다 사람이 새로 만드는 파일이라
+'담당자'/'시스템담당자'처럼 표기가 흔들리는데, 그때마다 코드를 고치면 차수를 못 넘긴다.
 
 개발기와 운영기가 별도 파일로 오므로 scope('dev'/'prod')로 파일을 가른다.
 운영기 파일이 아직 없으면 그 범위는 빈 목록이 되고 화면에서도 조용히 빠진다.
@@ -17,15 +21,48 @@ from app.models.db import get_kernel_inputs
 
 SHEET_NAME = "대상 서버(개발)"
 
+# 머리글 별칭 (공백 제거·소문자 비교). 앞쪽이 현재 차수 파일의 표기.
+_COLUMNS = {
+    "system_name": {"서버명", "시스템명", "name"},
+    "ip": {"ip", "ip주소", "아이피"},
+    "hostname": {"호스트명", "hostname", "host"},
+    "os": {"os", "운영체제"},
+    "ops_team": {"시스템운영팀", "운영팀", "app운영팀"},
+    "owner": {"담당자", "시스템담당자", "운영담당자"},
+    "server_part": {"서버관리파트", "관리파트", "서버파트"},
+    "schedule_raw": {"작업일자", "작업일", "일정", "조치계획"},
+    "work_time": {"시간", "작업시간"},
+    "excel_done": {"완료여부", "완료", "진행상태"},
+    "safer": {"safer삭제/설치", "safer삭제설치", "safer"},
+}
+
 SCOPE_LABELS = {"dev": "개발기", "prod": "운영기"}
 
 
-def _s(row, col: str) -> str:
-    """안전하게 문자열 추출"""
+def _s(row, col: str | None) -> str:
+    """안전하게 문자열 추출 (col이 None이면 그 컬럼이 파일에 없다는 뜻)"""
+    if not col:
+        return ""
     val = row.get(col, "")
     if pd.isna(val):
         return ""
-    return str(val).strip()
+    text = str(val).strip()
+    # pandas가 날짜/시간으로 읽으면 '2026-10-06 00:00:00'처럼 꼬리가 붙는다.
+    # 화면과 일정 파싱 모두 날짜만 쓰므로 여기서 잘라둔다.
+    return text[:10] if text.endswith("00:00:00") else text
+
+
+def _norm_header(h) -> str:
+    return str(h or "").replace(" ", "").strip().lower()
+
+
+def _resolve_columns(df: pd.DataFrame) -> dict[str, str | None]:
+    """{필드: 실제 컬럼명}. 못 찾은 필드는 None (그 값은 빈 문자열이 된다)."""
+    by_norm = {_norm_header(c): c for c in df.columns}
+    return {
+        field: next((by_norm[a] for a in aliases if a in by_norm), None)
+        for field, aliases in _COLUMNS.items()
+    }
 
 
 def excel_path_for(scope: str) -> str:
@@ -63,34 +100,44 @@ def load_kernel_items(scope: str = "dev", excel_path: str | None = None) -> list
     sheet = SHEET_NAME if SHEET_NAME in sheets else sheets[0]
     df = pd.read_excel(path, sheet_name=sheet, dtype=str)
 
+    cols = _resolve_columns(df)
+
     items = []
     for _, row in df.iterrows():
-        insight_key = _s(row, "Key")
-        name = _s(row, "서버명")
-        if not insight_key and not name:
+        name = _s(row, cols["system_name"])
+        hostname = _s(row, cols["hostname"])
+        if not name and not hostname:
             continue
 
+        # 이 파일엔 Insight Key가 없다. 호스트명이 가장 안정적인 키라 그걸 쓰고,
+        # 없으면 서버명으로 떨어진다 (웹 입력 DB가 이 값으로 묶이므로 차수가 바뀌어도
+        # 같은 서버면 같은 키가 나와야 한다).
+        key = hostname or name
+
         items.append({
-            "item_no": insight_key or name,
-            "no": insight_key or name,      # match_items_by_ip 가 item["no"] 로 색인한다
-            "insight_key": insight_key,
+            "item_no": key,
+            "no": key,                      # match_items_by_ip 가 item["no"] 로 색인한다
+            "insight_key": "",
             "scope": scope,
             "system_name": name,
-            "hostname": _s(row, "호스트명"),
-            "ip": _s(row, "IP"),
-            "vm_type": _s(row, "가상/일반 구분"),
-            "status_raw": _s(row, "상태"),
-            "center": _s(row, "센터구분"),
-            "company": _s(row, "자산구분"),
-            "ops_team": _s(row, "시스템운영팀"),
-            "owner": _s(row, "시스템담당자"),
-            "server_part": _s(row, "서버관리파트"),
-            "os": _s(row, "OS"),            # 엑셀 시점의 OS = 패치 전 기준값
-            "db": _s(row, "DB"),
-            "infra_type": _s(row, "통합인프라 종류"),
-            # 이 엑셀엔 계획/완료 컬럼이 없다. 값은 전부 DB 병합 단계에서 채워진다.
-            "schedule_raw": "",
-            "excel_done": "",
+            "hostname": hostname,
+            "ip": _s(row, cols["ip"]),
+            "vm_type": "",
+            "status_raw": "",
+            "center": "",
+            "company": "",
+            "ops_team": _s(row, cols["ops_team"]),
+            "owner": _s(row, cols["owner"]),
+            "server_part": _s(row, cols["server_part"]),
+            "os": _s(row, cols["os"]),      # 엑셀 시점의 OS = 패치 전 기준값
+            "db": "",
+            "infra_type": "",
+            "work_time": _s(row, cols["work_time"]),
+            "safer": _s(row, cols["safer"]),
+            # 차수 계획서에는 작업일자/완료여부가 들어 있다 (예전 자산목록 형식에는 없었다).
+            # 웹에서 입력한 값이 있으면 병합 단계에서 이 위에 덮어쓴다.
+            "schedule_raw": _s(row, cols["schedule_raw"]),
+            "excel_done": _s(row, cols["excel_done"]),
         })
 
     # 엑셀이 교체되면(mtime 변경) 예전 키는 쓸모없으니 지운다. 범위는 dev/prod 둘 다 남긴다.

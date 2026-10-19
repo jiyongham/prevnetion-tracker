@@ -130,6 +130,7 @@
         <tr>
           <th scope="col">시스템명</th><th scope="col">호스트명</th><th scope="col">운영팀</th><th scope="col">담당자</th>
           <th scope="col" style="width:130px">OS</th>
+          <th scope="col" style="width:150px">OS 패치 레벨</th>
           <th scope="col" style="width:90px">조치계획 ✏️</th>
           <th scope="col" style="width:50px">완료 ✏️</th>
           <th scope="col" style="width:130px">증적 ✏️</th>
@@ -153,6 +154,10 @@
                    aria-label="{{ d.system_name }} 담당자">
           </td>
           <td class="mono small">{{ d.os }}</td>
+          {# Polestar에서 읽은 현재 커널. 타겟과 나란히 봐야 왜 완료/미완료인지가 보인다. #}
+          <td class="mono small" title="{% if d.target_kernel %}타겟 {{ d.target_kernel }}{% else %}이 OS의 타겟이 설정에 없습니다{% endif %}">
+            {{ d.patch_level or "-" }}
+          </td>
 
           <td><input type="text" class="cell sched {{ 'edited' if d.input_source == 'web' else '' }}" value="{{ d.schedule_disp }}" placeholder="OO월"
                  aria-label="{{ d.system_name }} 조치계획"></td>
@@ -164,7 +169,8 @@
                  aria-label="{{ d.system_name }} 비고"></td>
 
           <td class="small">
-            {% if d.reason %}<span class="badge ok" title="{{ d.reason }}">{{ d.reason }}</span>
+            {% if d.reason %}
+              <span class="badge {{ 'ok' if d.completed else 'warn' }}" title="{{ d.reason }}">{{ d.reason }}</span>
             {% else %}<span class="muted">-</span>{% endif %}
           </td>
           <td>
