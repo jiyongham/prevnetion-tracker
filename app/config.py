@@ -62,16 +62,24 @@ class Settings(BaseSettings):
     # 화면에 탭이 생긴다 (경로가 비어 있거나 파일이 없으면 그 범위는 조용히 건너뛴다).
     kernel_dev_excel_path: str = "data/kernel_dev.xlsx"
     kernel_prod_excel_path: str = ""
-    # Polestar PQL 결과(= 타겟 패치레벨에 걸린 서버) 내보내기 파일.
-    # PQL이 값을 돌려주지 않아 "누가 패치됐나" 목록만 이 파일로 받는다.
+    # Polestar PQL 결과 내보내기 파일 (OS 패치 레벨 값이 들어 있는 엑셀).
     #
-    # 기본값을 비워둔 이유: 타겟 커널이 아직 확정되지 않았다. 임시로 써 본
-    # `config[OS 패치 레벨]="4.18.0-553%"` 결과는 그 커널을 쓰는 RHEL 8.10 서버가
-    # 통째로 걸려(대상 99대 중 88대) '패치 완료'가 아니라 '원래 그 버전'을 집어냈다.
-    # 즉 한 패턴으로는 배포판이 섞인 대상을 판정할 수 없다(8.x=4.18/9.x=5.14 계열).
-    # 타겟이 정해지면 OS별로 뽑아 합친 파일 경로를 .env에 넣는다. 그때까지는 비워
-    # 두어 수동 완료 체크만으로 판정한다 - 잘못된 근거로 완료가 부풀지 않도록.
+    # 예전엔 "패치된 서버 목록"으로만 썼다. 그때는 PQL이 값을 안 돌려준다고 봤고,
+    # 임시로 써 본 `config[OS 패치 레벨]="4.18.0-553%"` 결과는 그 커널을 쓰는
+    # RHEL 8.10 서버가 통째로 걸려(대상 99대 중 88대) '패치 완료'가 아니라 '원래 그
+    # 버전'을 집어냈다 - 한 패턴으로는 배포판이 섞인 대상을 판정할 수 없다.
+    #
+    # 지금은 내보내기에 OS 패치 레벨 값이 같이 나오므로, 목록에 있는지가 아니라
+    # 그 값이 서버 OS에 맞는 타겟 커널 이상인지로 판정한다(kernel.judge_kernel).
+    # 값 컬럼이 없는 예전 형식 파일이면 예전처럼 '목록에 있음 = 완료'로 떨어진다.
     kernel_patched_export_path: str = ""
+
+    # 커널 패치 타겟 버전 (RHEL 메이저 = 타겟 커널). 패치 차수마다 바뀌므로 설정으로 둔다.
+    # 8.x와 9.x는 커널 계열 자체가 달라(4.18 / 5.14) 하나로 묶을 수 없다.
+    kernel_target_versions: str = (
+        "8=kernel-4.18.0-553.164.1.el8_10,"
+        "9=kernel-5.14.0-687.49.1.el9_8"
+    )
 
     # 분모 판정에서 빠지지만 대상으로 넣어야 하는 예외 (Insight Key 콤마 구분).
     # EoS 대상(분모)은 '최초 산정 시 EOS 진행'이었는지로 정하는데(eos_loader.was_originally_target),
@@ -182,6 +190,17 @@ class Settings(BaseSettings):
     @property
     def eos_admin_set(self) -> set[str]:
         return {a.strip() for a in self.eos_admin_users.split(",") if a.strip()}
+
+    @property
+    def kernel_target_map(self) -> dict[str, str]:
+        """{RHEL 메이저: 타겟 커널}. 'KERNEL_TARGET_VERSIONS=8=kernel-...,9=kernel-...' 형식."""
+        targets: dict[str, str] = {}
+        for part in self.kernel_target_versions.split(","):
+            major, _, version = part.partition("=")
+            major, version = major.strip(), version.strip()
+            if major and version:
+                targets[major] = version
+        return targets
 
     @property
     def kernel_admin_set(self) -> set[str]:
