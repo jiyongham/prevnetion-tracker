@@ -25,7 +25,12 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 
 from app.config import settings
-from app.core.kernel_loader import SCOPE_LABELS, available_scopes, load_kernel_items_merged
+from app.core.kernel_loader import (
+    SCOPE_LABELS,
+    available_scopes,
+    describe_source as describe_kernel_source,
+    load_kernel_items_merged,
+)
 from app.models.db import get_kernel_input, upsert_kernel_input
 from app.services.completion import group_by
 from app.services.kernel import calc_kernel_completion
@@ -72,6 +77,10 @@ def kernel_dashboard(
 
     result, all_items, export = get_kernel_dashboard_data(scope, today)
     by_team = group_by(result, "ops_team")
+
+    # 0대로 뜰 때만 엑셀을 한 번 더 들여다본다 (파일이 없는지, 머리글이 안 맞는지).
+    # 평소엔 불필요한 재파싱이라 대상이 있으면 건너뛴다.
+    source_info = describe_kernel_source(scope) if not all_items else None
 
     details = result["details"]
     if team:
@@ -126,6 +135,8 @@ def kernel_dashboard(
         "admins": sorted(settings.kernel_admin_set),
         "patched_source": export["source"],
         "patched_rows": export["rows"],
+        "source_info": source_info,
+        "kernel_targets": settings.kernel_target_map,
     })
 
 
