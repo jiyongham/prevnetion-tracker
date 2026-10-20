@@ -12,12 +12,15 @@ OS 커널 패치 대상 엑셀 로드.
 개발기와 운영기가 별도 파일로 오므로 scope('dev'/'prod')로 파일을 가른다.
 운영기 파일이 아직 없으면 그 범위는 빈 목록이 되고 화면에서도 조용히 빠진다.
 """
+import logging
 from pathlib import Path
 
 import pandas as pd
 
 from app.config import settings
 from app.models.db import get_kernel_inputs
+
+logger = logging.getLogger(__name__)
 
 SHEET_NAME = "대상 서버(개발)"
 
@@ -183,12 +186,85 @@ def describe_source(scope: str = "dev") -> dict:
     return info
 
 
+def _batch_files(pattern: str) -> list[Path]:
+    """
+    차수 계획서 파일 목록 (이름순).
+
+    '~$...'는 엑셀이 파일을 열어둘 때 만드는 잠금 파일이다. 내용이 스프레드시트가
+    아니라서 읽으면 깨지는데, 사람이 파일을 열어둔 채로 복사하면 같이 딸려 들어온다.
+    """
+    if not pattern:
+        return []
+    return sorted(p for p in Path().glob(pattern) if not p.name.startswith("~$"))
+
+
+def load_kernel_batches(pattern: str | None = None) -> dict[str, dict]:
+    """
+    주별 차수 계획서들 -> {호스트명(소문자): {작업일자/시간/완료여부/Safer/차수파일}}
+
+    전체 대상 목록(kernel_dev.xlsx)에는 일정도 완료여부도 없다. 그 주에 할 서버만
+    추려 작업일자와 완료여부를 적는 건 차수 파일('커널_패치_N차.xlsx')이다. 그래서
+    대상(분모)은 전체 목록이 정하고, 일정·완료는 여기서 얹는다.
+
+    같은 서버가 여러 차수에 나오면 뒤 차수(파일명 정렬 기준)가 이긴다 - 재작업이면
+    나중 기록이 최신이다.
+    """
+    raw = pattern if pattern is not None else settings.kernel_batch_glob
+    if not raw:
+        return {}
+
+    merged: dict[str, dict] = {}
+    for path in _batch_files(raw):
+        try:
+            sheets = pd.ExcelFile(path).sheet_names
+            df = pd.read_excel(path, sheet_name=sheets[0], dtype=str)
+        except Exception as e:
+            logger.warning(f"차수 계획서를 읽지 못했습니다 ({path.name}): {e}")
+            continue
+
+        cols = _resolve_columns(df)
+        for _, row in df.iterrows():
+            host = _s(row, cols["hostname"]).lower() or _s(row, cols["system_name"]).lower()
+            if not host:
+                continue
+            merged[host] = {
+                "schedule_raw": _s(row, cols["schedule_raw"]),
+                "work_time": _s(row, cols["work_time"]),
+                "excel_done": _s(row, cols["excel_done"]),
+                "safer": _s(row, cols["safer"]),
+                "batch": path.stem,
+            }
+    return merged
+
+
+def describe_batches(pattern: str | None = None) -> dict:
+    """차수 계획서를 몇 장 읽었고 몇 대가 걸렸는지 (화면 안내용)"""
+    raw = pattern if pattern is not None else settings.kernel_batch_glob
+    files = [p.name for p in _batch_files(raw)]
+    return {"pattern": raw or "(설정 없음)", "files": files,
+            "hosts": len(load_kernel_batches(raw)) if files else 0}
+
+
 def load_kernel_items_merged(scope: str = "dev", excel_path: str | None = None) -> list[dict]:
-    """엑셀 + 웹 입력값 병합 (웹 값이 우선). 계획·완료·제외는 전부 웹에서 온다."""
+    """
+    전체 대상 + 차수 계획서 + 웹 입력 병합.
+
+    우선순위는 전체 대상 < 차수 계획서 < 웹 입력이다. 사람이 화면에서 직접 고친 값이
+    항상 마지막에 남아야 한다.
+    """
     items = load_kernel_items(scope=scope, excel_path=excel_path)
     inputs = get_kernel_inputs()
+    batches = load_kernel_batches()
 
     for item in items:
+        # 차수 계획서가 있으면 그 주 일정/완료를 얹는다 (전체 대상 목록엔 없는 값).
+        batch = batches.get((item.get("hostname") or "").strip().lower())
+        if batch:
+            item["batch"] = batch["batch"]
+            for field in ("schedule_raw", "work_time", "excel_done", "safer"):
+                if batch[field]:
+                    item[field] = batch[field]
+
         db = inputs.get(item["item_no"])
         item["input_source"] = "excel"
         item["is_excluded"] = False
