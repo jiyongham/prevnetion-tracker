@@ -61,6 +61,12 @@ class Settings(BaseSettings):
     # OS 커널 패치 - 개발기/운영기가 별도 파일로 온다. 운영기는 파일이 준비되면 경로만 채우면
     # 화면에 탭이 생긴다 (경로가 비어 있거나 파일이 없으면 그 범위는 조용히 건너뛴다).
     kernel_dev_excel_path: str = "data/kernel_dev.xlsx"
+    # 주별 차수 계획서('커널_패치_1차.xlsx', '..._2차.xlsx' ...). 위 전체 대상 목록에서
+    # 그 주에 할 서버만 추려 작업일자/완료여부를 적은 파일이라, 대상(분모)은 전체 목록이
+    # 정하고 일정·완료는 차수 파일이 채운다. 여러 장이라 glob으로 받는다.
+    # 이름에 공백/언더스코어가 섞여 들어온다 ('커널_패치_1차.xlsx'로 만들어도
+    # kubectl cp 과정에서 '커널 패치_1차.xlsx'로 들어간 적이 있다). 둘 다 잡는다.
+    kernel_batch_glob: str = "data/커널*패치*.xlsx"
     kernel_prod_excel_path: str = ""
     # Polestar PQL 결과 내보내기 파일 (OS 패치 레벨 값이 들어 있는 엑셀).
     #

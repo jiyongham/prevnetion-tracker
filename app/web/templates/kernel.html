@@ -51,6 +51,20 @@
   </div>
   {% endif %}
 
+  {# 전체 대상 목록엔 일정/완료가 없다. 그 값은 주별 차수 계획서에서 온다. #}
+  {% if batch_info and batch_info.files %}
+  <div class="alert">
+    🗂 주별 차수 계획서 <strong>{{ batch_info.files|length }}장</strong>
+    ({{ batch_info.files | join(", ") }}) 에서 <strong>{{ batch_info.hosts }}대</strong>의
+    작업일자·완료여부를 반영했습니다.
+  </div>
+  {% elif not source_info %}
+  <div class="alert alert-warn">
+    ⚠️ 주별 차수 계획서를 찾지 못했습니다 (<span class="mono">{{ batch_info.pattern }}</span>).
+    전체 대상 목록에는 작업일자·완료여부가 없어서, 차수 파일이 없으면 전부 "미계획"으로 뜹니다.
+  </div>
+  {% endif %}
+
   {% if patched_source %}
   <div class="alert">
     📄 완료 근거 파일 <strong>{{ patched_source }}</strong> ({{ patched_rows }}행) 반영 중 —
