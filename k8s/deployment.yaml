@@ -55,7 +55,8 @@ spec:
       containers:
         - name: dr-tracker
           image: ghcr.io/jiyongham/prevention-tracker:latest
-          imagePullPolicy: Always   # 레지스트리에서 최신 이미지를 매번 pull받기 위해 Always 사용 - latest 태그는 IfNotPresent로는 캐시된 옛 이미지를 계속 쓰게 됨
+          imagePullPolicy: IfNotPresent
+          #Always   # 레지스트리에서 최신 이미지를 매번 pull받기 위해 Always 사용 - latest 태그는 IfNotPresent로는 캐시된 옛 이미지를 계속 쓰게 됨
           ports:
             - containerPort: 8000
           envFrom:
