@@ -28,6 +28,7 @@ from app.config import settings
 from app.core.kernel_loader import (
     SCOPE_LABELS,
     available_scopes,
+    describe_batches as describe_kernel_batches,
     describe_source as describe_kernel_source,
     load_kernel_items_merged,
 )
@@ -136,6 +137,7 @@ def kernel_dashboard(
         "patched_source": export["source"],
         "patched_rows": export["rows"],
         "source_info": source_info,
+        "batch_info": describe_kernel_batches(),
         "kernel_targets": settings.kernel_target_map,
     })
 
