@@ -26,16 +26,44 @@
   </div>
   {% endif %}
 
-  {% if not patched_source %}
+  {# 대상이 0대일 때 원인을 그대로 보여준다. 파일이 없는 것과 머리글이 안 맞아
+     모든 행이 건너뛰어진 것은 화면에서 똑같이 '0대'로 보여 구분이 안 됐다. #}
+  {% if source_info %}
   <div class="alert alert-warn">
-    ⚠️ 타겟 커널 버전이 아직 확정되지 않아 <strong>완료는 관리자 수동 체크로만</strong> 집계됩니다.
-    Polestar PQL 결과를 근거로 쓰려면 배포판별(RHEL 8.x / 9.x) 타겟 커널이 먼저 정해져야 합니다 —
-    한 패턴으로 뽑으면 패치된 서버가 아니라 그 커널을 쓰는 배포판이 통째로 걸립니다.
+    ⚠️ <strong>대상 엑셀을 읽지 못했습니다.</strong>
+    찾는 경로: <span class="mono">{{ source_info.path }}</span>
+    {% if not source_info.exists %}
+      — <strong>파일이 없습니다.</strong>
+      이 경로에 파일을 올리거나, 파일명이 다르면 <span class="mono">KERNEL_DEV_EXCEL_PATH</span>를
+      실제 이름으로 바꿔주세요.
+    {% elif source_info.error %}
+      — 파일은 있는데 열지 못했습니다: {{ source_info.error[:200] }}
+    {% elif not source_info.rows %}
+      — 시트 <span class="mono">{{ source_info.sheet }}</span>에 데이터 행이 없습니다.
+      (시트 목록: {{ source_info.sheets | join(", ") }})
+    {% else %}
+      — 시트 <span class="mono">{{ source_info.sheet }}</span>에서 {{ source_info.rows }}행을 읽었지만
+      <strong>서버명·호스트명을 못 찾아</strong> 전부 건너뛰었습니다.
+      <br>파일 머리글: <span class="mono">{{ source_info.headers | join(" | ") }}</span>
+      <br>찾은 컬럼:
+      {% for field, col in source_info.columns.items() %}<span class="mono">{{ field }}={{ col or "없음" }}</span>{% if not loop.last %} · {% endif %}{% endfor %}
+    {% endif %}
   </div>
-  {% else %}
+  {% endif %}
+
+  {% if patched_source %}
   <div class="alert">
     📄 완료 근거 파일 <strong>{{ patched_source }}</strong> ({{ patched_rows }}행) 반영 중 —
-    이 목록에 있는 서버는 "패치 확인"으로 자동 완료 처리됩니다.
+    OS 패치 레벨이 타겟 커널 이상이면 "패치 확인"으로 자동 완료 처리됩니다.
+    {% if kernel_targets %}타겟:
+      {% for major, ver in kernel_targets.items() %}<span class="mono">RHEL {{ major }}.x → {{ ver }}</span>{% if not loop.last %} · {% endif %}{% endfor %}
+    {% endif %}
+  </div>
+  {% else %}
+  <div class="alert alert-warn">
+    ⚠️ Polestar 패치 레벨 파일이 없어 <strong>완료는 엑셀 완료여부·수동 체크로만</strong> 집계됩니다.
+    PQL 결과를 내보내 <span class="mono">KERNEL_PATCHED_EXPORT_PATH</span>에 지정하면
+    OS 패치 레벨을 타겟 커널과 비교해 자동 판정합니다.
   </div>
   {% endif %}
 

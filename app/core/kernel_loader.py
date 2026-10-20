@@ -147,6 +147,42 @@ def load_kernel_items(scope: str = "dev", excel_path: str | None = None) -> list
     return [dict(i) for i in items]
 
 
+def describe_source(scope: str = "dev") -> dict:
+    """
+    엑셀을 못 읽거나 0건일 때 '왜'를 화면에 말해주기 위한 정보.
+
+    대상이 0대로 뜨는 원인은 대부분 둘 중 하나다 - 파일이 그 경로에 없거나(이름이
+    다르거나 볼륨에 안 올라갔거나), 머리글이 달라 모든 행이 건너뛰어진 것. 그런데
+    화면에서는 둘 다 똑같이 '0대'로만 보여서 어느 쪽인지 알 수가 없었다.
+    """
+    raw = excel_path_for(scope)
+    info = {
+        "path": raw or "(설정 없음)", "exists": False, "sheet": "",
+        "sheets": [], "columns": {}, "headers": [], "rows": 0, "error": "",
+    }
+    if not raw:
+        return info
+
+    path = Path(raw)
+    info["path"] = str(path)
+    if not path.exists():
+        return info
+    info["exists"] = True
+
+    try:
+        sheets = pd.ExcelFile(path).sheet_names
+        info["sheets"] = list(sheets)
+        sheet = SHEET_NAME if SHEET_NAME in sheets else sheets[0]
+        info["sheet"] = sheet
+        df = pd.read_excel(path, sheet_name=sheet, dtype=str)
+        info["headers"] = [str(c) for c in df.columns]
+        info["columns"] = _resolve_columns(df)
+        info["rows"] = len(df)
+    except Exception as e:
+        info["error"] = str(e)
+    return info
+
+
 def load_kernel_items_merged(scope: str = "dev", excel_path: str | None = None) -> list[dict]:
     """엑셀 + 웹 입력값 병합 (웹 값이 우선). 계획·완료·제외는 전부 웹에서 온다."""
     items = load_kernel_items(scope=scope, excel_path=excel_path)
