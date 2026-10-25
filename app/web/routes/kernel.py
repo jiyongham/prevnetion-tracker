@@ -6,11 +6,9 @@ OS 커널 패치(보안 취약점 CVSS 8~9점대) 진척 라우트.
 
 1) 계획이 엑셀에 없다. 이 엑셀은 자산 목록만 오고 조치계획·완료 컬럼이 아예 없어서
    계획은 전부 이 화면에서 취합한다 (kernel_input 테이블).
-2) 완료 근거가 아직 자동화되지 않았다. Polestar REST에 OS 패치 레벨 필드가 없고,
-   화면 PQL은 거르기만 되고 값을 안 준다. 게다가 타겟 커널이 확정되기 전에는
-   PQL 결과가 '패치된 서버'가 아니라 '그 커널을 쓰는 배포판'을 집어낸다
-   (자세한 경위는 config.kernel_patched_export_path 주석). 그래서 지금은 관리자의
-   수동 완료 체크만으로 판정하고, 근거 파일이 준비되면 경로만 채우면 자동으로 합쳐진다.
+2) 완료 근거는 Polestar REST 뷰를 우선 쓰고, 실패하면 PQL 내보내기 엑셀로 폴백한다.
+   단일 PQL 패턴은 '패치 완료'가 아니라 '그 커널을 쓰는 배포판'을 통째로 잡을 수 있어
+   목록 유무가 아니라 현재 커널 버전이 타겟 이상인지로 판정한다.
 
 개발기/운영기는 별도 파일로 오므로 scope 탭으로 가른다. 운영기 파일이 없으면 그 탭은
 아예 나오지 않는다 - 빈 화면으로 들어가 "왜 0건이지" 하는 일이 없게.
@@ -35,7 +33,7 @@ from app.core.kernel_loader import (
 from app.models.db import get_kernel_input, upsert_kernel_input
 from app.services.completion import group_by
 from app.services.kernel import calc_kernel_completion
-from app.services.kernel_patched import patch_levels_for, read_patched_export
+from app.services.kernel_patched import get_patched_source, patch_levels_for
 from app.services.owner_check import collect_kernel_targets, find_owner_mismatches
 from app.web.deps import require_updated_by, resolve_owner, templates
 
@@ -59,10 +57,10 @@ def get_kernel_dashboard_data(scope: str, as_of: date):
     다시 읽으면 그 사이 파일이 갱신될 경우 집계와 목록의 기준이 어긋난다.
     """
     items = load_kernel_items_merged(scope=scope)
-    export = read_patched_export()
-    levels = patch_levels_for(items, export) if export["rows"] else {}
+    source = get_patched_source()
+    levels = patch_levels_for(items, source) if source["rows"] else {}
     result = calc_kernel_completion(items, as_of, patch_levels=levels)
-    return result, items, export
+    return result, items, source
 
 
 @router.get("/kernel", response_class=HTMLResponse)

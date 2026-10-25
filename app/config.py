@@ -1,4 +1,7 @@
 # app/config.py
+import re
+
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -68,16 +71,13 @@ class Settings(BaseSettings):
     # kubectl cp 과정에서 '커널 패치_1차.xlsx'로 들어간 적이 있다). 둘 다 잡는다.
     kernel_batch_glob: str = "data/커널*패치*.xlsx"
     kernel_prod_excel_path: str = ""
+    # Polestar 커널 패치 REST 뷰. 비어 있으면 네트워크 호출 없이 엑셀만 쓴다.
+    # `V_KERNEL_PATCH` / `KERNEL_PATCH` 둘 다 받을 수 있고 저장 시 앞의 `V_`는 뗀다.
+    kernel_polestar_view: str = ""
     # Polestar PQL 결과 내보내기 파일 (OS 패치 레벨 값이 들어 있는 엑셀).
-    #
-    # 예전엔 "패치된 서버 목록"으로만 썼다. 그때는 PQL이 값을 안 돌려준다고 봤고,
-    # 임시로 써 본 `config[OS 패치 레벨]="4.18.0-553%"` 결과는 그 커널을 쓰는
-    # RHEL 8.10 서버가 통째로 걸려(대상 99대 중 88대) '패치 완료'가 아니라 '원래 그
-    # 버전'을 집어냈다 - 한 패턴으로는 배포판이 섞인 대상을 판정할 수 없다.
-    #
-    # 지금은 내보내기에 OS 패치 레벨 값이 같이 나오므로, 목록에 있는지가 아니라
-    # 그 값이 서버 OS에 맞는 타겟 커널 이상인지로 판정한다(kernel.judge_kernel).
-    # 값 컬럼이 없는 예전 형식 파일이면 예전처럼 '목록에 있음 = 완료'로 떨어진다.
+    # 커널 패치는 REST를 우선 시도하고, HTTP/JSON/페이로드 오류나 유효 버전 0건이면
+    # 이 파일로 폴백한다. 값 컬럼이 없는 예전 형식 파일은 여전히 '목록에 있음 = 완료'로
+    # 동작하지만, 값 컬럼이 있는데 값이 비어 있는 행은 완료로 보지 않는다.
     kernel_patched_export_path: str = ""
 
     # 커널 패치 타겟 버전 (RHEL 메이저 = 타겟 커널). 패치 차수마다 바뀌므로 설정으로 둔다.
@@ -217,6 +217,18 @@ class Settings(BaseSettings):
     @property
     def eos_extra_target_set(self) -> set[str]:
         return {k.strip() for k in self.eos_extra_target_keys.split(",") if k.strip()}
+
+    @field_validator("kernel_polestar_view", mode="before")
+    @classmethod
+    def _validate_kernel_polestar_view(cls, value: str | None) -> str:
+        text = str(value or "").strip()
+        if not text:
+            return ""
+        if text.upper().startswith("V_"):
+            text = text[2:]
+        if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*", text):
+            raise ValueError("kernel_polestar_view must be a valid Oracle identifier")
+        return text
 
 
 settings = Settings()

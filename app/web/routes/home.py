@@ -23,6 +23,7 @@ from app.services import dr_data, eos_data
 from app.services.completion import calc_completion
 from app.services.eos import calc_eos_completion
 from app.services.kernel import calc_kernel_completion
+from app.services.kernel_patched import get_patched_source, patch_levels_for
 from app.services.report import get_current_half
 from app.services.portal_changes import get_portal_recent_changes
 from app.web.deps import templates
@@ -62,8 +63,10 @@ def _kernel_summary(today: date) -> tuple[int, int, str | None]:
     """준비된 범위(개발기/운영기)를 합산한다. 파일이 하나도 없으면 0건이 되고
     카드에는 '대상 없음'으로 뜬다 - 운영기 확대 전까지는 개발기만 잡힌다."""
     done = total = 0
+    source = get_patched_source()
     for scope in available_scopes():
-        result = calc_kernel_completion(load_kernel_items_merged(scope=scope), today)
+        items = load_kernel_items_merged(scope=scope)
+        result = calc_kernel_completion(items, today, patch_levels=patch_levels_for(items, source))
         done += result["done"]
         total += result["total"]
     return done, total, None
