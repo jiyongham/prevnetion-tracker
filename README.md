@@ -33,7 +33,7 @@ Python 3.12 · FastAPI · Jinja2 · SQLite · APScheduler · Kubernetes
 | **DR훈련** | DR 모의훈련 (실전환 / 무중단) | 해당 반기 JIRA 티켓 |
 | **용량관리** | 임계치 초과 디스크 증설 (DATA / ARCH) | 증설 완료 티켓·표기 |
 | **EoS** | 노후 OS/DB 전환 | CMDB 자산명 `_OLD` 전환 ∪ JIRA 티켓 |
-| **커널패치** | 보안 취약점(CVSS 8~9점대) 커널 패치 | 관리자 확인 (자동 판정 준비 중) |
+| **커널패치** | 보안 취약점(CVSS 8~9점대) 커널 패치 | Polestar REST 뷰 우선 ∪ 실패 시 엑셀 폴백 ∪ 관리자 확인 |
 
 ---
 
@@ -226,6 +226,30 @@ python -m pip install -r requirements.txt -r requirements-dev.txt
 python -m pytest -q
 ```
 
+커널패치 REST 뷰를 쓸 때는 새 뷰를 권장한다(기존 뷰 덮어쓰기 금지, 실제 운영 반영 전 권한/소유자 승인 필요).
+
+```sql
+CREATE VIEW V_KERNEL_PATCH AS
+SELECT
+    id AS RESOURCEID,
+    hostname AS HOSTNAME,
+    ipaddress AS IPADDRESS,
+    versios AS PATCHLEVEL
+FROM CMM_RESOURCE;
+```
+
+- 실제 사용자 확인 컬럼명은 `versios` 이며 오타 그대로 사용한다.
+- 앱 설정 `KERNEL_POLESTAR_VIEW` 에는 `V_KERNEL_PATCH` 또는 `KERNEL_PATCH` 둘 다 넣을 수 있다.
+- 같은 EMS 스키마/권한으로 `/rest/measure/vt/{view}/all` 에서 조회 가능해야 한다.
+- 이 저장소는 실제 Oracle/EMS 연동을 라이브로 검증하지 않았고, 테스트는 모킹만 수행한다.
+
+예시 호출:
+
+```bash
+curl -H "Accept: application/json" \
+  "$POLESTAR_URL/rest/measure/vt/KERNEL_PATCH/all"
+```
+
 `.env`는 gitignore 대상이며 인증정보·에이전트 키가 모두 여기 들어간다. Kubernetes 배포 시 **Secret과 코드를 반드시 함께 갱신해야 한다** — 한쪽만 배포되면 설정 로딩에서 실패하거나, 더 나쁘게는 필드 ID가 비어 조용히 잘못된 숫자가 나간다.
 
 ---
@@ -263,6 +287,6 @@ GHCR 이미지는 현재 public으로 운영해 Kubernetes가 익명으로 pull�
 
 ## 알려진 한계
 
-- **커널패치 자동 판정 미완.** 패치 레벨이 EMS REST API에 노출되지 않는다(인터페이스 정의서 108개 엔드포인트 전수 확인). 화면의 PQL 검색은 거르기만 되고 값을 돌려주지 않으며, 배포판마다 타겟 커널이 달라 단일 패턴으로는 판정할 수 없다. 현재는 관리자 확인으로 집계하고, 근거 파일 경로만 채우면 자동 판정이 붙도록 판정부를 분리해 두었다.
+- **커널패치 외부 연동은 운영 검증 전 단계다.** 앱은 `/rest/measure/vt/{view}/all` 형식의 Polestar REST 뷰를 우선 사용하고, HTTP/JSON/페이로드 오류나 유효 버전 0건일 때만 엑셀로 폴백한다. 자동 후보 탐색은 하지 않으며 실제 EMS/Oracle 연결은 테스트에서 모킹으로만 검증한다.
 - **엑셀이 계약이다.** 컬럼명이 바뀌면 로더를 고쳐야 한다. 머리글은 별칭 집합으로 찾아 어느 정도 흡수하지만 완전하지 않다.
 - **자동화 테스트의 범위.** pytest로 JIRA 페이지네이션·잘린 응답 처리, 매칭, H1/H2 규칙, 필터, 리마인드, 관리자 표시, 대시보드 집계·템플릿 렌더링을 검증한다. 외부 연동은 모킹으로 대체하므로 실제 JIRA/Polestar/Confluence 통신이나 브라우저 시각 동작까지 보장하지 않는다. 테스트에는 임시 엑셀·DB를 사용하고 운영 `data/`와 `.env`에 의존하지 않아야 한다.

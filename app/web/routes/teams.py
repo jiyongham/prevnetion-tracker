@@ -28,6 +28,7 @@ from app.services.capacity import calc_capacity_completion
 from app.services.completion import calc_completion, group_by
 from app.services.eos import calc_eos_completion
 from app.services.kernel import calc_kernel_completion
+from app.services.kernel_patched import get_patched_source, patch_levels_for
 from app.services.report import get_current_half
 from app.web.deps import templates
 from app.web.routes.capacity import get_capacity_dashboard_data
@@ -79,9 +80,11 @@ def _kernel_part(today: date) -> tuple[dict, list[dict]]:
     """준비된 범위(개발기/운영기)를 합산. 운영기 확대 전에는 개발기 하나뿐이다."""
     merged: dict[str, dict] = {}
     parts = []
+    source = get_patched_source()
     for scope in available_scopes():
         label = KERNEL_SCOPE_LABELS.get(scope, scope)
-        result = calc_kernel_completion(load_kernel_items_merged(scope=scope), today)
+        items = load_kernel_items_merged(scope=scope)
+        result = calc_kernel_completion(items, today, patch_levels=patch_levels_for(items, source))
         for team, v in _by_team(result).items():
             bucket = merged.setdefault(team, {"total": 0, "done": 0, "split": {}})
             bucket["total"] += v["total"]
