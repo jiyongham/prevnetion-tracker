@@ -97,7 +97,7 @@ def judge_kernel(
 
     host = (item.get("hostname") or "").strip().lower()
     if not patch_levels or host not in patch_levels:
-        return False, ""
+        return False, "확인 불가 (현재 커널 정보 없음 / 호스트명·IP 매핑 확인 필요)"
 
     level = patch_levels[host]
     if not level:
@@ -107,6 +107,8 @@ def judge_kernel(
     if not target:
         # OS를 못 읽었거나 그 계열 타겟이 설정에 없다. 값을 보여주고 사람이 판단하게 둔다.
         return False, f"타겟 미설정 (OS {item.get('os') or '불명'}, 현재 {level})"
+    if not _KERNEL_RE.search(normalize_kernel(level)):
+        return False, f"확인 불가 (커널 버전 형식 아님: {level})"
     if meets_target(level, target):
         return True, f"패치 확인 ({level})"
     return False, f"미달 (현재 {level} / 타겟 {normalize_kernel(target)})"
@@ -152,7 +154,7 @@ def calc_kernel_completion(
             status_label = "예정"
 
         sort_date = sched or (
-            approx_schedule(item.get("schedule_raw"), year) if status_label == "대략" else None
+            approx_schedule(item.get("schedule_raw") or "", year) if status_label == "대략" else None
         )
 
         details.append({
@@ -186,6 +188,7 @@ def calc_kernel_completion(
             "planned": planned,
             "status_label": status_label,
             "completed": completed,
+            "completion_label": "완료" if completed else ("확인 불가" if reason.startswith(("확인 불가", "타겟 미설정")) else "미완료"),
             "reason": reason,
             "evidence": item.get("evidence", ""),
             "note": item.get("note", ""),

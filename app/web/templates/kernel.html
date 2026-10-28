@@ -61,13 +61,13 @@
   {% elif not source_info %}
   <div class="alert alert-warn">
     ⚠️ 주별 차수 계획서를 찾지 못했습니다 (<span class="mono">{{ batch_info.pattern }}</span>).
-    전체 대상 목록에는 작업일자·완료여부가 없어서, 차수 파일이 없으면 전부 "미계획"으로 뜹니다.
+    차수 파일은 작업일정·수동 완료표기를 보강합니다. 차수 파일이 없어도 현재 커널이 목표 이상이면 자동 완료로 판정합니다.
   </div>
   {% endif %}
 
   {% if patched_source %}
   <div class="alert">
-    📄 완료 근거 파일 <strong>{{ patched_source }}</strong> ({{ patched_rows }}행) 반영 중 —
+    📄 완료 근거 소스 <strong>{{ patched_source }}</strong> ({{ patched_rows }}행) 반영 중 —
     OS 패치 레벨이 타겟 커널 이상이면 "패치 확인"으로 자동 완료 처리됩니다.
     {% if kernel_targets %}타겟:
       {% for major, ver in kernel_targets.items() %}<span class="mono">RHEL {{ major }}.x → {{ ver }}</span>{% if not loop.last %} · {% endif %}{% endfor %}
@@ -75,11 +75,19 @@
   </div>
   {% else %}
   <div class="alert alert-warn">
-    ⚠️ Polestar 패치 레벨 파일이 없어 <strong>완료는 엑셀 완료여부·수동 체크로만</strong> 집계됩니다.
-    PQL 결과를 내보내 <span class="mono">KERNEL_PATCHED_EXPORT_PATH</span>에 지정하면
-    OS 패치 레벨을 타겟 커널과 비교해 자동 판정합니다.
+    ⚠️ 현재 커널 정보를 가져오지 못해 <strong>완료는 엑셀 완료여부·수동 체크로만</strong> 집계됩니다.
+    <span class="mono">KERNEL_POLESTAR_VIEW</span>의 API 응답 또는
+    <span class="mono">KERNEL_PATCHED_EXPORT_PATH</span>의 파일을 확인하세요.
   </div>
   {% endif %}
+
+  <div class="alert">
+    <strong>판정 기준:</strong> 대상 엑셀에 있는 서버만 집계합니다. RHEL 8.x의 TO-BE는 RHEL 8.10,
+    RHEL 9.x의 TO-BE는 RHEL 9.8입니다. 현재 커널을 같은 el 계열의 목표 커널과 비교합니다.
+    {% for major, ver in kernel_targets.items() %}<div class="mono">RHEL {{ major }}.x → {{ ver }}</div>{% endfor %}
+    <strong>OS 배포판 문자열만으로는 패치 완료를 확인할 수 없습니다.</strong>
+    현재 커널은 <span class="mono">4.18.0-…el8_10</span> 또는 <span class="mono">5.14.0-…el9_8</span> 같은 값이어야 합니다.
+  </div>
 
   <div id="mainView">
 
@@ -172,7 +180,8 @@
         <tr>
           <th scope="col">시스템명</th><th scope="col">호스트명</th><th scope="col">운영팀</th><th scope="col">담당자</th>
           <th scope="col" style="width:130px">OS</th>
-          <th scope="col" style="width:150px">OS 패치 레벨</th>
+          <th scope="col" style="width:150px">현재 커널 / 목표 커널</th>
+          <th scope="col">패치 판정</th>
           <th scope="col" style="width:90px">조치계획 ✏️</th>
           <th scope="col" style="width:50px">완료 ✏️</th>
           <th scope="col" style="width:130px">증적 ✏️</th>
@@ -198,8 +207,10 @@
           <td class="mono small">{{ d.os }}</td>
           {# Polestar에서 읽은 현재 커널. 타겟과 나란히 봐야 왜 완료/미완료인지가 보인다. #}
           <td class="mono small" title="{% if d.target_kernel %}타겟 {{ d.target_kernel }}{% else %}이 OS의 타겟이 설정에 없습니다{% endif %}">
-            {{ d.patch_level or "-" }}
+            <div>현재: {{ d.patch_level or "미확인" }}</div>
+            <div class="muted">목표: {{ d.target_kernel or "미설정" }}</div>
           </td>
+          <td><span class="badge {{ 'ok' if d.completed else 'warn' }}">{{ d.completion_label }}</span></td>
 
           <td><input type="text" class="cell sched {{ 'edited' if d.input_source == 'web' else '' }}" value="{{ d.schedule_disp }}" placeholder="OO월"
                  aria-label="{{ d.system_name }} 조치계획"></td>

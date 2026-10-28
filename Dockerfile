@@ -2,7 +2,8 @@ FROM python:3.12-slim
 
 ENV TZ=Asia/Seoul \
     PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends tzdata && \
     ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
@@ -11,6 +12,8 @@ WORKDIR /app
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+RUN apt-get update && playwright install --with-deps chromium && \
+    apt-get clean && rm -rf /var/lib/apt/lists/* && chmod -R a+rX /ms-playwright
 
 COPY app ./app
 

@@ -1,6 +1,7 @@
 # app/services/kernel_patched.py
-"""커널 패치 완료 근거 수집 (REST 우선, 엑셀 폴백)."""
+"""커널 패치 완료 근거 수집 (웹 그리드 우선, REST/엑셀 폴백)."""
 import logging
+import hashlib
 import re
 import threading
 import time
@@ -66,6 +67,11 @@ def _copy_source(source: dict) -> dict:
         "ips": set(source.get("ips", set())),
         "levels": dict(source.get("levels", {})),
         "rows": int(source.get("rows", 0) or 0),
+        "grid_rows": int(source.get("grid_rows", 0) or 0),
+        "grid_pages": int(source.get("grid_pages", 0) or 0),
+        "rows_with_level": int(source.get("rows_with_level", 0) or 0),
+        "rows_with_ip": int(source.get("rows_with_ip", 0) or 0),
+        "ip_conflicts": int(source.get("ip_conflicts", 0) or 0),
         "source": source.get("source", ""),
         "has_level": bool(source.get("has_level")),
         "source_kind": source.get("source_kind", ""),
@@ -90,7 +96,19 @@ def _cache_key() -> tuple:
         p = Path(raw_path)
         if p.exists():
             mtime = p.stat().st_mtime_ns
-    return (settings.kernel_polestar_view, raw_path, mtime, polestar.base_url)
+    web_account_fingerprint = hashlib.sha256(
+        f"{settings.kernel_polestar_web_user}\0{settings.kernel_polestar_web_password}".encode("utf-8")
+    ).hexdigest()
+    return (
+        settings.kernel_polestar_view,
+        web_account_fingerprint,
+        settings.kernel_polestar_web_login_path,
+        settings.kernel_polestar_web_grid_path,
+        settings.kernel_polestar_browser_executable,
+        raw_path,
+        mtime,
+        polestar.base_url,
+    )
 
 
 def invalidate_patched_source_cache() -> None:
@@ -219,6 +237,18 @@ def read_patched_rest(view: str | None = None) -> dict:
 
 
 def _read_preferred_source() -> dict:
+    if settings.kernel_polestar_web_user and settings.kernel_polestar_web_password:
+        try:
+            from app.services.kernel_polestar_web import read_patched_web_grid
+
+            web = read_patched_web_grid()
+        except Exception as e:
+            logger.warning("Polestar 웹 그리드 조회 실패 - 다음 패치 소스로 폴백합니다: %s", type(e).__name__)
+        else:
+            if web["rows"]:
+                return web
+            logger.warning("Polestar 웹 그리드에 유효한 패치 레벨 행이 없어 다음 소스로 폴백합니다")
+
     view_name = (settings.kernel_polestar_view or "").strip()
     if view_name:
         try:

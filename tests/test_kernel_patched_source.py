@@ -7,6 +7,7 @@ from pydantic import ValidationError
 from app.config import Settings, settings
 from app.main import app
 from app.services import kernel_patched
+from app.services import kernel_polestar_web
 from app.web.routes import kernel as kernel_routes
 
 
@@ -30,6 +31,8 @@ def _reset_kernel_patch_state(monkeypatch):
     kernel_patched.invalidate_patched_source_cache()
     monkeypatch.setattr(settings, "kernel_polestar_view", "")
     monkeypatch.setattr(settings, "kernel_patched_export_path", "")
+    monkeypatch.setattr(settings, "kernel_polestar_web_user", "")
+    monkeypatch.setattr(settings, "kernel_polestar_web_password", "")
     monkeypatch.setattr(kernel_patched.polestar, "base_url", "https://polestar.test")
 
 
@@ -253,3 +256,97 @@ def test_partial_response_and_cache_do_not_merge_excel(monkeypatch):
     ) == {}
     kernel_patched.get_patched_source()
     assert calls == ["https://polestar.test/rest/measure/vt/KERNEL_PATCH/all"]
+
+
+def test_parse_configuration_grid_rows_and_page_count():
+    html = """
+    <ul class="pagination">
+      <li class="active"><a href="#">1</a></li>
+      <li><a href="/ko/management/configuration.grid.pager/2?t:inplace=true">2</a></li>
+      <li><a href="/ko/management/configuration.grid.pager/135?t:inplace=true">135</a></li>
+    </ul>
+    <table><tbody>
+      <tr data-grid-row="first">
+        <td data-grid-property="name">server-a</td>
+        <td data-grid-property="ipaddress">10.1.2.3</td>
+        <td data-grid-property="patchlevel">4.18.0-425.13.1.el8_7.x86_64</td>
+      </tr>
+      <tr data-grid-row="last">
+        <td data-grid-property="name">server-b</td>
+        <td data-grid-property="ipaddress">10.1.2.4</td>
+        <td data-grid-property="patchlevel">-</td>
+      </tr>
+      <tr>
+        <td data-grid-property="name">server-c</td>
+        <td data-grid-property="ipaddress">10.1.2.5</td>
+        <td data-grid-property="patchlevel">5.14.0-687.49.1.el9_8.x86_64</td>
+      </tr>
+    </tbody></table>
+    """
+    assert kernel_polestar_web._max_page(html) == 135
+    assert kernel_polestar_web.parse_configuration_grid(html) == [
+        {"name": "server-a", "ipaddress": "10.1.2.3", "patchlevel": "4.18.0-425.13.1.el8_7.x86_64"},
+        {"name": "server-b", "ipaddress": "10.1.2.4", "patchlevel": ""},
+        {"name": "server-c", "ipaddress": "10.1.2.5", "patchlevel": "5.14.0-687.49.1.el9_8.x86_64"},
+    ]
+
+
+def test_web_source_conflicting_ips_are_excluded(monkeypatch):
+    records = [
+        {"name": "server-a", "ipaddress": "10.1.2.3", "patchlevel": "4.18.0-1.el8_10.x86_64"},
+        {"name": "server-b", "ipaddress": "10.1.2.3", "patchlevel": "4.18.0-2.el8_10.x86_64"},
+        {"name": "server-c", "ipaddress": "10.1.2.4", "patchlevel": "5.14.0-1.el9_8.x86_64"},
+    ]
+    source = kernel_polestar_web._source_from_records(records)
+    assert source["ips"] == {"10.1.2.4"}
+    assert source["levels"] == {"10.1.2.4": "5.14.0-1.el9_8.x86_64"}
+
+
+def test_web_source_tracks_grid_metrics_and_ip_conflicts():
+    records = [
+        {"name": "server-a", "ipaddress": "10.1.2.3", "patchlevel": "4.18.0-1.el8_10"},
+        {"name": "server-b", "ipaddress": "10.1.2.3", "patchlevel": "4.18.0-2.el8_10"},
+        {"name": "server-c", "ipaddress": "10.1.2.4", "patchlevel": ""},
+    ]
+    source = kernel_polestar_web._source_from_records(records, page_count=2)
+    assert source["grid_rows"] == 3
+    assert source["grid_pages"] == 2
+    assert source["rows_with_level"] == 2
+    assert source["rows_with_ip"] == 2
+    assert source["ip_conflicts"] == 1
+    assert source["ips"] == set()
+    assert source["levels"] == {}
+
+
+def test_web_grid_metrics_and_ip_conflict():
+    source = kernel_polestar_web._source_from_records([
+        {"name": "a", "ipaddress": "10.0.0.1", "patchlevel": "4.18.0-1.el8_10"},
+        {"name": "b", "ipaddress": "10.0.0.1", "patchlevel": "4.18.0-2.el8_10"},
+        {"name": "c", "ipaddress": "10.0.0.2", "patchlevel": ""},
+    ], page_count=7)
+    assert source["grid_rows"] == 3
+    assert source["grid_pages"] == 7
+    assert source["rows_with_level"] == 2
+    assert source["rows_with_ip"] == 2
+    assert source["ip_conflicts"] == 1
+    assert source["ips"] == set()
+    assert source["levels"] == {}
+
+
+def test_web_source_selected_before_rest_and_excel(monkeypatch):
+    monkeypatch.setattr(settings, "kernel_polestar_web_user", "reader")
+    monkeypatch.setattr(settings, "kernel_polestar_web_password", "secret-value-not-logged")
+    monkeypatch.setattr(settings, "kernel_polestar_view", "KERNEL_PATCH")
+    monkeypatch.setattr(
+        kernel_polestar_web,
+        "read_patched_web_grid",
+        lambda: {"hosts": set(), "ips": {"10.1.2.3"}, "levels": {"10.1.2.3": "4.18.0-1.el8_10"},
+                 "rows": 1, "source": "web", "has_level": True, "source_kind": "web"},
+    )
+    monkeypatch.setattr(kernel_patched, "read_patched_rest", lambda *args: pytest.fail("REST must not be called"))
+    monkeypatch.setattr(kernel_patched, "read_patched_export", lambda *args: pytest.fail("Excel must not be called"))
+
+    source = kernel_patched._read_preferred_source()
+
+    assert source["source_kind"] == "web"
+    assert source["levels"]["10.1.2.3"] == "4.18.0-1.el8_10"
