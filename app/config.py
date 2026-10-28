@@ -71,13 +71,17 @@ class Settings(BaseSettings):
     # kubectl cp 과정에서 '커널 패치_1차.xlsx'로 들어간 적이 있다). 둘 다 잡는다.
     kernel_batch_glob: str = "data/커널*패치*.xlsx"
     kernel_prod_excel_path: str = ""
-    # Polestar 커널 패치 REST 뷰. 비어 있으면 네트워크 호출 없이 엑셀만 쓴다.
+    # Polestar 커널패치 REST 뷰. 웹 그리드 계정 설정 시 웹 수집 뒤 보조 소스로 사용한다.
     # `V_KERNEL_PATCH` / `KERNEL_PATCH` 둘 다 받을 수 있고 저장 시 앞의 `V_`는 뗀다.
     kernel_polestar_view: str = ""
-    # Polestar PQL 결과 내보내기 파일 (OS 패치 레벨 값이 들어 있는 엑셀).
-    # 커널 패치는 REST를 우선 시도하고, HTTP/JSON/페이로드 오류나 유효 버전 0건이면
-    # 이 파일로 폴백한다. 값 컬럼이 없는 예전 형식 파일은 여전히 '목록에 있음 = 완료'로
-    # 동작하지만, 값 컬럼이 있는데 값이 비어 있는 행은 완료로 보지 않는다.
+    # Polestar 구성정보 Wicket 그리드(웹 UI) 수집. 자격증명은 K8s Secret/.env로 주입한다.
+    kernel_polestar_web_user: str = ""
+    kernel_polestar_web_password: str = ""
+    kernel_polestar_web_login_path: str = "/ko/account/login"
+    kernel_polestar_web_grid_path: str = "/ko/management/configuration"
+    kernel_polestar_browser_executable: str = ""
+    # Polestar PQL 결과 내보내기 파일. 웹 그리드/REST 조회 실패 시 마지막 폴백.
+    # 값 컬럼이 없는 예전 형식 파일은 '목록에 있음 = 완료'로 유지한다.
     kernel_patched_export_path: str = ""
 
     # 커널 패치 타겟 버전 (RHEL 메이저 = 타겟 커널). 패치 차수마다 바뀌므로 설정으로 둔다.

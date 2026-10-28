@@ -14,3 +14,4 @@ pytz==2024.2
 prometheus-fastapi-instrumentator==8.1.0
 beautifulsoup4==4.12.3
 pdfplumber==0.11.10
+playwright==1.64.1

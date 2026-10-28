@@ -87,8 +87,10 @@ class TestJudgeKernel:
         assert "5.14.0-570.12.1.el9_6" in reason and "5.14.0-687.49.1.el9_8" in reason
 
     def test_polestar에_없으면_미완료(self):
-        assert judge_kernel(self.item, {}) == (False, "")
-        assert judge_kernel(self.item, None) == (False, "")
+        for source in ({}, None):
+            done, reason = judge_kernel(self.item, source)
+            assert done is False
+            assert reason.startswith("확인 불가")
 
     def test_값이_빈_예전_형식_파일은_목록_기준으로_완료(self):
         # 키가 없는 것(패치 안 됨)과 값이 빈 것(패치됐으나 값 모름)은 다르다
@@ -99,3 +101,18 @@ class TestJudgeKernel:
         monkeypatch.setattr(settings, "kernel_target_versions", "8=" + T8)
         done, reason = judge_kernel(self.item, {"web01": "5.14.0-687.49.1.el9_8.x86_64"})
         assert done is False and "타겟 미설정" in reason
+
+    def test_os_release_is_not_kernel_version(self):
+        done, reason = judge_kernel(self.item, {"web01": "Red Hat Enterprise Linux release 9.7 (Plow)"})
+        assert done is False
+        assert "커널 버전 형식 아님" in reason
+
+    def test_development_rhel8_uses_810_target(self):
+        item = {**self.item, "os": "Linux_Redhat8.7"}
+        assert target_kernel_for(item) == T8
+        assert judge_kernel(item, {"web01": "4.18.0-553.164.1.el8_10.x86_64"})[0] is True
+        assert judge_kernel(item, {"web01": "4.18.0-553.163.1.el8_10.x86_64"})[0] is False
+
+    def test_development_rhel9_uses_98_target(self):
+        assert target_kernel_for(self.item) == T9
+        assert judge_kernel(self.item, {"web01": "5.14.0-687.49.1.el9_8.x86_64"})[0] is True

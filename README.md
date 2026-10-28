@@ -226,29 +226,27 @@ python -m pip install -r requirements.txt -r requirements-dev.txt
 python -m pytest -q
 ```
 
-커널패치 REST 뷰를 쓸 때는 새 뷰를 권장한다(기존 뷰 덮어쓰기 금지, 실제 운영 반영 전 권한/소유자 승인 필요).
+커널패치 수집은 Polestar 구성정보 웹 그리드를 우선 사용한다. 로그인 계정은 읽기 전용 전용 계정을 권장하며,
+비밀번호는 `.env` 또는 Kubernetes Secret으로만 주입한다. 이 기능은 Playwright Chromium을 사용하므로 배포 이미지 빌드 시
+브라우저와 OS 의존성이 설치된다. 인증정보와 브라우저 세션은 로그/디스크에 저장하지 않는다.
+`CMM_RESOURCE.versios` 및 확인한 Elasticsearch 인덱스는 화면의 현재 커널값 소스로 확인되지 않았다.
 
-```sql
-CREATE VIEW V_KERNEL_PATCH AS
-SELECT
-    id AS RESOURCEID,
-    hostname AS HOSTNAME,
-    ipaddress AS IPADDRESS,
-    versios AS PATCHLEVEL
-FROM CMM_RESOURCE;
+필수 설정(환경변수 이름은 대소문자 무관):
+
+```dotenv
+KERNEL_POLESTAR_WEB_USER=readonly_user
+KERNEL_POLESTAR_WEB_PASSWORD=<secret>
+KERNEL_POLESTAR_WEB_LOGIN_PATH=/ko/account/login
+KERNEL_POLESTAR_WEB_GRID_PATH=/ko/management/configuration
 ```
 
-- 실제 사용자 확인 컬럼명은 `versios` 이며 오타 그대로 사용한다.
-- 앱 설정 `KERNEL_POLESTAR_VIEW` 에는 `V_KERNEL_PATCH` 또는 `KERNEL_PATCH` 둘 다 넣을 수 있다.
-- 같은 EMS 스키마/권한으로 `/rest/measure/vt/{view}/all` 에서 조회 가능해야 한다.
-- 이 저장소는 실제 Oracle/EMS 연동을 라이브로 검증하지 않았고, 테스트는 모킹만 수행한다.
+선택 기능이며 계정 값이 없으면 REST/엑셀 경로를 유지한다. 웹 화면에서 `PQL 검색`을 열고 서버 타입을 선택해 검색한 후
+Wicket 그리드를 모든 페이지 순회한다. `ipaddress`와 `patchlevel`을 매핑하며 (`name`은 화면 표시명이므로 hostname으로 가정하지 않는다),
+같은 IP에서 서로 다른 커널값이 발견되면 충돌 방지를 위해 해당 IP를 제외한다. 대상 엑셀과 매핑되지 않은 서버는 완료 판정하지 않는다.
+`KERNEL_POLESTAR_VIEW`와 `KERNEL_PATCHED_EXPORT_PATH`는 웹 그리드 수집 실패 시 보조/폴백 용도다.
 
-예시 호출:
-
-```bash
-curl -H "Accept: application/json" \
-  "$POLESTAR_URL/rest/measure/vt/KERNEL_PATCH/all"
-```
+`KERNEL_POLESTAR_VIEW`는 이전 REST 뷰 연동용 호환 설정이다. 실제 실행 커널 컬럼을 제공하지 않으면 웹 그리드 수집이 우선이며,
+ES `metric_recent`/`resource_search` 인덱스는 OS 커널 패치 버전 소스로 확인되지 않았다.
 
 `.env`는 gitignore 대상이며 인증정보·에이전트 키가 모두 여기 들어간다. Kubernetes 배포 시 **Secret과 코드를 반드시 함께 갱신해야 한다** — 한쪽만 배포되면 설정 로딩에서 실패하거나, 더 나쁘게는 필드 ID가 비어 조용히 잘못된 숫자가 나간다.
 
