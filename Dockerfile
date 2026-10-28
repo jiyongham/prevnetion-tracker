@@ -12,7 +12,7 @@ WORKDIR /app
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-RUN apt-get update && playwright install --with-deps chromium && \
+RUN playwright install --with-deps chromium && \
     apt-get clean && rm -rf /var/lib/apt/lists/* && chmod -R a+rX /ms-playwright
 
 COPY app ./app
