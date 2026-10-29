@@ -551,6 +551,7 @@ async function saveRow(btn) {
       body: JSON.stringify(payload),
     });
     if (res.ok) {
+      const data = await res.json();
       showToast(`NO.${payload.item_no} 저장 완료`);
       // 입력자는 열을 따로 두지 않고 행 툴팁으로만 보여준다 - 저장하면 그 툴팁을 갱신한다
       const changer = data.last_inputter || "";

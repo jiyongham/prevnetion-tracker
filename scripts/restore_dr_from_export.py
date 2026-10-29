@@ -7,7 +7,8 @@ DR_진척_{half}_{날짜}.xlsx)를 덮어써 tracker.db를 복구한다.
      증적·비고·제외 사유·변경 이력·다른 반기/도메인은 모두 여기서 온다.
   2) 내보내기의 각 행을 '작업 사본 + 현재 엑셀 원본'으로 계산한 화면 값과 비교해
      다른 필드만 내보내기 값으로 맞춘다 (같은 항목이면 내보내기가 이긴다).
-       - 일정     : 내보내기 값이 원본과 같으면 웹 입력을 지우고, 다르면 웹 입력으로 넣는다.
+       - 일정     : 바탕 DB 값은 보지 않는다. 내보내기 값이 원본과 같으면 웹 입력을 지우고,
+                    다르면 내보내기 값 그대로 웹 입력으로 넣는다.
                     새로 X(웹 제외)가 된 건은 --admin 이름으로 기록해야 제외로 인정된다
                     (completion.excluded_completion_date). 이미 X였던 건은 처리자·처리일을 보존한다.
        - 담당자   : 일정과 같은 규칙
@@ -26,6 +27,8 @@ import argparse
 import re
 import sqlite3
 import sys
+from collections import Counter
+from contextlib import closing
 from datetime import date, datetime
 from pathlib import Path
 
@@ -53,25 +56,30 @@ def _disp(raw: str, year: int) -> str:
 
 
 def _copy_db(src: Path, dst: Path) -> None:
-    with sqlite3.connect(src) as s, sqlite3.connect(dst) as d:
+    # sqlite3 연결의 with는 커밋만 하고 닫지 않는다 - 작업 사본을 지우기 전에 확실히 닫는다.
+    with closing(sqlite3.connect(src)) as s, closing(sqlite3.connect(dst)) as d:
         s.backup(d)
 
 
-def _resolve(shown: str, current: str, original: str) -> tuple[str | None, str | None]:
-    """화면 값(shown)이 되도록 웹 입력값을 정한다. 반환: (새 웹 입력값 또는 None=변경 없음, 경고)"""
+def _resolve(shown: str, current: str | None, original: str) -> tuple[str | None, str | None]:
+    """화면 값(shown)이 되도록 웹 입력값을 정한다. 반환: (새 웹 입력값 또는 None=변경 없음, 경고)
+
+    로컬 DB 값보다 내보내기가 우선이다 - 내보내기와 다른 웹 입력은 남기지 않는다.
+    current=None이면 현재 값과 비교하지 않고 항상 웹 입력값을 돌려준다."""
     if shown == current:
         return None, None
     if shown == original:
         return "", None          # 웹 입력을 지우면 원본 값이 보인다
     if not shown:
-        return None, "원본에 값이 있어 빈 값으로 만들 수 없음"
+        # 빈 웹 입력은 원본 값으로 보이므로 '빈 값'은 만들 수 없다. 그래도 로컬 DB 값은 지운다.
+        return "", f"내보내기는 빈 값인데 원본에 {original!r}이 있어 원본 값으로 보입니다"
     return shown, None
 
 
 def build_plans(df: pd.DataFrame, half: str, as_of: date, admin: str, marker: str):
     source = {i["no"]: i for i in load_dr_items(half=half)}
     existing = db.get_inputs(half)
-    plans, warnings, missing = [], [], []
+    plans, warnings, missing, unchanged, needs_admin = [], [], [], [], []
 
     for _, row in df.iterrows():
         no = _s(row.get("NO"))
@@ -82,15 +90,13 @@ def build_plans(df: pd.DataFrame, half: str, as_of: date, admin: str, marker: st
         cur = existing.get(no) or {}
         changes: dict = {}
 
-        new_sched, warn = _resolve(
-            _s(row.get("일정")),
-            _disp(cur.get("schedule") or item["schedule_raw"], as_of.year),
-            _disp(item["schedule_raw"], as_of.year),
-        )
+        # 일정은 로컬 DB 값을 보지 않고 내보내기 + 엑셀 원본만으로 정한다. 화면 표시(M/D)가
+        # 같아도 저장값이 다르면(예: 작년 날짜 '2025-10-15') 판정이 달라지므로 저장값으로 비교한다.
+        target_sched, warn = _resolve(_s(row.get("일정")), None, _disp(item["schedule_raw"], as_of.year))
         if warn:
             warnings.append(f"NO.{no} 일정: {warn}")
-        if new_sched is not None:
-            changes["schedule"] = new_sched
+        if target_sched != (cur.get("schedule") or ""):
+            changes["schedule"] = target_sched
 
         new_owner, warn = _resolve(_s(row.get("담당자")), cur.get("owner") or item["owner"], item["owner"])
         if warn:
@@ -98,12 +104,15 @@ def build_plans(df: pd.DataFrame, half: str, as_of: date, admin: str, marker: st
         if new_owner is not None:
             changes["owner"] = new_owner
 
+        want_done = _s(row.get("판정근거")) == "완료표기"
         if item["excel_done"].upper() not in DONE_MARKS:
-            want_done = _s(row.get("판정근거")) == "완료표기"
             if want_done != bool(cur.get("is_done")):
                 changes["is_done"] = int(want_done)
+        elif not want_done:
+            warnings.append(f"NO.{no} 완료: 엑셀 원본에 완료 표기가 있어 내보내기(미완료표기)대로 되돌릴 수 없음")
 
         if not changes:
+            unchanged.append(no)
             continue
 
         final_sched = changes.get("schedule", cur.get("schedule") or "")
@@ -112,20 +121,18 @@ def build_plans(df: pd.DataFrame, half: str, as_of: date, admin: str, marker: st
             updated_by, updated_at = cur.get("updated_by", ""), cur.get("updated_at", "")
         elif final_sched.upper() == "X":
             if not admin:
-                warnings.append(f"NO.{no} 일정: 제외(X)는 --admin 없이 복구하지 않음")
-                changes.pop("schedule")
-                if not changes:
-                    continue
-                updated_by = marker
-            else:
-                updated_by = admin
-            updated_at = f"{as_of} 00:00:00"
+                needs_admin.append(no)
+            updated_by, updated_at = admin, f"{as_of} 00:00:00"
         else:
             updated_by, updated_at = marker, f"{as_of} 00:00:00"
 
         plans.append({"no": no, "before": cur, "changes": changes,
                       "updated_by": updated_by, "updated_at": updated_at})
-    return plans, warnings, missing, len(source)
+
+    if needs_admin:
+        # 건너뛰면 로컬 DB 값이 남아 내보내기와 달라진다 - 반쯤 복구하느니 멈춘다.
+        sys.exit(f"[중단] 새로 제외(X)된 {len(needs_admin)}건이 있어 --admin(관리자 이름)이 필요합니다: {needs_admin[:20]}")
+    return plans, warnings, missing, unchanged, len(source)
 
 
 def apply_plans(plans: list[dict], half: str, as_of: date) -> None:
@@ -155,7 +162,7 @@ def apply_plans(plans: list[dict], half: str, as_of: date) -> None:
 def _table_counts(path: Path) -> dict[str, int]:
     if not path.exists():
         return {}
-    with sqlite3.connect(path) as conn:
+    with closing(sqlite3.connect(path)) as conn:
         names = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")]
         return {n: conn.execute(f'SELECT COUNT(*) FROM "{n}"').fetchone()[0] for n in names}
 
@@ -188,17 +195,14 @@ def main():
     try:
         db.DB_PATH = work          # 이후 db.* 호출은 전부 작업 사본을 본다
         db.init_db()               # 이전 스키마면 빠진 컬럼을 채운다
-        plans, warnings, missing, source_rows = build_plans(
-            pd.read_excel(export, dtype=str), half, as_of, args.admin, marker
-        )
+        df = pd.read_excel(export, dtype=str)
+        plans, warnings, missing, unchanged, source_rows = build_plans(df, half, as_of, args.admin, marker)
 
         print(f"[바탕] {base}")
         print(f"[덮어쓰기] {export.name} (half={half}, 기준일={as_of}, 엑셀 원본 {source_rows}행)")
-        counts = {}
-        for p in plans:
-            for f in p["changes"]:
-                counts[f] = counts.get(f, 0) + 1
-        print(f"[대상] {len(plans)}건 변경 (필드별 {counts})")
+        print(f"[분류] 내보내기 {len(df)}행 = 변경 {len(plans)} + 이미 같음 {len(unchanged)} + 원본에 없음 {len(missing)}")
+        counts = Counter(f for p in plans for f in p["changes"])
+        print(f"[대상] {len(plans)}건 변경 (필드별 {dict(counts)})")
         for p in plans:
             diff = ", ".join(f"{f}: {p['before'].get(f, '')!r}→{v!r}" for f, v in p["changes"].items())
             print(f"  NO.{p['no']}: {diff} (입력자={p['updated_by']})")

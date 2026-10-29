@@ -1,7 +1,6 @@
 # app/services/kernel_patched.py
 """커널 패치 완료 근거 수집 (웹 그리드 우선, REST/엑셀 폴백)."""
 import logging
-import hashlib
 import json
 import os
 import re
@@ -26,11 +25,10 @@ _LEVEL_HEADERS = {
 _IP_PATTERN = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
 _NULL_TEXTS = {"", "null", "none", "nan", "nat", "<na>"}
 
+# REST/엑셀 폴백 캐시. 만료 순간 몰린 요청이 각자 조회하지 않게 갱신은 한 번만 한다.
 _CACHE_TTL_SEC = 300
 _cache: dict = {"key": None, "at": 0.0, "value": None}
 _cache_lock = threading.Lock()
-# 웹 그리드 수집은 Chromium을 띄운다. TTL 만료 순간 여러 요청이 동시에 갱신하면
-# 브라우저가 요청 수만큼 떠서 파드 메모리 제한을 넘는다(OOMKilled) - 갱신은 한 번만.
 _refresh_lock = threading.Lock()
 
 
@@ -101,19 +99,8 @@ def _cache_key() -> tuple:
         p = Path(raw_path)
         if p.exists():
             mtime = p.stat().st_mtime_ns
-    web_account_fingerprint = hashlib.sha256(
-        f"{settings.kernel_polestar_web_user}\0{settings.kernel_polestar_web_password}".encode("utf-8")
-    ).hexdigest()
-    return (
-        settings.kernel_polestar_view,
-        web_account_fingerprint,
-        settings.kernel_polestar_web_login_path,
-        settings.kernel_polestar_web_grid_path,
-        settings.kernel_polestar_browser_executable,
-        raw_path,
-        mtime,
-        polestar.base_url,
-    )
+    # 웹 그리드 결과는 이 캐시에 넣지 않는다 (_web_state) - 폴백 소스만 키에 넣는다.
+    return (settings.kernel_polestar_view, raw_path, mtime, polestar.base_url)
 
 
 def invalidate_patched_source_cache() -> None:
@@ -261,15 +248,6 @@ def _read_web_source() -> dict | None:
     return None
 
 
-def _read_preferred_source() -> dict:
-    if _web_configured():
-        web = _read_web_source()
-        if web is not None:
-            _store_web(web)
-            return web
-    return _read_fallback_source()
-
-
 def _read_fallback_source() -> dict:
     view_name = (settings.kernel_polestar_view or "").strip()
     if view_name:
@@ -346,28 +324,40 @@ def _store_web(source: dict) -> None:
         logger.warning("Polestar 웹 그리드 결과를 저장하지 못했습니다 (%s): %s", path.name, type(e).__name__)
 
 
+def _fetch_and_store_web() -> dict | None:
+    """웹 그리드를 수집해 저장한다. 호출부가 _web_refresh_lock을 잡고 부른다 -
+    Chromium은 무슨 경로로든 한 번에 하나만 뜬다."""
+    with _web_state_lock:
+        _web_state["attempt_at"] = time.time()
+    web = _read_web_source()
+    if web is not None:
+        _store_web(web)
+        logger.info("Polestar 웹 그리드 수집 완료: %d행", web["rows"])
+    return web
+
+
 def _refresh_web_worker() -> None:
     try:
-        web = _read_web_source()
-        if web is not None:
-            _store_web(web)
-            logger.info("Polestar 웹 그리드 수집 완료: %d행", web["rows"])
+        _fetch_and_store_web()
     finally:
         _web_refresh_lock.release()
 
 
-def _start_web_refresh() -> bool:
+def _start_web_refresh() -> None:
     """백그라운드 수집을 시작한다. 이미 돌고 있으면 아무것도 하지 않는다."""
     if not _web_refresh_lock.acquire(blocking=False):
-        return False
-    with _web_state_lock:
-        _web_state["attempt_at"] = time.time()
+        return
     try:
         threading.Thread(target=_refresh_web_worker, name="kernel-web-grid", daemon=True).start()
     except Exception:
         _web_refresh_lock.release()
         raise
-    return True
+
+
+def _refresh_web_now() -> dict | None:
+    """동기 수집. 백그라운드 수집이 돌고 있으면 끝날 때까지 기다린 뒤 다시 수집한다."""
+    with _web_refresh_lock:
+        return _fetch_and_store_web()
 
 
 def _web_source_nonblocking() -> dict | None:
@@ -404,11 +394,14 @@ def get_patched_source(force_refresh: bool = False) -> dict:
     """화면용 패치 근거. 웹 그리드가 설정돼 있으면 저장된 수집 결과를 즉시 쓰고,
     아직 한 번도 수집되지 않았으면 수집이 끝날 때까지 REST/엑셀 값을 보여준다.
     force_refresh는 웹 그리드까지 동기로 다시 읽는다."""
-    use_web_snapshot = _web_configured() and not force_refresh
-    if use_web_snapshot and (web := _web_source_nonblocking()) is not None:
-        return web
-    read_source = _read_fallback_source if use_web_snapshot else _read_preferred_source
+    if _web_configured():
+        web = _refresh_web_now() if force_refresh else _web_source_nonblocking()
+        if web is not None:
+            return web
+    return _get_fallback_source(force_refresh)
 
+
+def _get_fallback_source(force_refresh: bool) -> dict:
     key = _cache_key()
     requested_at = time.time()
     # force_refresh면 이 요청 이후에 채워진 값만, 아니면 TTL 안의 값을 쓴다.
@@ -420,7 +413,7 @@ def get_patched_source(force_refresh: bool = False) -> dict:
         # 락을 기다리는 동안 다른 요청이 이미 갱신했으면 그 결과를 쓴다.
         if (cached := _cached_if(key, fresh_after)) is not None:
             return cached
-        source = read_source()
+        source = _read_fallback_source()
         with _cache_lock:
             _cache["key"] = key
             _cache["at"] = time.time()
