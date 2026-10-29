@@ -11,6 +11,7 @@ from app.models.db import init_db
 from app.services.capacity_data import prewarm as prewarm_capacity
 from app.services.dr_data import prewarm as prewarm_dr
 from app.services.eos_data import prewarm as prewarm_eos
+from app.services.kernel_patched import prewarm as prewarm_kernel
 from app.services.report import get_current_half
 from app.web.deps import WEB_DIR
 from app.web.routes import capacity, dr, eos, home, kernel, misc, teams
@@ -35,6 +36,8 @@ async def lifespan(app: FastAPI):
     prewarm_eos()
     prewarm_dr(get_current_half())
     prewarm_capacity()
+    # 커널패치 웹 그리드는 Chromium 수집이라 화면 요청에서는 돌리지 않는다 - 여기서 뒤로 건다.
+    prewarm_kernel()
     yield
     # shutdown
     stop_scheduler()

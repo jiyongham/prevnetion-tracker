@@ -2,6 +2,8 @@
 """커널 패치 완료 근거 수집 (웹 그리드 우선, REST/엑셀 폴백)."""
 import logging
 import hashlib
+import json
+import os
 import re
 import threading
 import time
@@ -119,6 +121,8 @@ def invalidate_patched_source_cache() -> None:
         _cache["key"] = None
         _cache["at"] = 0.0
         _cache["value"] = None
+    with _web_state_lock:
+        _web_state.update(key=None, fetched_at=0.0, attempt_at=0.0, value=None, loaded=False)
 
 
 def read_patched_export(path: str | None = None) -> dict:
@@ -239,19 +243,34 @@ def read_patched_rest(view: str | None = None) -> dict:
     }
 
 
+def _web_configured() -> bool:
+    return bool(settings.kernel_polestar_web_user and settings.kernel_polestar_web_password)
+
+
+def _read_web_source() -> dict | None:
+    try:
+        from app.services.kernel_polestar_web import read_patched_web_grid
+
+        web = read_patched_web_grid()
+    except Exception as e:
+        logger.warning("Polestar 웹 그리드 조회 실패 - 다음 패치 소스로 폴백합니다: %s", type(e).__name__)
+        return None
+    if web["rows"]:
+        return web
+    logger.warning("Polestar 웹 그리드에 유효한 패치 레벨 행이 없어 다음 소스로 폴백합니다")
+    return None
+
+
 def _read_preferred_source() -> dict:
-    if settings.kernel_polestar_web_user and settings.kernel_polestar_web_password:
-        try:
-            from app.services.kernel_polestar_web import read_patched_web_grid
+    if _web_configured():
+        web = _read_web_source()
+        if web is not None:
+            _store_web(web)
+            return web
+    return _read_fallback_source()
 
-            web = read_patched_web_grid()
-        except Exception as e:
-            logger.warning("Polestar 웹 그리드 조회 실패 - 다음 패치 소스로 폴백합니다: %s", type(e).__name__)
-        else:
-            if web["rows"]:
-                return web
-            logger.warning("Polestar 웹 그리드에 유효한 패치 레벨 행이 없어 다음 소스로 폴백합니다")
 
+def _read_fallback_source() -> dict:
     view_name = (settings.kernel_polestar_view or "").strip()
     if view_name:
         try:
@@ -265,6 +284,114 @@ def _read_preferred_source() -> dict:
     return read_patched_export()
 
 
+# --- 웹 그리드 스냅샷 ---------------------------------------------------------
+# 웹 그리드는 Chromium으로 전 페이지를 순회해 느리고 메모리를 많이 쓴다. 화면 요청에서
+# 직접 돌리지 않고 백그라운드 스레드에서만 수집하며, 결과는 파일로 남겨 재기동 후에도
+# 바로 쓴다. 패치 레벨은 하루에 몇 번 바뀌는 값이라 1시간 주기면 충분하다.
+_WEB_TTL_SEC = 3600
+_WEB_RETRY_SEC = 600
+_web_state: dict = {"key": None, "fetched_at": 0.0, "attempt_at": 0.0, "value": None, "loaded": False}
+_web_state_lock = threading.Lock()
+_web_refresh_lock = threading.Lock()
+
+
+def _web_key() -> list:
+    # 비밀번호(또는 그 해시)는 디스크에 남기지 않는다 - 계정·주소·경로만으로 구분한다.
+    return [
+        settings.kernel_polestar_web_user,
+        polestar.base_url,
+        settings.kernel_polestar_web_login_path,
+        settings.kernel_polestar_web_grid_path,
+    ]
+
+
+def _web_snapshot_path() -> Path:
+    return Path(settings.db_path).with_name("kernel_web_grid.json")
+
+
+def _load_web_snapshot_from_disk() -> None:
+    """프로세스당 한 번, 저장된 마지막 수집 결과를 메모리로 올린다. _web_state_lock 안에서 부른다."""
+    _web_state["loaded"] = True
+    path = _web_snapshot_path()
+    if not path.exists():
+        return
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        source = raw["source"]
+        source["hosts"] = set(source.get("hosts", []))
+        source["ips"] = set(source.get("ips", []))
+        _web_state.update(key=raw["key"], fetched_at=float(raw["fetched_at"]), value=_copy_source(source))
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        logger.warning("저장된 Polestar 웹 그리드 결과를 읽지 못했습니다 (%s): %s", path.name, type(e).__name__)
+
+
+def _store_web(source: dict) -> None:
+    key = _web_key()
+    fetched_at = time.time()
+    value = _copy_source(source)
+    with _web_state_lock:
+        _web_state.update(key=key, fetched_at=fetched_at, value=value, loaded=True)
+
+    path = _web_snapshot_path()
+    serializable = {**value, "hosts": sorted(value["hosts"]), "ips": sorted(value["ips"])}
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(
+            json.dumps({"key": key, "fetched_at": fetched_at, "source": serializable}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        os.replace(tmp, path)
+    except OSError as e:
+        logger.warning("Polestar 웹 그리드 결과를 저장하지 못했습니다 (%s): %s", path.name, type(e).__name__)
+
+
+def _refresh_web_worker() -> None:
+    try:
+        web = _read_web_source()
+        if web is not None:
+            _store_web(web)
+            logger.info("Polestar 웹 그리드 수집 완료: %d행", web["rows"])
+    finally:
+        _web_refresh_lock.release()
+
+
+def _start_web_refresh() -> bool:
+    """백그라운드 수집을 시작한다. 이미 돌고 있으면 아무것도 하지 않는다."""
+    if not _web_refresh_lock.acquire(blocking=False):
+        return False
+    with _web_state_lock:
+        _web_state["attempt_at"] = time.time()
+    try:
+        threading.Thread(target=_refresh_web_worker, name="kernel-web-grid", daemon=True).start()
+    except Exception:
+        _web_refresh_lock.release()
+        raise
+    return True
+
+
+def _web_source_nonblocking() -> dict | None:
+    """저장된 웹 그리드 결과를 바로 돌려주고, 오래됐으면 뒤에서 갱신을 건다."""
+    now = time.time()
+    with _web_state_lock:
+        if not _web_state["loaded"]:
+            _load_web_snapshot_from_disk()
+        valid = _web_state["value"] is not None and _web_state["key"] == _web_key()
+        value = _copy_source(_web_state["value"]) if valid else None
+        stale = not valid or now - _web_state["fetched_at"] >= _WEB_TTL_SEC
+        # 실패가 반복될 때 요청마다 브라우저를 다시 띄우지 않도록 재시도 간격을 둔다.
+        retry_due = now - _web_state["attempt_at"] >= _WEB_RETRY_SEC
+    if stale and retry_due:
+        _start_web_refresh()
+    return value
+
+
+def prewarm() -> None:
+    """기동 직후 웹 그리드 수집을 백그라운드로 건다 (계정 미설정이면 생략)."""
+    if _web_configured():
+        _web_source_nonblocking()
+
+
 def _cached_if(key: tuple, fresh_after: float) -> dict | None:
     with _cache_lock:
         cached = _cache.get("value")
@@ -274,6 +401,14 @@ def _cached_if(key: tuple, fresh_after: float) -> dict | None:
 
 
 def get_patched_source(force_refresh: bool = False) -> dict:
+    """화면용 패치 근거. 웹 그리드가 설정돼 있으면 저장된 수집 결과를 즉시 쓰고,
+    아직 한 번도 수집되지 않았으면 수집이 끝날 때까지 REST/엑셀 값을 보여준다.
+    force_refresh는 웹 그리드까지 동기로 다시 읽는다."""
+    use_web_snapshot = _web_configured() and not force_refresh
+    if use_web_snapshot and (web := _web_source_nonblocking()) is not None:
+        return web
+    read_source = _read_fallback_source if use_web_snapshot else _read_preferred_source
+
     key = _cache_key()
     requested_at = time.time()
     # force_refresh면 이 요청 이후에 채워진 값만, 아니면 TTL 안의 값을 쓴다.
@@ -285,7 +420,7 @@ def get_patched_source(force_refresh: bool = False) -> dict:
         # 락을 기다리는 동안 다른 요청이 이미 갱신했으면 그 결과를 쓴다.
         if (cached := _cached_if(key, fresh_after)) is not None:
             return cached
-        source = _read_preferred_source()
+        source = read_source()
         with _cache_lock:
             _cache["key"] = key
             _cache["at"] = time.time()
