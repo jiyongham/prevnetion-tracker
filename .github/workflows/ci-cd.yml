@@ -109,8 +109,11 @@ jobs:
           kubectl apply -f k8s/service.yaml
           kubectl apply -f k8s/deployment.yaml
 
-      - name: Rollout restart
-        run: kubectl -n dr-tracker rollout restart deployment/dr-tracker
+      - name: Deploy this commit's image
+        # deployment.yaml은 :latest + IfNotPresent라 노드에 옛 latest가 남아 있으면 rollout
+        # restart를 해도 새 이미지를 받지 않고 옛 코드가 그대로 뜬다. 커밋 SHA 태그로 바꿔
+        # 매번 새 이미지를 받게 하고, 이미지가 바뀌었으니 롤아웃도 이걸로 트리거된다.
+        run: kubectl -n dr-tracker set image deployment/dr-tracker dr-tracker=ghcr.io/jiyongham/prevention-tracker:${{ github.sha }}
 
       - name: Wait for rollout
         run: kubectl -n dr-tracker rollout status deployment/dr-tracker --timeout=120s
