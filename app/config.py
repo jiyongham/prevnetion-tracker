@@ -48,8 +48,8 @@ class Settings(BaseSettings):
     # "[시스템명]_OLD (ASSET-xxxxx)" 형태 - 변경작업내용 텍스트에 호스트명/IP가 없어도 이 필드로 정확히 매칭 가능
     eos_cmdb_done_field: str = ""
 
-    # DR훈련 티켓의 작업 대상 CMDB 필드 ("CI명 (ASSET-xxxxx)" 형태). DR은 IP/호스트명 텍스트가
-    # 아니라 이 필드의 CMDB Key·CI명으로만 대상과 연결한다 (app.services.dr_match).
+    # DR훈련 티켓의 작업 대상 CMDB 필드 ("CI명 (ASSET-xxxxx)" 형태). 이 필드의 CMDB Key와
+    # IP/호스트명 텍스트 매칭의 합집합으로 대상과 연결한다 (app.services.dr_match).
     dr_cmdb_target_field: str = ""
 
     @property

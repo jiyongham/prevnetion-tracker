@@ -149,8 +149,8 @@ class JiraClient:
             settings.planned_end_date_field,
             settings.planned_start_date_field,
             settings.dr_work_type_field,
-            settings.dr_cmdb_target_field,   # 대상 매칭 기준 (CI명 + CMDB Key, dr_match 참고)
-            *settings.match_field_list,      # AI 매칭 진단용 텍스트 (매칭 자체에는 안 쓴다)
+            settings.dr_cmdb_target_field,   # 작업 대상 CMDB Key 매칭 (dr_match 참고)
+            *settings.match_field_list,      # 변경작업 대상 등 (호스트명/IP 포함)
         ]
         return self.search(jql, fields=fields)
 

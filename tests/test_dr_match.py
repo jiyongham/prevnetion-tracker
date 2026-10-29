@@ -1,5 +1,5 @@
 # tests/test_dr_match.py
-"""DR훈련 티켓 매칭 - 작업 대상 CMDB 필드(CI명 + CMDB Key) 기준 (app/services/dr_match.py)."""
+"""DR훈련 티켓 매칭 - 작업 대상 CMDB Key + IP/호스트명 텍스트의 합집합 (app/services/dr_match.py)."""
 import pytest
 
 from app.config import settings
@@ -76,27 +76,37 @@ def test_CMDB_Key로_매칭한다(monkeypatch):
     assert dr_match.match_dr_tickets([_item("215", "ecvanap01")], [t]) == {"215": [t]}
 
 
-def test_CMDB_자산을_못찾으면_CI명이_호스트명과_같을때만_매칭(monkeypatch):
+def test_CI명으로는_매칭하지_않는다(monkeypatch):
+    # 작업 대상 필드의 CI명이 호스트명과 같아도 Key가 다르면 연결하지 않는다
+    _assets(monkeypatch, {"euvdb01": {"object_key": "ASSET-2", "label": "EUV DB"}})
+    t = _ticket("DR-1", ("euvdb01", "ASSET-9"))
+    assert dr_match.match_dr_tickets([_item("216", "euvdb01")], [t]) == {}
+
+
+def test_IP_호스트명_텍스트로도_매칭한다(monkeypatch):
     _assets(monkeypatch, {})
-    exact = _ticket("DR-1", ("EUVDB01", "ASSET-9"))
-    partial = _ticket("DR-2", ("euvdb011", "ASSET-8"))
-    assert dr_match.match_dr_tickets([_item("216", "euvdb01")], [exact, partial]) == {"216": [exact]}
+    by_ip = _ticket("DR-1", text="변경작업 대상 10.0.0.1")
+    by_host = _ticket("DR-2", text="euvdb01 전환")
+    assert dr_match.match_dr_tickets([_item("216", "euvdb01", "10.0.0.1")], [by_ip, by_host]) == {
+        "216": [by_ip, by_host],
+    }
 
 
-def test_CMDB_CI명으로도_매칭하고_중복은_한번만(monkeypatch):
+def test_Key와_IP_결과를_합치고_같은_티켓은_한번만(monkeypatch):
     _assets(monkeypatch, {"ecvanap01": {"object_key": "ASSET-1", "label": "유통VAN AP #1"}})
-    t = _ticket("DR-1", ("유통VAN AP #1", "ASSET-1"))
-    old_key = _ticket("DR-2", ("유통VAN AP #1", "ASSET-OLD-1"))
-    assert dr_match.match_dr_tickets([_item("215", "ecvanap01")], [t, old_key]) == {"215": [t, old_key]}
+    both = _ticket("DR-1", ("유통VAN", "ASSET-1"), text="10.0.0.1")
+    ip_only = _ticket("DR-2", text="10.0.0.1")
+    assert dr_match.match_dr_tickets([_item("215", "ecvanap01", "10.0.0.1")], [both, ip_only]) == {
+        "215": [both, ip_only],
+    }
 
 
-def test_IP_호스트명_텍스트로는_매칭하지_않는다(monkeypatch):
-    _assets(monkeypatch, {})
-    t = _ticket("DR-1", text="ecvanap01 10.0.0.1")
-    assert dr_match.match_dr_tickets([_item("215", "ecvanap01", "10.0.0.1")], [t]) == {}
-
-
-def test_필드_미설정이면_조용히_0건이_아니라_오류(monkeypatch):
+def test_필드_미설정이면_IP_호스트명으로만_매칭한다(monkeypatch):
     monkeypatch.setattr(settings, "dr_cmdb_target_field", "")
-    with pytest.raises(ValueError, match="DR_CMDB_TARGET_FIELD"):
-        dr_match.match_dr_tickets([_item("215", "ecvanap01")], [])
+
+    def forbidden(hostnames):
+        raise AssertionError("Key 매칭할 티켓이 없으면 CMDB를 조회하지 않는다")
+
+    monkeypatch.setattr(owner_check, "get_server_assets", forbidden)
+    t = _ticket("DR-1", text="10.0.0.1")
+    assert dr_match.match_dr_tickets([_item("215", "ecvanap01", "10.0.0.1")], [t]) == {"215": [t]}

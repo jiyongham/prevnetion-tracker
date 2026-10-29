@@ -107,13 +107,13 @@ jobs:
           kubectl apply -f k8s/namespace.yaml
           kubectl apply -f k8s/pvc.yaml
           kubectl apply -f k8s/service.yaml
-          kubectl apply -f k8s/deployment.yaml
-
-      - name: Deploy this commit's image
-        # deployment.yaml은 :latest + IfNotPresent라 노드에 옛 latest가 남아 있으면 rollout
-        # restart를 해도 새 이미지를 받지 않고 옛 코드가 그대로 뜬다. 커밋 SHA 태그로 바꿔
-        # 매번 새 이미지를 받게 하고, 이미지가 바뀌었으니 롤아웃도 이걸로 트리거된다.
-        run: kubectl -n dr-tracker set image deployment/dr-tracker dr-tracker=ghcr.io/jiyongham/prevention-tracker:${{ github.sha }}
+          # deployment.yaml은 :latest + IfNotPresent라 노드에 옛 latest가 남아 있으면 rollout
+          # restart를 해도 새 이미지를 받지 않고 옛 코드가 그대로 뜬다. 적용할 때 이 커밋의
+          # SHA 태그로 바꿔 넣어 매번 새 이미지를 받게 한다. (latest로 먼저 apply한 뒤 set image를
+          # 하면 롤아웃이 두 번 겹쳐 느려지고 그 사이 옛 코드가 잠깐 뜬다 - 한 번에 넣는다.)
+          sed 's#prevention-tracker:latest#prevention-tracker:${{ github.sha }}#' k8s/deployment.yaml | kubectl apply -f -
 
       - name: Wait for rollout
-        run: kubectl -n dr-tracker rollout status deployment/dr-tracker --timeout=120s
+        # 커밋마다 새 이미지(Chromium 포함, 수백 MB)를 받고, maxSurge 0이라 옛 파드가 내려간 뒤
+        # initContainer → 기동 → readiness 순으로 올라온다. 120초로는 pull만으로도 넘는 경우가 있었다.
+        run: kubectl -n dr-tracker rollout status deployment/dr-tracker --timeout=300s
