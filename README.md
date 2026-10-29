@@ -147,7 +147,7 @@ JIRA 조회 자체도 **첫 페이지로 전체 건수를 받은 뒤 나머지 �
 
 티켓 본문에 적히는 식별자가 제각각이라 **IP / 호스트명 / CMDB Insight Key** 세 가지를 쓴다. EoS는 Key 매칭을 우선하고 그 필드가 없는 티켓만 IP·호스트명으로 보강한다.
 
-DR훈련은 본문 텍스트를 쓰지 않고 **티켓의 작업 대상 CMDB 필드(`DR_CMDB_TARGET_FIELD`, "CI명 (Key)")로만** 연결한다. 변경작업 대상에 IP가 빠지거나 약칭만 적힌 티켓을 놓쳤기 때문이다. 대상 엑셀에는 Key가 없어 호스트명으로 CMDB 자산을 찾은 뒤 Key 또는 CI명(완전 일치)으로 맞춘다 (`app/services/dr_match.py`). 필드가 설정되지 않으면 0건으로 조용히 넘어가지 않고 조회 오류로 표시된다.
+DR훈련은 **티켓 작업 대상 CMDB 필드(`DR_CMDB_TARGET_FIELD`, "CI명 (Key)")의 Key**와 **IP·호스트명 텍스트**의 합집합으로 연결한다. 변경작업 대상에 IP가 빠지거나 약칭만 적힌 티켓도 자산만 연결돼 있으면 잡힌다. 대상 엑셀에는 Key가 없어 호스트명으로 CMDB 자산을 찾아 Key를 얻는다. CI명은 표기가 제각각이라 매칭에 쓰지 않는다 (`app/services/dr_match.py`).
 
 매칭이 안 된 건에 대해서는 "왜 안 됐는지"를 AI로 진단하는 버튼을 뒀다. 사람이 티켓을 열어보지 않고도 오탈자인지, 티켓이 실제로 없는지 판단할 수 있다.
 
@@ -267,7 +267,7 @@ main push + 두 검사 잡 성공
   → self-hosted 러너에서 배포 이미지 빌드
   → GHCR push (latest 및 커밋 SHA 태그)
   → Kubernetes namespace/PVC/service/deployment 적용
-  → rollout restart → rollout status 확인 (120초 제한)
+  → (deployment 적용 시 이미지를 커밋 SHA 태그로 지정) → rollout status 확인 (300초 제한)
 ```
 
 Gitleaks는 체크아웃한 Git 이력에서 비밀정보를 검사한다. pip-audit은 `requirements.txt`의 의존성을 검사한다. Trivy config는 저장소의 설정을, Trivy image는 OS/Python 패키지 취약점을 검사한다. Trivy는 HIGH/CRITICAL 발견 시 실패하며 이미지 검사는 수정 버전이 없는 취약점을 제외한다(`ignore-unfixed: true`).
