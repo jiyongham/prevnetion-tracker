@@ -115,6 +115,13 @@ def _choose_username_input(page):
     return next((field for is_preferred, field in visible if is_preferred), visible[0][1])
 
 
+def _block_heavy_resources(route) -> None:
+    if route.request.resource_type in _BLOCKED_RESOURCES:
+        route.abort()
+    else:
+        route.continue_()
+
+
 def _grid_html(page) -> str:
     # 페이지 전체(page.content())를 매번 넘겨받아 파싱하면 135쪽 순회 동안 큰 문자열을
     # 반복 생성한다. 패치 레벨 컬럼이 있는 그리드 테이블만 꺼낸다.
@@ -163,22 +170,13 @@ def read_patched_web_grid() -> dict:
     records: list[dict[str, str]] = []
     page_count = 0
     with sync_playwright() as playwright:
+        launch_options = {"headless": True, "args": _BROWSER_ARGS}
         if settings.kernel_polestar_browser_executable:
-            browser = playwright.chromium.launch(
-                headless=True,
-                args=_BROWSER_ARGS,
-                executable_path=settings.kernel_polestar_browser_executable,
-            )
-        else:
-            browser = playwright.chromium.launch(headless=True, args=_BROWSER_ARGS)
+            launch_options["executable_path"] = settings.kernel_polestar_browser_executable
+        browser = playwright.chromium.launch(**launch_options)
         try:
             context = browser.new_context(ignore_https_errors=True)
-            context.route(
-                "**/*",
-                lambda route: route.abort()
-                if route.request.resource_type in _BLOCKED_RESOURCES
-                else route.continue_(),
-            )
+            context.route("**/*", _block_heavy_resources)
             page = context.new_page()
             page.set_default_timeout(30000)
             _login(page, base, username, password)

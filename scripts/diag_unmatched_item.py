@@ -12,7 +12,7 @@ from datetime import date
 
 from app.config import settings
 from app.core.date_utils import half_window
-from app.core.excel_loader import load_dr_items_merged, scope_h2_targets
+from app.core.excel_loader import get_targets, load_dr_items_merged
 from app.core.jira_client import jira
 from app.services.completion import build_ticket_summary, ticket_done_date
 from app.services.matcher import build_ip_index, parse_excel_ips
@@ -24,17 +24,19 @@ def main():
         print('사용법: python -m scripts.diag_unmatched_item "시스템명 일부"')
         return
 
-    items = scope_h2_targets(load_dr_items_merged(half="H2"))
-    hits = [i for i in items if keyword in (i.get("system_name") or "")]
+    # H2 대상은 엑셀 '대상 여부(O)' 전체다 (상반기 무중단으로 좁히던 scope_h2_targets는 제거됨)
+    items = get_targets(load_dr_items_merged(half="H2"))
+    kw = keyword.lower()
+    hits = [i for i in items if kw in (i.get("system_name") or "").lower() or kw in (i.get("hostname") or "").lower()]
     if not hits:
-        print(f"'{keyword}' 이(가) 포함된 대상이 하반기(상반기 무중단 174대) 범위 안에 없습니다.")
-        print("→ 시스템명 철자를 다시 확인하거나, 애초에 대상 범위(상반기 무중단)가 아닐 수 있습니다.")
+        print(f"'{keyword}' 이(가) 시스템명/호스트명에 포함된 하반기 대상이 없습니다.")
+        print("→ 철자를 다시 확인하거나, 엑셀 '대상 여부'가 O가 아닐 수 있습니다.")
         return
 
     issues = jira.get_dr_tickets()
     tickets = build_ticket_summary(issues, settings.planned_end_date_field)
     ip_index = build_ip_index(tickets)
-    print(f"(JQL로 조회된 DR 관련 티켓 총 {len(tickets)}건 — 제목에 '예방3' 또는 '무중단' 포함)\n")
+    print(f"(JQL로 조회된 DR 관련 티켓 총 {len(tickets)}건 — 제목에 '예방3'/'무중단' 또는 작업 구분 'DR훈련')\n")
 
     today = date.today()
     w_start, w_end = half_window(today.year, "H2")
@@ -88,7 +90,7 @@ def main():
     print(f"'{keyword}' 텍스트가 포함된 JIRA 티켓(제목/본문/변경작업대상): {kw_hits or '없음'}")
     if not kw_hits:
         print("→ 조회된 티켓 중 이 이름이 언급된 게 전혀 없다면, 해당 시스템의 변경 티켓이 아직")
-        print("  안 만들어졌거나(제목에 '예방3'/'무중단'이 없거나) 다른 이름으로 등록됐을 가능성이 큽니다.")
+        print("  안 만들어졌거나(제목에 '예방3'/'무중단'도, 작업 구분 'DR훈련'도 없거나) 다른 이름으로 등록됐을 가능성이 큽니다.")
 
 
 if __name__ == "__main__":

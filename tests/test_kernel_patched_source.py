@@ -273,7 +273,7 @@ def test_get_patched_source_동시_요청이어도_한번만_수집한다(monkey
         time.sleep(0.2)
         return {**kernel_patched._empty(source="web", source_kind="web"), "rows": 1}
 
-    monkeypatch.setattr(kernel_patched, "_read_preferred_source", slow_source)
+    monkeypatch.setattr(kernel_patched, "_read_fallback_source", slow_source)
     results = []
     threads = [
         threading.Thread(target=lambda: results.append(kernel_patched.get_patched_source()))
@@ -323,6 +323,36 @@ def test_웹그리드는_요청을_막지않고_백그라운드로_수집해_저
     assert source["levels"] == {"10.1.2.3": "4.18.0-1.el8_10"}
     assert calls == [1]
     assert "secret" not in (tmp_path / "kernel_web_grid.json").read_text(encoding="utf-8")
+
+
+def test_force_refresh는_백그라운드_수집과_브라우저를_겹쳐_띄우지_않는다(monkeypatch):
+    import threading
+    import time
+
+    monkeypatch.setattr(settings, "kernel_polestar_web_user", "reader")
+    monkeypatch.setattr(settings, "kernel_polestar_web_password", "secret")
+    state = {"running": 0, "max_running": 0, "calls": 0}
+    guard = threading.Lock()
+
+    def grid():
+        with guard:
+            state["calls"] += 1
+            state["running"] += 1
+            state["max_running"] = max(state["max_running"], state["running"])
+        time.sleep(0.2)
+        with guard:
+            state["running"] -= 1
+        return {"hosts": set(), "ips": {"10.1.2.3"}, "levels": {"10.1.2.3": "4.18.0-1.el8_10"},
+                "rows": 1, "source": "web", "has_level": True, "source_kind": "web"}
+
+    monkeypatch.setattr(kernel_polestar_web, "read_patched_web_grid", grid)
+
+    kernel_patched.get_patched_source()            # 백그라운드 수집 시작
+    source = kernel_patched.get_patched_source(force_refresh=True)
+
+    assert source["source_kind"] == "web"
+    assert state["calls"] == 2
+    assert state["max_running"] == 1
 
 
 def test_parse_configuration_grid_rows_and_page_count():
@@ -413,7 +443,7 @@ def test_web_source_selected_before_rest_and_excel(monkeypatch):
     monkeypatch.setattr(kernel_patched, "read_patched_rest", lambda *args: pytest.fail("REST must not be called"))
     monkeypatch.setattr(kernel_patched, "read_patched_export", lambda *args: pytest.fail("Excel must not be called"))
 
-    source = kernel_patched._read_preferred_source()
+    source = kernel_patched.get_patched_source(force_refresh=True)
 
     assert source["source_kind"] == "web"
     assert source["levels"]["10.1.2.3"] == "4.18.0-1.el8_10"
