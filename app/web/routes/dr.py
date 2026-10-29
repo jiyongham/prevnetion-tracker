@@ -23,7 +23,8 @@ from app.core.teams_client import send_teams_dm, send_teams_message
 from app.models.db import get_input, get_logs, get_remind_log_summary, log_remind, upsert_input
 from app.services import ai_diagnose, chatbot, dr_data, evidence_check, last_report
 from app.services.change_history import mask_changer
-from app.services.completion import build_ticket_summary, calc_completion, group_by
+from app.services.completion import calc_completion, group_by
+from app.services.dr_match import build_dr_ticket_summary
 from app.services.dr_view import ACTION_LABELS, STATUS_LABELS, decorate_details, select_details
 from app.services.owner_check import (
     collect_targets_with_tickets,
@@ -626,7 +627,7 @@ async def api_diagnose_unmatched(request: Request):
 
     try:
         issues = jira.get_dr_tickets()
-        tickets = build_ticket_summary(issues, settings.planned_end_date_field)
+        tickets = build_dr_ticket_summary(issues)
         candidates = ai_diagnose.find_candidate_tickets(item, tickets)
         reply = ai_diagnose.diagnose_unmatched(item, candidates)
     except Exception as e:

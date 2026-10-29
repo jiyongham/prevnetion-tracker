@@ -51,23 +51,32 @@ def find_candidate_tickets(item: dict, tickets: list[dict]) -> list[dict]:
     return [t for _, t in scored[:CANDIDATE_LIMIT]]
 
 
+def _cmdb_targets_text(ticket: dict) -> str:
+    targets = ticket.get("cmdb_targets") or []
+    if not targets:
+        return "비어 있음"
+    return ", ".join(f"{t['name']} ({t['key']})" if t["key"] else t["name"] for t in targets)
+
+
 def diagnose_unmatched(item: dict, candidates: list[dict]) -> str:
     target_line = f"대상: {item['system_name']} / 호스트명 {item['hostname']} / IP {item['ip']}"
 
     if not candidates:
         context = f"{target_line}\n이 호스트명과 조금이라도 겹치는 JIRA 티켓이 전혀 없습니다."
     else:
-        lines = [f"- {c['key']}: {c['summary']}" for c in candidates]
+        lines = [f"- {c['key']}: {c['summary']} (작업 대상 CMDB: {_cmdb_targets_text(c)})" for c in candidates]
         context = (
             f"{target_line}\n"
-            "이 대상과 정확히 매칭되는 JIRA 티켓은 없지만, 아래처럼 호스트명 일부가 겹치는 "
+            "이 대상과 매칭되는 JIRA 티켓은 없지만, 아래처럼 제목/본문에 호스트명 일부가 겹치는 "
             "티켓들이 있습니다:\n" + "\n".join(lines)
         )
 
     query = (
         "당신은 DR훈련 진척 관리 시스템의 매칭 진단 도우미입니다. "
+        "DR 티켓은 '작업 대상 CMDB' 필드에 이 서버의 CMDB 자산(CI명/Key)이 연결돼 있어야만 매칭되고, "
+        "본문의 IP/호스트명 텍스트로는 매칭하지 않습니다. "
         "아래 대상이 왜 JIRA 티켓과 자동 매칭이 안 됐는지 후보 티켓을 보고 1~2문장으로 진단해주세요. "
-        "가능성 있는 원인(호스트명 오탈자, 아직 티켓 미생성, 완전히 무관한 티켓들 등)을 짧게 짚고, "
+        "가능성 있는 원인(작업 대상 CMDB 필드에 이 서버 누락, 아직 티켓 미생성, 완전히 무관한 티켓들 등)을 짧게 짚고, "
         "후보 중 실제로 이 대상일 가능성이 있는 티켓이 있으면 티켓 키를 언급해주세요. "
         "근거 없이 단정짓지 말고, 모르면 모른다고 답하세요.\n\n" + context
     )

@@ -179,6 +179,7 @@ def _build_asset(entries: list[dict], biz_owners: list[dict]) -> dict:
 
     return {
         "object_key": picked.get("objectKey", ""),
+        "label": picked.get("label", ""),   # CI명 (DR 티켓의 작업 대상 필드와 대조)
         "status": _attr_value(picked, ATTR_STATUS),
         "ip": _attr_value(picked, ATTR_IP),
         "ops_team": ops_team,
