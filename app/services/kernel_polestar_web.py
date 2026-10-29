@@ -115,6 +115,13 @@ def _choose_username_input(page):
     return next((field for is_preferred, field in visible if is_preferred), visible[0][1])
 
 
+def _grid_html(page) -> str:
+    # 페이지 전체(page.content())를 매번 넘겨받아 파싱하면 135쪽 순회 동안 큰 문자열을
+    # 반복 생성한다. 패치 레벨 컬럼이 있는 그리드 테이블만 꺼낸다.
+    table = page.locator("table", has=page.locator("th[data-grid-property='patchlevel']")).first
+    return table.evaluate("t => t.outerHTML")
+
+
 def _login(page, base_url: str, username: str, password: str) -> None:
     page.goto(urljoin(base_url, settings.kernel_polestar_web_login_path), wait_until="domcontentloaded")
     password_input = page.locator("input[type='password']:visible").first
@@ -187,12 +194,12 @@ def read_patched_web_grid() -> dict:
             page.locator("th[data-grid-property='patchlevel']").wait_for()
             page.locator("table tbody tr[data-grid-row]").first.wait_for()
 
-            first_html = page.content()
-            first_page_records = parse_configuration_grid(first_html)
+            first_page_records = parse_configuration_grid(_grid_html(page))
             if not first_page_records:
                 raise RuntimeError("Polestar 구성 그리드 첫 페이지에 행이 없습니다")
             records.extend(first_page_records)
-            last_page = _max_page(first_html)
+            pager = page.locator("ul.pagination")
+            last_page = _max_page(pager.first.evaluate("u => u.outerHTML")) if pager.count() else 1
             page_count = 1
             current_page = 1
             while current_page < last_page:
@@ -210,7 +217,7 @@ def read_patched_web_grid() -> dict:
                     "n => [...document.querySelectorAll('ul.pagination li.active a')].some(a => a.textContent.trim() === String(n))",
                     arg=page_number,
                 )
-                page_records = parse_configuration_grid(page.content())
+                page_records = parse_configuration_grid(_grid_html(page))
                 if not page_records:
                     raise RuntimeError(f"Polestar 구성 그리드 {page_number}페이지 응답에 행이 없습니다")
                 records.extend(page_records)

@@ -27,8 +27,10 @@ class _Resp:
 
 
 @pytest.fixture(autouse=True)
-def _reset_kernel_patch_state(monkeypatch):
+def _reset_kernel_patch_state(monkeypatch, tmp_path):
     kernel_patched.invalidate_patched_source_cache()
+    # 웹 그리드 수집 결과는 db_path 옆에 저장된다 - 운영 data/를 건드리지 않게 한다.
+    monkeypatch.setattr(settings, "db_path", str(tmp_path / "tracker.db"))
     monkeypatch.setattr(settings, "kernel_polestar_view", "")
     monkeypatch.setattr(settings, "kernel_patched_export_path", "")
     monkeypatch.setattr(settings, "kernel_polestar_web_user", "")
@@ -284,6 +286,43 @@ def test_get_patched_source_동시_요청이어도_한번만_수집한다(monkey
 
     assert len(calls) == 1
     assert [r["source"] for r in results] == ["web"] * 5
+
+
+def test_웹그리드는_요청을_막지않고_백그라운드로_수집해_저장한다(monkeypatch, tmp_path):
+    import threading
+
+    monkeypatch.setattr(settings, "kernel_polestar_web_user", "reader")
+    monkeypatch.setattr(settings, "kernel_polestar_web_password", "secret")
+    excel = _write_excel(tmp_path / "patched.xlsx", [{"HOSTNAME": "web01", "PATCHLEVEL": "5.14.0-1.el9_8"}])
+    monkeypatch.setattr(settings, "kernel_patched_export_path", excel)
+
+    release = threading.Event()
+    calls = []
+
+    def slow_grid():
+        calls.append(1)
+        release.wait(5)
+        return {"hosts": set(), "ips": {"10.1.2.3"}, "levels": {"10.1.2.3": "4.18.0-1.el8_10"},
+                "rows": 1, "source": "web", "has_level": True, "source_kind": "web"}
+
+    monkeypatch.setattr(kernel_polestar_web, "read_patched_web_grid", slow_grid)
+
+    # 수집이 끝나기 전에는 폴백(엑셀) 값을 즉시 받는다. 두 번째 요청은 수집을 또 걸지 않는다.
+    assert kernel_patched.get_patched_source()["source_kind"] == "excel"
+    assert kernel_patched.get_patched_source()["source_kind"] == "excel"
+    release.set()
+    with kernel_patched._web_refresh_lock:
+        pass
+    assert calls == [1]
+    assert kernel_patched.get_patched_source()["source_kind"] == "web"
+
+    # 재기동(메모리 초기화) 후에도 저장된 결과를 바로 쓰고, 신선하면 다시 수집하지 않는다.
+    kernel_patched.invalidate_patched_source_cache()
+    source = kernel_patched.get_patched_source()
+    assert source["source_kind"] == "web"
+    assert source["levels"] == {"10.1.2.3": "4.18.0-1.el8_10"}
+    assert calls == [1]
+    assert "secret" not in (tmp_path / "kernel_web_grid.json").read_text(encoding="utf-8")
 
 
 def test_parse_configuration_grid_rows_and_page_count():

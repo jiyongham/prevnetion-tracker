@@ -9,6 +9,8 @@ data/*.pdf
 data/*.doc
 data/*.docx
 data/*.csv
+data/kernel_web_grid.json
+data/kernel_web_grid.tmp
 *.db
 .venv/
 venv/
