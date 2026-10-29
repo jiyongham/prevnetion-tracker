@@ -9,14 +9,13 @@ from app.core.teams_client import send_teams_message
 from app.services import dr_data, last_report
 from app.services.completion import (
     DONE_MARKS,
-    build_ticket_summary,
     calc_completion,
     fmt_rate,
     group_by,
     ticket_done_date,
 )
 from app.services.ai_summary import generate_weekly_summary
-from app.services.matcher import match_items_by_ip
+from app.services.dr_match import build_dr_ticket_summary, match_dr_tickets
 from app.services.report_check import check_report, record_sent
 
 
@@ -40,10 +39,8 @@ def collect(half: str, use_jira: bool = True):
     if use_jira:
         try:
             issues = jira.get_dr_tickets()
-            tickets = build_ticket_summary(issues, settings.planned_end_date_field)
             targets = [i for i in items if i["is_target"]]
-            match_result = match_items_by_ip(targets, tickets)
-            ticket_map = match_result["matched"]
+            ticket_map = match_dr_tickets(targets, build_dr_ticket_summary(issues))
         except Exception as e:
             print(f"⚠️ JIRA 조회 실패 (엑셀 기준으로 계속): {e}")
 

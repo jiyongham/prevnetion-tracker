@@ -23,7 +23,7 @@ from app.core.jira_client import jira
 from app.core.kernel_loader import get_targets as get_kernel_targets
 from app.core.kernel_loader import load_kernel_items_merged
 from app.services.capacity import build_capacity_ticket_summary, filter_tickets_by_sheet
-from app.services.completion import build_ticket_summary
+from app.services.dr_match import build_dr_ticket_summary, match_dr_tickets
 from app.services.eos_data import get_eos_data
 from app.services.matcher import match_items_by_ip
 from app.services.reminder import clean_name, parse_owners
@@ -58,9 +58,7 @@ def collect_targets_with_tickets(half: str, use_jira: bool = True):
     if use_jira:
         try:
             issues = jira.get_dr_tickets()
-            tickets = build_ticket_summary(issues, settings.planned_end_date_field)
-            match_result = match_items_by_ip(targets, tickets)
-            ticket_map = match_result["matched"]
+            ticket_map = match_dr_tickets(targets, build_dr_ticket_summary(issues))
         except Exception as e:
             jira_error = str(e)
 

@@ -24,14 +24,13 @@ import threading
 import time
 from datetime import date
 
-from app.config import settings
 from app.core.excel_loader import (
     get_targets,
     load_dr_items_merged,
 )
 from app.core.jira_client import jira
-from app.services.completion import build_ticket_summary, calc_completion
-from app.services.matcher import match_items_by_ip
+from app.services.completion import calc_completion
+from app.services.dr_match import build_dr_ticket_summary, match_dr_tickets
 
 logger = logging.getLogger(__name__)
 
@@ -128,8 +127,7 @@ def load_items(half: str) -> list[dict]:
 def _collect_external(targets: list[dict]) -> tuple[dict, str | None]:
     try:
         issues = jira.get_dr_tickets()
-        tickets = build_ticket_summary(issues, settings.planned_end_date_field)
-        return match_items_by_ip(targets, tickets)["matched"], None
+        return match_dr_tickets(targets, build_dr_ticket_summary(issues)), None
     except Exception as e:
         logger.warning(f"DR훈련 JIRA 조회 실패 (엑셀 기준으로 계속): {e}")
         return {}, str(e)
