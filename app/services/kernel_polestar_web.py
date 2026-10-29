@@ -14,6 +14,20 @@ logger = logging.getLogger(__name__)
 _PAGE_RE = re.compile(r"configuration\.grid\.pager/(\d+)")
 _IP_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
 _NULLS = {"", "-", "null", "none", "nan", "n/a"}
+# 파드 메모리 제한 안에서 돌도록 Chromium 부가 프로세스와 그리드 판독에 필요 없는 리소스를 끈다.
+# 스타일시트는 :visible 판정에 쓰이므로 막지 않는다.
+_BROWSER_ARGS = [
+    "--disable-gpu",
+    "--disable-extensions",
+    "--disable-background-networking",
+    "--disable-component-update",
+    "--disable-default-apps",
+    "--disable-sync",
+    "--mute-audio",
+    "--no-first-run",
+    "--renderer-process-limit=1",
+]
+_BLOCKED_RESOURCES = {"image", "media", "font"}
 
 
 def _text(value: object) -> str:
@@ -145,12 +159,19 @@ def read_patched_web_grid() -> dict:
         if settings.kernel_polestar_browser_executable:
             browser = playwright.chromium.launch(
                 headless=True,
+                args=_BROWSER_ARGS,
                 executable_path=settings.kernel_polestar_browser_executable,
             )
         else:
-            browser = playwright.chromium.launch(headless=True)
+            browser = playwright.chromium.launch(headless=True, args=_BROWSER_ARGS)
         try:
             context = browser.new_context(ignore_https_errors=True)
+            context.route(
+                "**/*",
+                lambda route: route.abort()
+                if route.request.resource_type in _BLOCKED_RESOURCES
+                else route.continue_(),
+            )
             page = context.new_page()
             page.set_default_timeout(30000)
             _login(page, base, username, password)
