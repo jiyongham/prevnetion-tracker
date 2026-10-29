@@ -80,10 +80,10 @@ spec:
           # OOMKilled로 재시작되게 하는 안전판 - 노드 전체가 아니라 이 파드 선에서 끊는다.
           resources:
             requests:
-              memory: "256Mi"
+              memory: "384Mi"
               cpu: "100m"
             limits:
-              memory: "512Mi"
+              memory: "1024Mi"   # Playwright/Chromium 헤드리스 수집이 순간적으로 많이 쓴다 - 512Mi에서 OOMKilled 반복 확인
               cpu: "500m"
           readinessProbe:
             httpGet:

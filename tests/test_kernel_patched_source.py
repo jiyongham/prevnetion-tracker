@@ -258,6 +258,34 @@ def test_partial_response_and_cache_do_not_merge_excel(monkeypatch):
     assert calls == ["https://polestar.test/rest/measure/vt/KERNEL_PATCH/all"]
 
 
+def test_get_patched_source_동시_요청이어도_한번만_수집한다(monkeypatch):
+    # 웹 그리드 수집은 요청마다 Chromium을 띄우므로, 캐시가 빈 순간 몰린 요청이
+    # 각자 수집하면 브라우저가 여러 개 떠서 OOMKilled된다.
+    import threading
+    import time
+
+    calls = []
+
+    def slow_source():
+        calls.append(1)
+        time.sleep(0.2)
+        return {**kernel_patched._empty(source="web", source_kind="web"), "rows": 1}
+
+    monkeypatch.setattr(kernel_patched, "_read_preferred_source", slow_source)
+    results = []
+    threads = [
+        threading.Thread(target=lambda: results.append(kernel_patched.get_patched_source()))
+        for _ in range(5)
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert len(calls) == 1
+    assert [r["source"] for r in results] == ["web"] * 5
+
+
 def test_parse_configuration_grid_rows_and_page_count():
     html = """
     <ul class="pagination">

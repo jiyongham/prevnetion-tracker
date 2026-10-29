@@ -27,6 +27,9 @@ _NULL_TEXTS = {"", "null", "none", "nan", "nat", "<na>"}
 _CACHE_TTL_SEC = 300
 _cache: dict = {"key": None, "at": 0.0, "value": None}
 _cache_lock = threading.Lock()
+# 웹 그리드 수집은 Chromium을 띄운다. TTL 만료 순간 여러 요청이 동시에 갱신하면
+# 브라우저가 요청 수만큼 떠서 파드 메모리 제한을 넘는다(OOMKilled) - 갱신은 한 번만.
+_refresh_lock = threading.Lock()
 
 
 def _norm_header(h) -> str:
@@ -262,24 +265,31 @@ def _read_preferred_source() -> dict:
     return read_patched_export()
 
 
-def get_patched_source(force_refresh: bool = False) -> dict:
-    key = _cache_key()
-    now = time.time()
+def _cached_if(key: tuple, fresh_after: float) -> dict | None:
     with _cache_lock:
         cached = _cache.get("value")
-        if (
-            not force_refresh
-            and cached is not None
-            and _cache.get("key") == key
-            and now - float(_cache.get("at") or 0.0) < _CACHE_TTL_SEC
-        ):
+        if cached is not None and _cache.get("key") == key and float(_cache.get("at") or 0.0) > fresh_after:
             return _copy_source(cached)
+    return None
 
-    source = _read_preferred_source()
-    with _cache_lock:
-        _cache["key"] = key
-        _cache["at"] = time.time()
-        _cache["value"] = _copy_source(source)
+
+def get_patched_source(force_refresh: bool = False) -> dict:
+    key = _cache_key()
+    requested_at = time.time()
+    # force_refresh면 이 요청 이후에 채워진 값만, 아니면 TTL 안의 값을 쓴다.
+    fresh_after = requested_at if force_refresh else requested_at - _CACHE_TTL_SEC
+    if not force_refresh and (cached := _cached_if(key, fresh_after)) is not None:
+        return cached
+
+    with _refresh_lock:
+        # 락을 기다리는 동안 다른 요청이 이미 갱신했으면 그 결과를 쓴다.
+        if (cached := _cached_if(key, fresh_after)) is not None:
+            return cached
+        source = _read_preferred_source()
+        with _cache_lock:
+            _cache["key"] = key
+            _cache["at"] = time.time()
+            _cache["value"] = _copy_source(source)
     return _copy_source(source)
 
 
