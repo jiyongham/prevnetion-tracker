@@ -235,3 +235,49 @@ class TestAttachLinkedChangeTickets:
         tickets = [{"key": self._key(1), "planned_end_date": None, "linked_keys": [], "linked": []}]
         assert capacity_mod.attach_linked_change_tickets(tickets) is tickets
         assert tickets[0]["linked"] == []
+
+
+class TestScheduledExpansion:
+    """
+    미회신 대상을 분모로 올릴 기준 - '이 반기에 증설 일정이 잡혔나'.
+
+    완료 판정(judge_capacity)을 그대로 쓰면 완료일이 지났기를 요구해서, 금주 작업
+    예정인 대상이 미응답으로 남아 분모에서 빠진다. 정작 화면 상태 판정은 날짜가
+    미래여도 '미완료'로 치기 때문에 두 기준이 어긋나 있었다.
+    """
+
+    def _t(self, **kw):
+        base = {"key": "IMDC-1", "kind": "증설", "status": "등록",
+                "created": "2026-09-01", "planned_end_date": None, "linked": []}
+        base.update(kw)
+        return base
+
+    def test_완료일이_지났으면_잡힌다(self):
+        t = self._t(planned_end_date=date(2026, 9, 10))
+        assert capacity_mod.scheduled_expansion([t], 2026) is t
+
+    def test_완료일이_아직_안_왔어도_잡힌다(self):
+        # 금주 작업 예정 - 증설을 하기로 한 것은 확실하므로 대상이다 (상태는 '미완료')
+        t = self._t(planned_end_date=date(2026, 12, 20))
+        assert capacity_mod.scheduled_expansion([t], 2026) is t
+
+    def test_완료일이_없으면_안_잡힌다(self):
+        # 이름/IP만 스친 무관한 티켓이 분모를 늘리던 경로
+        assert capacity_mod.scheduled_expansion([self._t()], 2026) is None
+
+    def test_완료일이_반기_밖이면_안_잡힌다(self):
+        t = self._t(planned_end_date=date(2026, 5, 20))   # 상반기
+        assert capacity_mod.scheduled_expansion([t], 2026) is None
+
+    def test_증설_티켓이_아니면_안_잡힌다(self):
+        t = self._t(kind="기타", planned_end_date=date(2026, 9, 10))
+        assert capacity_mod.scheduled_expansion([t], 2026) is None
+
+    def test_여러_건이면_가장_최근_생성분(self):
+        old = self._t(key="IMDC-1", created="2026-08-01", planned_end_date=date(2026, 9, 1))
+        new = self._t(key="IMDC-2", created="2026-10-01", planned_end_date=date(2026, 11, 1))
+        assert capacity_mod.scheduled_expansion([old, new], 2026) is new
+
+    def test_티켓이_없으면_없음(self):
+        assert capacity_mod.scheduled_expansion([], 2026) is None
+        assert capacity_mod.scheduled_expansion(None, 2026) is None

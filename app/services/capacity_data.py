@@ -28,7 +28,7 @@ from app.core.jira_client import jira
 from app.services.capacity import (
     build_capacity_ticket_summary,
     filter_tickets_by_sheet,
-    judge_capacity,
+    scheduled_expansion,
 )
 from app.services.matcher import match_items_by_ip
 
@@ -151,20 +151,24 @@ def get_matched_items(
         # 같은 서버가 DATA/ARCH 양쪽에 다 있을 수 있어, 변경작업내용으로 이 시트 소속만 남김
         ticket_map = filter_tickets_by_sheet(match_result["matched"], sheet)
 
-        # 미회신(증설 여부 O/X 미기입) 대상 중 '증설이 끝난 것이 확인된' 건만 대상으로
-        # 올린다. 담당자가 회신 없이 그냥 증설해버리는 경우가 실제로 있어서(예:
-        # 메시징서비스 서버) - "회신이 없다"와 "증설을 안 했다"는 다르다.
+        # 미회신(증설 여부 O/X 미기입) 대상 중 '증설 일정이 잡힌 것이 확인된' 건을
+        # 대상으로 올린다. 담당자가 회신 없이 그냥 증설해버리는 경우가 실제로 있어서
+        # (예: 메시징서비스 서버) - "회신이 없다"와 "증설을 안 한다"는 다르다.
         #
-        # 승격 기준을 완료 판정(judge_capacity)과 같은 함수로 묶은 것이 핵심이다.
+        # 승격 기준은 '이 반기에 증설 일정이 잡힌 티켓이 있나'다(scheduled_expansion).
         # 예전에는 "티켓이 하나라도 걸렸다"로 승격시켰는데, 그 조건은 완료 판정보다
         # 훨씬 느슨해서 완료로는 절대 안 잡히는 티켓(이름/IP만 스친 무관한 티켓,
         # 변경계획완료일이 없는 티켓)도 승격시켰다. 그 결과 증설한 적 없는 서버 6대가
         # 분모에만 들어가 DATA 시트가 17대에서 23대로 늘었고, 늘어난 건들은 완료도
         # 미완료도 아닌 '미계획'으로 떠서 아무도 설명할 수 없는 숫자가 됐다.
         #
-        # 같은 함수를 쓰면 '승격됨'과 '완료됨'이 항상 같이 움직인다 - 분모와 분자가
-        # 함께 +1이라 완료율이 왜곡되지 않고, 승격된 대상은 화면에서 반드시 완료로
-        # 보인다(분모만 늘고 설명이 안 되는 상태가 원천적으로 안 생긴다).
+        # 이 기준은 화면 상태 판정과 같은 축을 쓴다 - calc_capacity_completion도
+        # 완료일이 이 반기 안이면(아직 안 지났어도) '미완료'로 치고 티켓을 보여준다.
+        # 그래서 승격된 대상은 화면에서 반드시 완료 아니면 미완료로 보이고, 티켓도
+        # 없이 분모만 늘어 설명이 안 되는 상태는 생기지 않는다.
+        #
+        # 한때는 승격 기준을 완료 판정(judge_capacity)과 같게 뒀는데, 그건 완료일이
+        # 지났기를 요구해서 '금주 작업 예정'인 대상이 미응답으로 남아 분모에서 빠졌다.
         today = date.today()
         no_reply = [i for i in items if i["status_kind"] == "no_reply"]
         if no_reply:
@@ -172,8 +176,11 @@ def get_matched_items(
             no_reply_ticket_map = filter_tickets_by_sheet(no_reply_match, sheet)
             for item in no_reply:
                 matched = no_reply_ticket_map.get(item["no"]) or []
-                completed, _reason, _sel = judge_capacity(item, matched, today, today.year)
-                if completed:
+                # 완료된 건만이 아니라 '이 반기에 증설 일정이 잡힌' 건도 올린다.
+                # 금주 작업 예정인 대상이 미응답으로 남아 분모에서 빠지던 문제
+                # (화면 상태 판정은 날짜가 미래여도 '미완료'로 치는데 승격만
+                #  완료일이 지났기를 요구해 두 기준이 어긋나 있었다).
+                if scheduled_expansion(matched, today.year):
                     item["is_target"] = True
                     item["status_kind"] = "target"
                     # 엑셀 회신 없이 대상이 된 건. 분모가 엑셀 '증설 O' 대수와 다를 때

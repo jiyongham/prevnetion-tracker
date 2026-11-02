@@ -358,6 +358,34 @@ def is_untagged(t: dict | None) -> bool:
     return bool(t) and t.get("kind") != "예방4"
 
 
+def scheduled_expansion(
+    tickets: list[dict] | None, base_year: int
+) -> dict | None:
+    """
+    '이 반기에 증설 일정이 잡힌' 증설 티켓 중 대표(최신 생성). 없으면 None.
+
+    완료 판정(judge_capacity)과 달리 완료일이 지났는지는 보지 않는다. 금주에 작업
+    예정인 건도 '증설을 하기로 한 대상'인 건 확실하기 때문이다.
+
+    미회신 대상을 분모로 올릴지 판단하는 데 쓴다. 예전엔 judge_capacity(= 완료)를
+    그대로 썼는데, 그러면 작업일이 아직 안 지난 건은 승격이 안 돼 미응답으로 남는다.
+    정작 화면 상태 판정(calc_capacity_completion의 in_window)은 날짜가 미래여도
+    '미완료'로 치기 때문에, 두 기준이 어긋나 있었다.
+
+    반대로 '티켓이 걸리기만 하면' 올리던 때로는 돌아가지 않는다 - 완료일이 아예 없는
+    티켓(이름/IP만 스친 무관한 티켓)은 여기서도 빠진다. 그게 증설한 적 없는 서버
+    6대를 분모에 넣었던 경로다.
+    """
+    start, end = half_window(base_year, "H2")
+    candidates = [
+        t for t in (tickets or [])
+        if (d := capacity_ticket_done_date(t)) and start <= d <= end
+    ]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda x: x.get("created") or "")
+
+
 def judge_capacity(
     item: dict, tickets: list[dict] | None, as_of: date, base_year: int
 ) -> tuple[bool, str, dict | None]:
