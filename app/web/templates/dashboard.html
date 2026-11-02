@@ -130,71 +130,52 @@
     </div>
   </section>
 
-  <!-- 운영팀별 -->
-  <details class="panel">
-    <summary><h2>운영팀별 현황</h2></summary>
-    <table>
+  <!-- 현황 (운영팀 / 관계사 / 서비스 탭). 같은 열로 통일해 탭을 바꿔도 같은 기준으로 비교한다.
+       조치가 필요한 순(지연+미계획 많은 순)으로 정렬되어 있다 (dr_view.status_summary). -->
+  <details class="panel" id="statusPanel">
+    <summary><h2>현황</h2></summary>
+    <div class="tabs status-tabs" role="tablist" aria-label="현황 기준">
+      {% for key, label in [("team", "운영팀"), ("company", "관계사"), ("service", "서비스")] %}
+      <button type="button" class="tab{% if loop.first %} active{% endif %}" role="tab" data-status-tab="{{ key }}"
+              aria-selected="{{ 'true' if loop.first else 'false' }}" onclick="showStatusTab('{{ key }}')">{{ label }} {{ status_tabs[key]|length }}</button>
+      {% endfor %}
+    </div>
+    <p class="muted small">지연·미계획이 많은 순입니다. 상태 건수를 누르면 그 대상만 아래 목록에 걸러집니다. 미계획은 일정이 없어, 그 서비스로 마지막 계획 요청(리마인드)을 보낸 날을 보여줍니다.</p>
+    {% for key, first_col in [("team", "APP운영팀"), ("company", "관계사"), ("service", "업무 서비스 (관계사)")] %}
+    <div class="table-scroll{% if not loop.first %} hidden{% endif %}" data-status-view="{{ key }}" role="tabpanel">
+    <table class="status-table">
       <thead>
-        <tr><th scope="col">APP운영팀</th><th scope="col">완료</th><th scope="col">전체</th><th scope="col">완료율</th><th scope="col" style="width:35%">진행</th></tr>
+        <tr>
+          <th scope="col">{{ first_col }}</th>
+          <th scope="col">완료/전체</th>
+          <th scope="col">완료율</th>
+          <th scope="col">예정</th><th scope="col">지연</th><th scope="col">대략</th><th scope="col">미계획</th>
+          <th scope="col">다음 일정</th>
+          <th scope="col">가장 오래된 지연</th>
+          <th scope="col">마지막 리마인드</th>
+        </tr>
       </thead>
       <tbody>
-      {% for team, v in by_team.items() %}
-        <tr class="clickable" onclick="location.href='/dr?half={{ half }}&team={{ team }}'">
-          <td><a class="team-link" href="/dr?half={{ half }}&team={{ team }}">{{ team }}</a></td>
-          <td>{{ v.done }}</td>
-          <td>{{ v.total }}</td>
-          <td class="{% if v.rate == 100 %}ok{% elif v.rate >= 50 %}mid{% else %}bad{% endif %}">{{ v.rate }}%</td>
-          <td><div class="progress sm"><div class="bar" style="width: {{ v.rate }}%"></div></div></td>
+      {% for r in status_tabs[key] %}
+        <tr>
+          <td><a class="team-link" href="{{ r.url }}">{{ r.label }}{% if r.sublabel %} <span class="muted small">{{ r.sublabel }}</span>{% endif %}</a></td>
+          <td>{{ r.done }}/{{ r.total }}</td>
+          <td class="{% if r.rate == 100 %}ok{% elif r.rate >= 50 %}mid{% else %}bad{% endif %}">
+            {{ r.rate }}%
+            <div class="progress sm"><div class="bar" style="width: {{ r.rate }}%"></div></div>
+          </td>
+          {% for s in ["scheduled", "overdue", "approximate", "unplanned"] %}
+          <td>{% if r[s] %}<a class="status-count{% if s in ('overdue', 'unplanned') %} warn-text{% endif %}" href="{{ r.url }}&status={{ s }}">{{ r[s] }}</a>{% else %}<span class="muted">-</span>{% endif %}</td>
+          {% endfor %}
+          <td>{% if r.next_date %}{{ r.next_date.month }}/{{ r.next_date.day }} <span class="muted small">({% if r.next_in_days == 0 %}오늘{% else %}{{ r.next_in_days }}일 후{% endif %})</span>{% else %}<span class="muted">-</span>{% endif %}</td>
+          <td>{% if r.oldest_overdue %}<span class="warn-text">{{ r.oldest_overdue.month }}/{{ r.oldest_overdue.day }}</span> <span class="muted small">({{ r.overdue_days }}일 지남)</span>{% else %}<span class="muted">-</span>{% endif %}</td>
+          <td>{% if r.unplanned %}{% if r.last_remind %}<span title="{{ r.last_remind }}">{{ r.last_remind[5:10]|replace('-', '/') }}</span>{% else %}<span class="muted">안 보냄</span>{% endif %}{% else %}<span class="muted">-</span>{% endif %}</td>
         </tr>
       {% endfor %}
       </tbody>
     </table>
-  </details>
-
-  <!-- 관계사별 (행을 펼치면 그 관계사 안 업무 서비스별 소계가 나온다) -->
-  <details class="panel">
-    <summary><h2>관계사별 현황</h2></summary>
-    <table>
-      <thead>
-        <tr><th scope="col" style="width:28px"></th><th scope="col">관계사</th><th scope="col">완료</th><th scope="col">전체</th><th scope="col">서비스</th><th scope="col">완료율</th><th scope="col" style="width:35%">진행</th></tr>
-      </thead>
-      <tbody>
-      {% for company, v in by_company.items() %}
-        <tr class="clickable" onclick="location.href='/dr?half={{ half }}&company={{ company }}'">
-          <td>
-            <button type="button" class="row-toggle" aria-expanded="false" aria-controls="svc-{{ loop.index }}"
-                    title="업무 서비스별 펼치기" onclick="event.stopPropagation(); toggleServiceBreakdown(this)">▸</button>
-          </td>
-          <td><a class="team-link" href="/dr?half={{ half }}&company={{ company }}">{{ company }}</a></td>
-          <td>{{ v.done }}</td>
-          <td>{{ v.total }}</td>
-          <td class="mono small">{{ company_services.get(company, {})|length }}종</td>
-          <td class="{% if v.rate == 100 %}ok{% elif v.rate >= 50 %}mid{% else %}bad{% endif %}">{{ v.rate }}%</td>
-          <td><div class="progress sm"><div class="bar" style="width: {{ v.rate }}%"></div></div></td>
-        </tr>
-        <tr class="service-breakdown-row hidden" id="svc-{{ loop.index }}">
-          <td></td>
-          <td colspan="6">
-            <table class="nested">
-              <thead>
-                <tr><th scope="col">업무 서비스</th><th scope="col">완료</th><th scope="col">전체</th><th scope="col">완료율</th></tr>
-              </thead>
-              <tbody>
-              {% for service, sv in company_services.get(company, {}).items() %}
-                <tr class="clickable" onclick="location.href='/dr?half={{ half }}&company={{ company }}&service={{ service }}'">
-                  <td><a class="team-link" href="/dr?half={{ half }}&company={{ company }}&service={{ service }}">{{ service }}</a></td>
-                  <td>{{ sv.done }}</td>
-                  <td>{{ sv.total }}</td>
-                  <td class="{% if sv.rate == 100 %}ok{% elif sv.rate >= 50 %}mid{% else %}bad{% endif %}">{{ sv.rate }}%</td>
-                </tr>
-              {% endfor %}
-              </tbody>
-            </table>
-          </td>
-        </tr>
-      {% endfor %}
-      </tbody>
-    </table>
+    </div>
+    {% endfor %}
   </details>
 
   <!-- 상세 목록 (편집 가능) -->
@@ -401,7 +382,7 @@ const ADMINS = {{ admins | tojson }};
 function showExcludedTab() {
   document.getElementById("mainView").classList.add("hidden");
   document.getElementById("excludedView").classList.remove("hidden");
-  document.querySelectorAll(".tabs .tab").forEach(t => t.classList.remove("active"));
+  document.querySelectorAll(".tabs:not(.status-tabs) .tab").forEach(t => t.classList.remove("active"));
   document.getElementById("excludedTabBtn").classList.add("active");
 }
 function showMainTab() {
@@ -413,15 +394,23 @@ function showMainTab() {
   });
 }
 
-// 관계사별 현황 - 행을 펼치면 그 관계사 안 업무 서비스별 소계가 나온다.
-// 행 자체는 눌러도 필터로 이동하므로(location.href), 펼치기 버튼은 stopPropagation으로 분리한다.
-function toggleServiceBreakdown(btn) {
-  const row = document.getElementById(btn.getAttribute("aria-controls"));
-  const opening = row.classList.contains("hidden");
-  row.classList.toggle("hidden", !opening);
-  btn.setAttribute("aria-expanded", opening ? "true" : "false");
-  btn.textContent = opening ? "▾" : "▸";
+// 현황 탭 (운영팀 / 관계사 / 서비스). 마지막으로 본 탭은 이 브라우저에만 기억한다 -
+// 저장소를 못 쓰는 환경(사생활 보호 모드 등)이면 기본 탭(운영팀)으로 그냥 뜬다.
+const STATUS_TAB_KEY = "dr.statusTab";
+function showStatusTab(key) {
+  document.querySelectorAll("[data-status-view]").forEach(v => v.classList.toggle("hidden", v.dataset.statusView !== key));
+  document.querySelectorAll("[data-status-tab]").forEach(t => {
+    const on = t.dataset.statusTab === key;
+    t.classList.toggle("active", on);
+    t.setAttribute("aria-selected", on ? "true" : "false");
+  });
+  try { localStorage.setItem(STATUS_TAB_KEY, key); } catch (e) {}
 }
+(function restoreStatusTab() {
+  let saved = null;
+  try { saved = localStorage.getItem(STATUS_TAB_KEY); } catch (e) {}
+  if (saved && document.querySelector(`[data-status-tab="${saved}"]`)) showStatusTab(saved);
+})();
 
 // 변경 저장 시 입력자명 2글자 이상 필수
 function requireName() {

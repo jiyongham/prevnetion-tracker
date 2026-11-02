@@ -252,6 +252,15 @@ ES `metric_recent`/`resource_search` 인덱스는 OS 커널 패치 버전 소스
 
 `.env`는 gitignore 대상이며 인증정보·에이전트 키가 모두 여기 들어간다. Kubernetes 배포 시 **Secret과 코드를 반드시 함께 갱신해야 한다** — 한쪽만 배포되면 설정 로딩에서 실패하거나, 더 나쁘게는 필드 ID가 비어 조용히 잘못된 숫자가 나간다.
 
+### DB 백업
+
+kind 클러스터를 다시 만들면 PVC(sqlite)가 함께 사라지므로, `scripts/backup_db.py`로 클러스터 밖(WSL 로컬, 기본 `~/dr-tracker-backups`)에 백업한다. 주 1회(일요일) 풀 백업, 나머지 날은 그 주 풀 백업 대비 바뀐 행만 담은 SQL(차등)을 남기고 14일 보관한다. 증분은 저장 전에 풀 백업에 적용해 원본과 같은지 검증한다.
+
+```bash
+python3 scripts/backup_db.py                                   # 오늘 몫 (풀/증분 자동)
+python3 scripts/backup_db.py restore ~/dr-tracker-backups/diff/tracker-YYYYMMDD-HHMM.sql.gz --out restored.db
+```
+
 ---
 
 ## CI/CD

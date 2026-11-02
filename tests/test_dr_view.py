@@ -108,6 +108,68 @@ def test_decorate_details_without_half_falls_back_to_bool():
     assert rows[0]["actions"]["recent"] is False
 
 
+def _status_row(no, team, label, schedule=None, completed=False, service="서비스A", company="관계사A", **extra):
+    from datetime import date
+    return {"no": no, "ops_team": team, "status_label": label, "completed": completed,
+            "schedule": date.fromisoformat(schedule) if schedule else None,
+            "business_name": service, "company": company, "system_name": f"SYS{no}", **extra}
+
+
+def test_status_summary_상태건수와_대표날짜():
+    from datetime import date
+    from app.services.dr_view import status_summary
+
+    rows = [
+        _status_row("1", "A팀", "완료", completed=True),
+        _status_row("2", "A팀", "예정", "2026-11-10"),
+        _status_row("3", "A팀", "예정", "2026-11-05"),
+        _status_row("4", "A팀", "지연", "2026-10-20"),
+        _status_row("5", "A팀", "지연", "2026-10-28"),
+        _status_row("6", "A팀", "미계획", service="서비스B"),
+        _status_row("7", "A팀", "대략", schedule_raw="X"),   # 관리자 제외 - 상태 건수에서 뺀다
+    ]
+    [a] = status_summary(rows, lambda d: d["ops_team"], date(2026, 11, 2),
+                         last_remind={"서비스B": "2026-10-30 09:00:00"}, excluded_nos={"7"})
+
+    assert (a["done"], a["total"]) == (1, 7)
+    assert (a["scheduled"], a["overdue"], a["approximate"], a["unplanned"]) == (2, 2, 0, 1)
+    assert a["next_date"] == date(2026, 11, 5) and a["next_in_days"] == 3
+    assert a["oldest_overdue"] == date(2026, 10, 20) and a["overdue_days"] == 13
+    assert a["last_remind"] == "2026-10-30 09:00:00"
+    assert a["action"] == 3
+
+
+def test_status_summary_조치가_필요한_순으로_정렬():
+    from datetime import date
+    from app.services.dr_view import status_summary
+
+    rows = [
+        # B팀: 완료율은 낮지만(0%) 전부 예정 -> 조치 필요 0
+        _status_row("1", "B팀", "예정", "2026-11-10"),
+        # A팀: 완료율 50%지만 지연 1 -> 먼저
+        _status_row("2", "A팀", "완료", completed=True),
+        _status_row("3", "A팀", "지연", "2026-10-20"),
+    ]
+    result = status_summary(rows, lambda d: d["ops_team"], date(2026, 11, 2))
+    assert [g["key"] for g in result] == ["A팀", "B팀"]
+
+
+def test_build_status_tabs_서비스는_관계사별로_나누고_링크를_인코딩():
+    from datetime import date
+    from app.web.routes.dr import build_status_tabs
+
+    rows = [
+        _status_row("1", "A&B 팀", "미계획", company="관계사1", service="공통"),
+        _status_row("2", "A&B 팀", "미계획", company="관계사2", service="공통"),
+    ]
+    tabs = build_status_tabs(rows, "H2", None, date(2026, 11, 2))
+
+    services = {(r["sublabel"], r["label"]) for r in tabs["service"]}
+    assert services == {("관계사1", "공통"), ("관계사2", "공통")}
+    [team] = tabs["team"]
+    assert team["url"] == "/dr?half=H2&team=A%26B+%ED%8C%80"
+
+
 def test_detail_row_macro_renders_dict_recent_change():
     """recent_change가 dict(상세 요약)일 때도 매크로 렌더링 실패 없이 요약/변경자 라벨을 보여준다."""
     row = dict(no="1", system_name="테스트", hostname="host", ops_team="팀", owner="담당",

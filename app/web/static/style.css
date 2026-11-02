@@ -580,24 +580,15 @@ tr.clickable { cursor: pointer; }
 .team-link:hover { text-decoration: underline; }
 tr.row-done { background: var(--color-status-success-bg-subtle); }
 
-/* 관계사별 현황 - 관계사 행을 펼치면 업무 서비스별 소계가 나오는 중첩 표.
-   토글 버튼은 행 자체의 클릭(필터 이동)과 분리되어 있어(stopPropagation),
-   버튼 클릭만 이 화살표를 돌린다. */
-.row-toggle {
-  display: inline-flex; align-items: center; justify-content: center;
-  min-width: 24px; min-height: 24px;
-  background: none; border: none; cursor: pointer;
-  color: var(--color-text-tertiary); font-size: var(--text-sm); line-height: 1;
-  transition: transform 150ms var(--ease-out);
-}
-.row-toggle:hover { color: var(--color-text-secondary); }
-tr.service-breakdown-row > td { padding: 4px 10px 12px 34px; border-bottom: 1px solid var(--color-divider); }
-table.nested {
-  background: var(--color-bg-subtle); border-radius: 8px; overflow: hidden;
-}
-table.nested th, table.nested td { padding: 6px 10px; font-size: var(--text-sm); }
-table.nested th { background: transparent; }
-table.nested tbody tr:last-child td { border-bottom: none; }
+/* DR 현황 탭 (운영팀/관계사/서비스) - 숫자 열은 세로로 비교하므로 오른쪽 정렬.
+   열이 10개라 좁은 화면에서는 .table-scroll 안에서 가로로 스크롤된다. */
+.status-tabs { margin-bottom: 8px; }
+.status-table th:not(:first-child),
+.status-table td:not(:first-child) { text-align: end; white-space: nowrap; }
+.status-table td:nth-child(3) { font-weight: 600; min-width: 84px; }
+.status-table td:nth-child(3) .progress { margin-top: 4px; }
+.status-count { font-weight: 600; text-decoration: none; }
+.status-count:hover { text-decoration: underline; }
 
 table.editable td { padding: 5px 6px; }
 

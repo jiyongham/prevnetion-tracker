@@ -3,7 +3,7 @@
 import io
 import logging
 from datetime import date, datetime, timedelta
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 import pandas as pd
 from fastapi import APIRouter, Form, Request
@@ -25,7 +25,13 @@ from app.services import ai_diagnose, chatbot, dr_data, evidence_check, last_rep
 from app.services.change_history import mask_changer
 from app.services.completion import calc_completion, group_by
 from app.services.dr_match import build_dr_ticket_summary
-from app.services.dr_view import ACTION_LABELS, STATUS_LABELS, decorate_details, select_details
+from app.services.dr_view import (
+    ACTION_LABELS,
+    STATUS_LABELS,
+    decorate_details,
+    select_details,
+    status_summary,
+)
 from app.services.owner_check import (
     collect_targets_with_tickets,
     find_owner_mismatches,
@@ -75,6 +81,45 @@ def external_as_of(half: str) -> str:
     return datetime.fromtimestamp(at).strftime("%m-%d %H:%M") if at else ""
 
 
+def _admin_excluded(d: dict) -> bool:
+    """관리자가 일정 칸에 X를 넣어 확정한 제외 대상 (completion.excluded_completion_date와 같은 기준)"""
+    return (d.get("schedule_raw") or "").strip().upper() == "X" and d.get("updated_by") in settings.admin_set
+
+
+def _last_remind_by_service(half: str) -> dict[str, str]:
+    """미계획 리마인드(미기입/대략)를 서비스별로 마지막으로 성공 발송한 시각"""
+    latest: dict[str, str] = {}
+    for kind in ("blank", "hinted"):
+        for svc, s in get_remind_log_summary(half, kind).items():
+            if s.get("ok") and (s.get("sent_at") or "") > latest.get(svc, ""):
+                latest[svc] = s["sent_at"]
+    return latest
+
+
+def build_status_tabs(details: list[dict], half: str, mode: str | None, today: date) -> dict[str, list[dict]]:
+    """현황 탭(운영팀/관계사/서비스) 행. 같은 열을 써서 탭을 바꿔도 같은 기준으로 비교된다.
+    서비스는 관계사가 다르면 같은 이름이라도 다른 서비스라 (관계사, 서비스)로 묶는다."""
+    last_remind = _last_remind_by_service(half)
+    excluded = {d["no"] for d in details if _admin_excluded(d)}
+    base = {"half": half, **({"mode": mode} if mode else {})}
+
+    def rows(key_fn, label_fn, params_fn):
+        result = status_summary(details, key_fn, today, last_remind, excluded)
+        for r in result:
+            r["label"], r["sublabel"] = label_fn(r["key"])
+            r["url"] = "/dr?" + urlencode({**base, **params_fn(r["key"])})
+        return result
+
+    return {
+        "team": rows(lambda d: d.get("ops_team") or "미지정",
+                     lambda k: (k, ""), lambda k: {"team": k}),
+        "company": rows(lambda d: d.get("company") or "미지정",
+                        lambda k: (k, ""), lambda k: {"company": k}),
+        "service": rows(lambda d: (d.get("company") or "미지정", d.get("business_name") or "미지정"),
+                        lambda k: (k[1], k[0]), lambda k: {"company": k[0], "service": k[1]}),
+    }
+
+
 def get_dashboard_data(half: str, as_of: date, use_jira: bool = True, mode: str | None = None):
     # ticket_map은 모드 필터 전 전체 대상으로 만들어 캐시한다 (dr_data 참고)
     items = dr_data.load_items(half)
@@ -111,26 +156,7 @@ def dashboard(
     ticket_map, jira_error = dr_data.get_ticket_map(half, items)
     result_all = calc_completion(items, ticket_map, today)
     result = calc_completion(filter_by_mode(items, mode), ticket_map, today) if mode else result_all
-    by_team = group_by(result, "ops_team")
-    by_company = group_by(result, "company")
-
-    # 관계사별 현황 안에 업무 서비스별 세부 집계도 같이 넣는다 (관계사 하나에
-    # 여러 업무 서비스가 걸릴 수 있어, 관계사 행을 펼치면 그 안에서 서비스별
-    # 소계를 본다) - group_by는 완료/전체만 보고 pending 목록은 따로 담는
-    # 1단계 집계라 이런 중첩엔 안 맞아서 여기서 따로 만든다.
-    company_services: dict[str, dict[str, dict]] = {}
-    for d in result["details"]:
-        c = d.get("company") or "미지정"
-        s = d.get("business_name") or "미지정"
-        bucket = company_services.setdefault(c, {}).setdefault(s, {"total": 0, "done": 0})
-        bucket["total"] += 1
-        if d["completed"]:
-            bucket["done"] += 1
-    for c, services in company_services.items():
-        for v in services.values():
-            v["rate"] = round(v["done"] / v["total"] * 100) if v["total"] else 0
-        # 서비스는 이름 가나다순 (바깥 관계사 목록은 완료율순 - 안쪽은 훑어보기 쉬운 순서가 낫다)
-        company_services[c] = dict(sorted(services.items()))
+    status_tabs = build_status_tabs(result["details"], half, mode, today)
 
     # 탭에 표시할 방식별 대수 (필터 적용 전 기준)
     scope_targets = get_dr_targets(items)
@@ -163,11 +189,7 @@ def dashboard(
     # 제외 대상은 mode 필터 후 details가 아닌 result_all(전체) 기준으로 계산한다.
     # team/company/service 필터는 일관성을 위해 동일하게 적용한다.
     all_details_filtered = _apply_common_filters(result_all["details"])
-    excluded_nos = {
-        d["no"] for d in all_details_filtered
-        if (d.get("schedule_raw") or "").strip().upper() == "X"
-        and d.get("updated_by") in settings.admin_set
-    }
+    excluded_nos = {d["no"] for d in all_details_filtered if _admin_excluded(d)}
     excluded_items = [d for d in all_details_filtered if d["no"] in excluded_nos]
     details = [d for d in details if d["no"] not in excluded_nos]
 
@@ -238,9 +260,7 @@ def dashboard(
         "excluded_items": excluded_items,
         "excluded_cnt": excluded_cnt,
         "evidence_warn_cnt": evidence_warn_cnt,
-        "by_team": dict(sorted(by_team.items(), key=lambda x: x[1]["rate"])),
-        "by_company": dict(sorted(by_company.items(), key=lambda x: x[1]["rate"])),
-        "company_services": company_services,
+        "status_tabs": status_tabs,
         "report_warning": report_warning,
         # 발송 직후에만(sent=1) 방금 나간 본문을 화면에 띄운다
         "sent_report": last_report.get("dr") if sent else "",
@@ -259,7 +279,7 @@ def dashboard(
         "filter_service": service or "",
         "filter_status": status or "",
         "q": q or "",
-        "teams": sorted(by_team.keys()),
+        "teams": sorted(r["label"] for r in status_tabs["team"]),
         "admins": sorted(settings.admin_set),
         "jira_error": jira_error,
         "jira_base": settings.jira_url.rstrip("/"),
