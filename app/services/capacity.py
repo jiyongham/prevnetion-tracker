@@ -149,13 +149,20 @@ def trace_ticket(t: dict, sheet: str, as_of: date, base_year: int) -> tuple[str,
 
     done_on = capacity_ticket_done_date(t)
     if not done_on:
+        # 완료일은 없지만 시작일이 잡혀 있으면 '증설 예정'으로는 인정된다
+        # (미회신 대상을 분모로 올리는 기준 - scheduled_expansion). 완료로는 안 친다.
+        if (planned := scheduled_date(t)):
+            return "wait", (
+                f"변경계획완료일은 비어 있고 변경계획시작일 {planned}만 있음 "
+                f"→ 증설 예정으로는 인정(대상에 포함), 완료로는 안 침"
+            )
         linked = ", ".join(link["key"] for link in (t.get("linked") or []))
         extra = (
             f" 연결된 변경관리 티켓({linked})에도 완료일이 없음"
             if linked
             else " 연결된 변경관리 티켓도 없음"
         )
-        return "drop", f"변경계획완료일이 비어 있음.{extra}"
+        return "drop", f"변경계획완료일도 시작일도 비어 있음.{extra}"
 
     src = done_date_source(t)
     basis = f"변경이관 티켓 {src['key']}의 변경계획완료일" if src else "변경계획완료일"
@@ -358,6 +365,31 @@ def is_untagged(t: dict | None) -> bool:
     return bool(t) and t.get("kind") != "예방4"
 
 
+def scheduled_date(t: dict) -> date | None:
+    """
+    증설 '예정일'. 완료 판정이 아니라 '일정이 잡혔나'를 볼 때 쓴다.
+
+    1순위는 변경계획완료일(capacity_ticket_done_date - 연결된 변경관리 티켓까지 본다).
+    없으면 변경계획시작일로 떨어진다. 아직 끝나지 않은 티켓은 완료일 칸이 비어 있고
+    시작일만 채워져 있는 경우가 있어서, 완료일만 보면 '금주 증설 예정'인 대상이
+    일정 없는 것으로 취급된다.
+
+    완료 판정(judge_capacity)은 이 함수를 쓰지 않는다 - 시작일이 잡혔다는 것만으로
+    증설이 끝났다고 할 수는 없다.
+    """
+    if t.get("kind") not in CAPACITY_KINDS:
+        return None
+    if (done := capacity_ticket_done_date(t)):
+        return done
+    if t.get("planned_start_date"):
+        return t["planned_start_date"]
+    starts = [
+        d for link in (t.get("linked") or [])
+        if (d := link.get("planned_start_date"))
+    ]
+    return max(starts) if starts else None
+
+
 def scheduled_expansion(
     tickets: list[dict] | None, base_year: int
 ) -> dict | None:
@@ -372,14 +404,17 @@ def scheduled_expansion(
     정작 화면 상태 판정(calc_capacity_completion의 in_window)은 날짜가 미래여도
     '미완료'로 치기 때문에, 두 기준이 어긋나 있었다.
 
-    반대로 '티켓이 걸리기만 하면' 올리던 때로는 돌아가지 않는다 - 완료일이 아예 없는
-    티켓(이름/IP만 스친 무관한 티켓)은 여기서도 빠진다. 그게 증설한 적 없는 서버
-    6대를 분모에 넣었던 경로다.
+    날짜는 scheduled_date로 본다 - 완료일이 비어 있으면 변경계획시작일까지 본다.
+    아직 안 끝난 티켓은 완료일 칸이 비어 있는 경우가 있기 때문이다.
+
+    반대로 '티켓이 걸리기만 하면' 올리던 때로는 돌아가지 않는다 - 두 날짜가 모두
+    없는 티켓(이름/IP만 스친 무관한 티켓)은 여기서도 빠진다. 그게 증설한 적 없는
+    서버 6대를 분모에 넣었던 경로다.
     """
     start, end = half_window(base_year, "H2")
     candidates = [
         t for t in (tickets or [])
-        if (d := capacity_ticket_done_date(t)) and start <= d <= end
+        if (d := scheduled_date(t)) and start <= d <= end
     ]
     if not candidates:
         return None

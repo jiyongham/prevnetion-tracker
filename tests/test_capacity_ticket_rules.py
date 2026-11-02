@@ -281,3 +281,49 @@ class TestScheduledExpansion:
     def test_티켓이_없으면_없음(self):
         assert capacity_mod.scheduled_expansion([], 2026) is None
         assert capacity_mod.scheduled_expansion(None, 2026) is None
+
+
+class TestScheduledDate:
+    """
+    '증설 예정일' - 완료일이 비어 있으면 변경계획시작일로 떨어진다.
+
+    아직 끝나지 않은 티켓은 변경계획완료일 칸이 비어 있는 경우가 있다. 완료일만 보면
+    '금주 증설 예정'인 대상이 일정 없는 것으로 취급돼 분모에서 빠진다.
+    """
+
+    def _t(self, **kw):
+        base = {"key": "IMDC-1", "kind": "증설", "created": "2026-09-01",
+                "planned_end_date": None, "planned_start_date": None, "linked": []}
+        base.update(kw)
+        return base
+
+    def test_완료일이_있으면_완료일을_쓴다(self):
+        t = self._t(planned_end_date=date(2026, 9, 10), planned_start_date=date(2026, 9, 1))
+        assert capacity_mod.scheduled_date(t) == date(2026, 9, 10)
+
+    def test_완료일이_없으면_시작일을_쓴다(self):
+        t = self._t(planned_start_date=date(2026, 11, 5))
+        assert capacity_mod.scheduled_date(t) == date(2026, 11, 5)
+
+    def test_연결된_변경관리_티켓의_시작일도_본다(self):
+        t = self._t(linked=[{"key": "IMDC-2", "planned_end_date": None,
+                             "planned_start_date": date(2026, 11, 5)}])
+        assert capacity_mod.scheduled_date(t) == date(2026, 11, 5)
+
+    def test_두_날짜가_모두_없으면_없음(self):
+        assert capacity_mod.scheduled_date(self._t()) is None
+
+    def test_증설_티켓이_아니면_없음(self):
+        assert capacity_mod.scheduled_date(
+            self._t(kind="기타", planned_start_date=date(2026, 11, 5))) is None
+
+    def test_시작일만_있어도_승격_대상이_된다(self):
+        # 금주 증설 예정인데 완료일이 아직 안 채워진 티켓
+        t = self._t(planned_start_date=date(2026, 11, 5))
+        assert capacity_mod.scheduled_expansion([t], 2026) is t
+
+    def test_시작일만_있는_티켓은_완료로는_안_친다(self):
+        t = self._t(planned_start_date=date(2026, 11, 5))
+        item = {"no": "1", "excel_done": "", "schedule_raw": ""}
+        completed, _, _ = capacity_mod.judge_capacity(item, [t], date(2026, 11, 30), 2026)
+        assert completed is False
