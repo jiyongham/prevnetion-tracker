@@ -299,7 +299,7 @@
           </td>
           <td>
             {% if d.completed %}<span class="badge ok" title="{{ d.reason }}">완료</span>
-            {% else %}<span class="badge muted" title="반기 종료일이 지나면 완료로 인정됩니다">제외</span>{% endif %}
+            {% else %}<span class="badge muted" title="관리자가 확정한 제외(X)만 완료로 인정됩니다">제외</span>{% endif %}
           </td>
           <td class="small">{{ d.web_exclude_reason or d.exclude_reason or "(미기재)" }}</td>
           <td class="small">{{ d.updated_by if d.updated_by not in admins else "-" }}</td>
